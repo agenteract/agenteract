@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@agenteract/expo": "workspace:*",
+    "@agenteract/server": "workspace:*",
     "@agenteract/react": "workspace:*",
     "@expo/vector-icons": "^15.0.2",
     "expo": "~54.0.13",

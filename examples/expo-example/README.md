@@ -8,10 +8,18 @@ Usage:
 ```bash
 npm install -g pnpm
 EXAPP=$(pwd)
-cd ..
+cd ../..
 pnpm build
 cd packages/expo
 pnpm link --global
+cd ../../
+cd packages/server
+pnpm link --global
 cd "$EXAPP"
+
+# Note that these work locally because they have been added as dependencies
 npx @agenteract/expo # This runs npx expo with our agent wrapper
+
+# In another terminal
+npx @ageneract/server
 ```
