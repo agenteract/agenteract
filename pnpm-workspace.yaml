@@ -3,3 +3,6 @@ packages:
   - examples/*
 
 nodeLinker: hoisted
+
+onlyBuiltDependencies:
+  - node-pty

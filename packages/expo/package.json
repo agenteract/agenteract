@@ -1,0 +1,27 @@
+{
+  "name": "@agenteract/expo",
+  "version": "0.0.1",
+  "description": "Expo bridge utilities for Agenteract",
+  "type": "module",
+  "main": "dist/cli.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsc -p tsconfig.json"
+  },
+  "bin": {
+    "agenterexpo": "dist/cli.js"
+  },
+  "dependencies": {
+    "@agenteract/core": "workspace:*",
+    "express": "^5.1.0",
+    "node-pty": "^1.0.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/express": "^5.0.3"
+  }
+}

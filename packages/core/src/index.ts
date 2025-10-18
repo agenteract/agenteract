@@ -25,3 +25,19 @@ export function sendCommand(command: AgentCommand): Promise<AgentResponse> {
 export function receiveResponse(response: AgentResponse): Promise<AgentCommand> {
   return Promise.resolve({ action: 'response', response: response });
 }
+
+export function detectInvoker(): { pkgManager: string, isNpx: boolean, isPnpmDlx: boolean } {
+  const ua = process.env.npm_config_user_agent || '';
+  const execPath = process.env.npm_execpath || '';
+
+  const pkgManager =
+    ua.startsWith('pnpm/') ? 'pnpm' :
+    ua.startsWith('yarn/') ? 'yarn' :
+    ua.startsWith('npm/') ? 'npm' :
+    'unknown';
+
+  const isNpx = execPath.includes('npx-cli.js');
+  const isPnpmDlx = pkgManager === 'pnpm' && process.argv[1]?.includes('dlx');
+
+  return { pkgManager, isNpx, isPnpmDlx };
+}

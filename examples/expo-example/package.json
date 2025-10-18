@@ -11,6 +11,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@agenteract/expo": "workspace:*",
     "@expo/vector-icons": "^15.0.2",
     "expo": "~54.0.13",
     "expo-constants": "~18.0.9",

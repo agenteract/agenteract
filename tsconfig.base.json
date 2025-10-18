@@ -8,7 +8,12 @@
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@agenteract/core": ["packages/core/src"],
+      "@agenteract/core/*": ["packages/core/src/*"]
+    }
   },
   "exclude": ["node_modules", "dist"]
 }
