@@ -3,15 +3,21 @@
   "version": "0.0.1",
   "description": "React and React Native bridge utilities for Agenteract",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "require": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    }
+  },
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-native": "*"
+    "react": ">=18 <20"
   },
   "dependencies": {
     "@agenteract/core": "workspace:*"

@@ -18,5 +18,9 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "typescript": "^5.6.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-native": "*"
   }
 }

@@ -12,8 +12,10 @@
     "baseUrl": ".",
     "paths": {
       "@agenteract/core": ["packages/core/src"],
-      "@agenteract/core/*": ["packages/core/src/*"]
-    }
+      "@agenteract/core/*": ["packages/core/src/*"],
+      "@agenteract/react": ["packages/react/dist/react/src"],
+      "@agenteract/react/*": ["packages/react/src/*"]
+    },
   },
   "exclude": ["node_modules", "dist"]
 }
