@@ -185,7 +185,7 @@ cat AGENTS.md >> GEMINI.md
 rm AGENTS.md
 ```
 
-If you are using a separate agent to your IDE, start it now, otherwise you can use the built in agent (Tested with Cursor)
+If you are using a separate agent to your IDE, start it now, otherwise you can use the built in agent (Tested with Cursor, Gemini CLI)
 
 Issue some instructions. You might need to prime the agent the first time
 ```txt
@@ -194,9 +194,9 @@ Add a button that disappears when it is clicked.
 Confirm that it works using a simulated action.
 ```
 
-Gemini should view the current hierarchy, modify the code, view again, simulate a tap, then confirm that the button disappeared by viewing the hierarchy one final time.
+Agents should view the current hierarchy, modify the code, view again, simulate a tap, then confirm that the button disappeared by viewing the hierarchy one final time.
 
-Because [packages/gemini/GEMINI.md](GEMINI.md) contains instructions about how to interact with the app, you don't need to explicitly tell it to use the `AgentDebugBridge`.
+Because [packages/agents/AGENTS.md](packages/agents/AGENTS.md) contains instructions about how to interact with the app, you don't need to explicitly tell it to use the `AgentDebugBridge`.
 
 ### **✅ Verification Checklist**
 
