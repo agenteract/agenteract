@@ -13,7 +13,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "jest --config jest.config.cjs"
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -22,6 +23,9 @@
   "license": "MIT",
   "devDependencies": {
     "@types/express": "^5.0.3",
-    "@types/ws": "^8.18.1"
+    "@types/jest": "^30.0.0",
+    "@types/ws": "^8.18.1",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.5"
   }
 }
