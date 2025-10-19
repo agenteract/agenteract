@@ -4,6 +4,10 @@
 
 It exposes the app’s internal state, view hierarchy, and actionable controls over a secure WebSocket, enabling agents (or test harnesses) to observe and trigger UI events just like a developer or user would.
 
+   <p align="center">
+     <img src="demo.gif" alt="Demo" width="600">
+   </p>
+
 ---
 
 ## **✨ Why**
