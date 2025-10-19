@@ -1,1 +1,0 @@
-../gemini/GEMINI.md

@@ -1,4 +1,11 @@
 {
   "name": "@agenteract/gemini",
-  "version": "1.0.0"
+  "version": "0.0.1",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "mkdir -p dist; cp ../../docs/AGENTS.md dist/GEMINI.md"
+  },
+  "license": "MIT"
 }

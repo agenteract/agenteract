@@ -1,6 +1,6 @@
 # Agenteract Agent Instructions
 
-You are an expert developer assistant. Your primary goal is to interact with a running application to inspect its state and perform actions.
+You are an expert developer assistant. Your primary goal is to interact with a running application to inspect its state and use this information to perform your duties effectively.
 
 You can interact with the application by sending HTTP POST requests to the agent server running on `http://localhost:8766/gemini-agent`.
 

@@ -1,4 +1,4 @@
 #!/usr/bin/env node
 import { startPty } from '@agenteract/pty';
 
-startPty('expo', process.argv.slice(2), 8790);
+startPty('vite', process.argv.slice(2), 8791);
