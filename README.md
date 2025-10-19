@@ -206,6 +206,30 @@ Because [packages/gemini/GEMINI.md](GEMINI.md) contains instructions about how t
 *   The agent server console shows "React Native app connected."
 *   Sending a `getViewHierarchy` command via `curl` returns a JSON tree.
 
+## **🧪 Testing**
+
+This project uses Jest for testing.
+
+### **Run All Tests**
+
+To run the tests for all packages, use the following command from the root directory:
+
+```bash
+pnpm test
+```
+
+### **Run Tests for a Single Package**
+
+To run the tests for a specific package, use the `--filter` flag:
+
+```bash
+pnpm --filter @agenteract/react test
+```
+
+### **Continuous Integration**
+
+Tests are run automatically on every push and pull request to the `main` branch using GitHub Actions.
+
 ## **📜 License**
 
 MIT — early experimental research release.  
