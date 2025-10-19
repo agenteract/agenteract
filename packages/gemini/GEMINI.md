@@ -10,7 +10,7 @@ You can retrieve the app expo logs as follows:
 
 **Command**
 ```bash
-curl "http://localhost:8790/logs?since=200"
+curl "http://localhost:8790/logs?since=20"
 ```
 
 `since` identifies how many log lines you want to tail.

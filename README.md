@@ -20,7 +20,7 @@ Agents no longer guess what’s on screen; they can query the actual component t
 
 | Concept | Description |
 | ----- | ----- |
-| **Bridge** | A lightweight WebSocket endpoint inside the app (GeminiDebugBridge, AgenteractBridge, etc.) that sends UI snapshots and receives action commands. |
+| **Bridge** | A lightweight WebSocket endpoint inside the app (AgentDebugBridge, AgenteractBridge, etc.) that sends UI snapshots and receives action commands. |
 | **Hierarchy Provider** | Gathers a filtered React Fiber tree with component names, testIDs, and text. |
 | **Agent Registry** | Maps component actions (for example, onPress or onChangeText) to callable handlers. |
 | **Agent Commands** | JSON messages such as `{ "action": "tap", "target": "loginButton" }`. |
@@ -126,6 +126,8 @@ pnpm link --global
 cd ../../
 cd packages/server
 pnpm link --global
+cd packages/agents
+pnpm link --global
 ```
 
 ### **3. Run the Development Environment**
@@ -168,20 +170,28 @@ curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"getViewHierarc
 
 The server will forward this to the app, and the app will respond with a JSON payload of its view hierarchy.
 
-### **Terminal 4: Agent Interaction**
+### **Terminal 3: Agent Interaction**
 
-Currently only Gemini CLI is supported, but more agents are on the way
+This step creates or appends to your AGENTS.md file. This informs coding agents how to interact with the app.
 
-Run the agent tool from the project you want to build, like normal.
 ```bash
 cd examples/expo-example
-gemini extensions install @agenteract/gemini
-gemini
+npx @agenteract/agents
 ```
 
-Now try issuing some instructions:
+If you are using Gemini:
+```bash
+cat AGENTS.md >> GEMINI.md
+rm AGENTS.md
+```
+
+If you are using a separate agent to your IDE, start it now, otherwise you can use the built in agent (Tested with Cursor)
+
+Issue some instructions. You might need to prime the agent the first time
 ```txt
+You can use the Get View Hieararchy tool to inspect the current app state.
 Add a button that disappears when it is clicked.
+Confirm that it works using a simulated action.
 ```
 
 Gemini should view the current hierarchy, modify the code, view again, simulate a tap, then confirm that the button disappeared by viewing the hierarchy one final time.

@@ -17,6 +17,9 @@ importers:
 
   examples/expo-example:
     dependencies:
+      '@agenteract/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
       '@agenteract/expo':
         specifier: workspace:*
         version: link:../../packages/expo
@@ -87,6 +90,8 @@ importers:
       typescript:
         specifier: ~5.9.2
         version: 5.9.3
+
+  packages/agents: {}
 
   packages/core:
     dependencies:

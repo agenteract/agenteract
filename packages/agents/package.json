@@ -1,0 +1,17 @@
+{
+  "name": "@agenteract/agents",
+  "version": "0.0.1",
+  "description": "Copies agent instructions to the current project",
+  "type": "module",
+  "main": "dist/cli.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "bin": {
+    "agent-docs": "dist/cli.js"
+  },
+  "license": "Apache-2.0"
+}
