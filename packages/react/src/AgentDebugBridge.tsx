@@ -23,6 +23,62 @@ export function simulateTap(id: string) {
   return false;
 }
 
+export function simulateInput(id: string, value: string) {
+  const node = getNode(id);
+  if (!node) {
+    console.log('Node not found with ID:', id);
+    return false;
+  }
+  if (!node?.onChangeText) {
+    console.log('Node has no onChangeText prop with ID:', id);
+    return false;
+  }
+  if (node && node?.onChangeText) {
+    node?.onChangeText(value);
+    return true;
+  }
+  return false;
+}
+
+export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | 'right', amount: number) {
+  const node = getNode(id);
+  if (!node) {
+    console.log('Node not found with ID:', id);
+    return false;
+  }
+  if (!node.ref?.current?.scrollTo) {
+    console.log('Node cannot be scrolled with ID:', id);
+    return false;
+  }
+
+  const scrollOptions = {
+    y: direction === 'down' ? amount : direction === 'up' ? -amount : 0,
+    x: direction === 'right' ? amount : direction === 'left' ? -amount : 0,
+    animated: true,
+  };
+
+  node.ref.current.scrollTo(scrollOptions);
+  return true;
+}
+
+export function simulateLongPress(id: string) {
+  const node = getNode(id);
+  if (!node) {
+    console.log('Node not found with ID:', id);
+    return false;
+  }
+  if (!node?.onLongPress) {
+    console.log('Node has no onLongPress prop with ID:', id);
+    return false;
+  }
+  if (node && node?.onLongPress) {
+    node?.onLongPress();
+    return true;
+  }
+  return false;
+}
+
+
 const handleCommand = async (cmd: AgentCommand, socket: WebSocket) => {
   if (typeof cmd !== 'object' || !('testID' in cmd)) {
     console.log(`Warning: non testID command not handled: ${JSON.stringify(cmd)}`)
@@ -34,15 +90,15 @@ const handleCommand = async (cmd: AgentCommand, socket: WebSocket) => {
     case "tap":
       simulateTap(target);
       break;
-    // case "input":
-    //   simulateInput(cmd.target, cmd.value);
-    //   break;
-    // case "scroll":
-    //   simulateScroll(cmd.direction, cmd.amount);
-    //   break;
-    // case "navigate":
-    //   navigationRef.navigate(cmd.route);
-    //   break;
+    case "input":
+      simulateInput(target, cmd.value);
+      break;
+    case "scroll":
+      simulateScroll(target, cmd.direction, cmd.amount);
+      break;
+    case "longPress":
+      simulateLongPress(target);
+      break;
     default:
       socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}` }));
       return;
