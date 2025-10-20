@@ -8,9 +8,13 @@ You can interact with the application by sending HTTP POST requests to the agent
 
 Before interacting with the application, you must determine the project type. You can do this by inspecting the `package.json` file for dependencies like `expo` or `vite`.
 
-## Tool: Get Dev Server Logs
+## Tool: Get Logs
 
-You can retrieve the app dev server logs as follows:
+There are two types of logs available: **Dev Server Logs** and **In-App Console Logs**.
+
+### 1. Dev Server Logs
+
+These logs come from the development server process (like Vite or Expo Metro). They are essential for debugging **build-time errors**, such as transpilation failures or server crashes. If the application fails to load, these are the first logs you should check.
 
 **Expo Command**
 ```bash
@@ -20,6 +24,15 @@ curl "http://localhost:8790/logs?since=20"
 **Vite Command**
 ```bash
 curl "http://localhost:8791/logs?since=20"
+```
+
+### 2. In-App Console Logs
+
+These logs are captured from the running application's `console.log`, `console.warn`, and `console.error` calls. Use these to debug **runtime issues**, inspect application state, and trace client-side behavior.
+
+**Command**
+```bash
+curl "http://localhost:8766/logs?since=20"
 ```
 
 `since` identifies how many log lines you want to tail.
@@ -73,7 +86,7 @@ This is your primary tool for "seeing" the application's current user interface.
 
 **Command:**
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"getViewHierarchy"}'
+curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"action":"getViewHierarchy"}'
 ```
 
 Note that if the above curl command fails with exit code 7, the user probably needs to run the app/agent bridge:
@@ -100,7 +113,7 @@ Simulates a press on a component. The request must contain an `action` like `tap
 **Command Example:**
 To tap a button with `testID: "login-button"`:
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"tap", "testID":"button"}'
+curl -s -X POST http://localhost:866/gemini-agent -H 'Content-Type: application/json' -d '{"action":"tap", "testID":"button"}'
 ```
 
 **Creating components:**

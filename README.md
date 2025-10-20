@@ -144,6 +144,9 @@ The agent server is the bridge that the app connects to and the agent sends comm
 
 ```bash
 # This can run from anywhere, eventually the server will support multiple apps under dev/test
+pnpm agenterserve
+
+# once published, you can use npm:
 npx @agenteract/server
 ```
 
@@ -157,10 +160,23 @@ The `@agenteract/expo` package is a wrapper around the standard `expo` CLI that 
 
 ```bash
 cd examples/expo-demo
+pnpm agenterexpo
+
+# once published, you can use npm:
 npx @agenteract/expo
 ```
 
+
 This will launch the Metro bundler for the demo app located in `examples/expo-example`. Press `i` to start the iOS Simulator or `a` for the Android Emulator.
+
+Or for a vite project:
+```bash
+cd examples/react-example
+pnpm @agentervite
+
+# once published, you can use npm:
+npx @agenteract/vite
+```
 
 ### **4. Observe and Interact**
 
