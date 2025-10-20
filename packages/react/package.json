@@ -4,6 +4,7 @@
   "description": "React and React Native bridge utilities for Agenteract",
   "type": "module",
   "main": "dist/src/index.js",
+  "react-native": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "files": [
     "dist"
@@ -20,10 +21,17 @@
     }
   },
   "peerDependencies": {
-    "react": ">=18 <20"
+    "react": ">=18 <20",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   },
   "dependencies": {
-    "@agenteract/core": "workspace:*"
+    "@agenteract/core": "workspace:*",
+    "@agenteract/dom": "workspace:*"
   },
   "license": "MIT",
   "devDependencies": {

@@ -160,9 +160,9 @@ export function getReactHierarchy() {
 }
   
   // Root traversal
-  export function getFilteredHierarchy() {
+  export function getFilteredHierarchy(): Node | null {
   const hook = (globalThis as any).__REACT_DEVTOOLS_GLOBAL_HOOK__;
-  if (!hook) return [];
+  if (!hook) return null;
   const trees: Node[] = [];
   
   for (const [id, renderer] of hook.renderers.entries()) {
@@ -172,5 +172,5 @@ export function getReactHierarchy() {
     }
   }
   
-  return summarizeHierarchy(trees[0]);
+  return trees.length > 0 ? summarizeHierarchy(trees[0]) : null;
 }

@@ -1,10 +1,28 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { Platform } from 'react-native';
-import { getFilteredHierarchy } from './DevToolsHierarchy';
+import { getFilteredHierarchy } from './getFilteredHierarchy';
 import { getNode } from './utils/AgentRegistry';
 import { AgentCommand } from '@agenteract/core';
 
-const AGENT_SERVER_URL = Platform.OS === 'android' ? 'ws://10.0.2.2:8765' : 'ws://127.0.0.1:8765';
+// Detect platform without directly importing react-native
+const getPlatform = (): 'android' | 'ios' | 'web' => {
+  // If we're in a browser environment, return 'web'
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    return 'web';
+  }
+  // Otherwise, try to get the platform from react-native (for React Native)
+  try {
+    // @ts-ignore - react-native may not be available
+    const RN = require('react-native');
+    return RN.Platform.OS;
+  } catch {
+    // Fallback to web
+    return 'web';
+  }
+};
+
+const AGENT_SERVER_URL = getPlatform() === 'android' 
+  ? 'ws://10.0.2.2:8765' 
+  : 'ws://127.0.0.1:8765';
 
 export function simulateTap(id: string) {
   const node = getNode(id);

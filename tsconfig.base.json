@@ -13,6 +13,8 @@
     "paths": {
       "@agenteract/core": ["packages/core/src"],
       "@agenteract/core/*": ["packages/core/src/*"],
+      "@agenteract/dom": ["packages/dom/src"],
+      "@agenteract/dom/*": ["packages/dom/src/*"],
       "@agenteract/pty": ["packages/pty/src"],
       "@agenteract/pty/*": ["packages/pty/src/*"],
       "@agenteract/react": ["packages/react/dist/react/src"],
