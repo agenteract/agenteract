@@ -1,7 +1,10 @@
-import { useEffect, useRef, useCallback, ChangeEvent } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { getFilteredHierarchy } from './getFilteredHierarchy';
 import { getNode } from './utils/AgentRegistry';
 import { AgentCommand } from '@agenteract/core';
+
+// --- New Type Definition ---
+type ServerCommand = AgentCommand & { id: string };
 
 // --- Log Capturing ---
 const logBuffer: { level: string; message: string; timestamp: number }[] = [];
@@ -30,6 +33,7 @@ const AGENT_SERVER_URL = getPlatform() === 'android'
   : 'ws://127.0.0.1:8765';
 
 // --- Simulation Functions ---
+// ... (Simulation functions remain the same)
 export function simulateTap(id: string) {
   const node = getNode(id);
   if (node?.onPress) {
@@ -50,7 +54,6 @@ export function simulateInput(id: string, value: string) {
   return false;
 }
 
-// ... (other simulation functions remain the same)
 export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | 'right', amount: number) {
   const node = getNode(id);
   if (!node) {
@@ -91,36 +94,38 @@ export function simulateLongPress(id: string) {
 
 
 // --- Command Handler ---
-const handleCommand = async (cmd: AgentCommand, socket: WebSocket) => {
-  // ... (handleCommand logic remains the same)
-  if (typeof cmd !== 'object' || !('testID' in cmd)) {
-    console.log(`Warning: non testID command not handled: ${JSON.stringify(cmd)}`)
+const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
+  if (typeof cmd !== 'object' || !('action' in cmd)) {
+    console.log(`Warning: command missing 'action' field: ${JSON.stringify(cmd)}`);
+    // Send a generic error back if the command is malformed
+    socket.send(JSON.stringify({ status: 'error', error: "Invalid command format" }));
     return;
-
   }
-  let target = cmd.testID;
+
+  let success = false;
   switch (cmd.action) {
     case "tap":
-      simulateTap(target);
+      success = simulateTap(cmd.testID);
       break;
     case "input":
-      simulateInput(target, cmd.value);
+      success = simulateInput(cmd.testID, cmd.value);
       break;
     case "scroll":
-      simulateScroll(target, cmd.direction, cmd.amount);
+      success = simulateScroll(cmd.testID, cmd.direction, cmd.amount);
       break;
     case "longPress":
-      simulateLongPress(target);
+      success = simulateLongPress(cmd.testID);
       break;
     default:
-      socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}` }));
+      socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}`, id: cmd.id }));
       return;
   }
-  socket.send(JSON.stringify({ status: "ok", action: cmd.action }));
+  
+  socket.send(JSON.stringify({ status: success ? "ok" : "error", action: cmd.action, id: cmd.id }));
 };
 
 // --- AgentDebugBridge Component ---
-export const AgentDebugBridge = () => {
+export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
 
@@ -150,14 +155,14 @@ export const AgentDebugBridge = () => {
   const connect = useCallback(() => {
     if (socketRef.current) return;
 
-    const socket = new WebSocket(AGENT_SERVER_URL);
+    const socket = new WebSocket(`${AGENT_SERVER_URL}/${projectName}`);
     socketRef.current = socket;
 
     socket.onopen = () => console.log('Connected to agent');
 
     socket.onmessage = async (event) => {
       try {
-        const command = JSON.parse(event.data);
+        const command: ServerCommand = JSON.parse(event.data);
         console.log('Received command from agent:', command);
 
         if (command.action === 'getViewHierarchy') {
@@ -184,7 +189,7 @@ export const AgentDebugBridge = () => {
       // @ts-ignore
       timeoutRef.current = setTimeout(connect, 3000);
     };
-  }, []);
+  }, [projectName]); // Add projectName to dependency array
 
   useEffect(() => {
     connect();

@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import http from 'http';
-import { WebSocketServer, WebSocket, RawData } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
+import url from 'url';
 
+// --- Logging Setup ---
 let log: (message: string) => void;
 const logFilePath = path.join(process.cwd(), 'agent-server.log');
 if (process.env.AGENTERACT_SERVER_LOG) {
@@ -22,18 +24,28 @@ app.use(express.json());
 
 const pendingRequests = new Map<string, http.ServerResponse>();
 
-// --- WebSocket Server (for the App) ---
+// --- WebSocket Server (for multiple Apps) ---
 const WS_PORT = 8765;
-let activeSocket: WebSocket | null = null;
+// Use a Map to store connections, keyed by project name
+const projectSockets = new Map<string, WebSocket>();
 const wss = new WebSocketServer({ port: WS_PORT, host: '0.0.0.0' });
-log(`WebSocket server for app listening on port ${WS_PORT}`);
+log(`WebSocket server for apps listening on port ${WS_PORT}`);
 
-wss.on('connection', (ws: WebSocket) => {
-  log('React Native app connected.');
-  activeSocket = ws;
+wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
+  // Extract project name from the connection URL, e.g., /expo-app
+  const projectName = url.parse(req.url || '').pathname?.substring(1);
 
-  ws.on('message', (message: RawData) => {
-    log(`Received message from app: ${message.toString()}`);
+  if (!projectName) {
+    log('Connection attempt rejected: No project name provided in URL.');
+    ws.close(1008, 'Project name required');
+    return;
+  }
+
+  log(`Project "${projectName}" connected.`);
+  projectSockets.set(projectName, ws);
+
+  ws.on('message', (message: Buffer) => {
+    log(`Received message from "${projectName}": ${message.toString()}`);
     try {
       const response = JSON.parse(message.toString());
       if (response.id && pendingRequests.has(response.id)) {
@@ -48,24 +60,32 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
-    log('React Native app disconnected.');
-    activeSocket = null;
+    log(`Project "${projectName}" disconnected.`);
+    projectSockets.delete(projectName);
   });
+
   ws.on('error', (error: Error) => {
-    log(`WebSocket error: ${error.message}`);
-    activeSocket = null;
+    log(`WebSocket error for "${projectName}": ${error.message}`);
+    projectSockets.delete(projectName);
   });
 });
 
-// --- HTTP Server (for the Extension Commands) ---
+// --- HTTP Server (for the Agent) ---
 const HTTP_PORT = 8766;
 
 app.post('/gemini-agent', (req, res) => {
   const command = req.body;
-  log(`Received command via HTTP: ${JSON.stringify(command)}`);
+  const { project: projectName } = command;
+
+  if (!projectName) {
+    return res.status(400).json({ error: 'Request body must include a "project" field.' });
+  }
+
+  log(`Received command for project "${projectName}": ${JSON.stringify(command)}`);
+  const activeSocket = projectSockets.get(projectName);
+
   if (!activeSocket) {
-    res.status(503).json({ error: 'React Native app is not connected.' });
-    return;
+    return res.status(503).json({ error: `Project "${projectName}" is not connected.` });
   }
 
   const id = uuidv4();
@@ -83,9 +103,14 @@ app.post('/gemini-agent', (req, res) => {
 });
 
 app.get('/logs', (req, res) => {
+    const projectName = req.query.project as string;
+    if (!projectName) {
+        return res.status(400).json({ error: 'Request must include a "project" query parameter.' });
+    }
+
+    const activeSocket = projectSockets.get(projectName);
     if (!activeSocket) {
-        res.status(503).json({ error: 'React Native app is not connected.' });
-        return;
+        return res.status(503).json({ error: `Project "${projectName}" is not connected.` });
     }
 
     const id = uuidv4();
@@ -104,5 +129,5 @@ app.get('/logs', (req, res) => {
 
 app.listen(HTTP_PORT, '127.0.0.1', () => {
   log(`HTTP server for commands listening on port ${HTTP_PORT}`);
-  console.log(`React Native Agent server running. App connects to ws://localhost:8765. Press Ctrl+C to stop.`);
+  console.log(`Agenteract server running. Apps connect to ws://localhost:${WS_PORT}/{projectName}. Press Ctrl+C to stop.`);
 });

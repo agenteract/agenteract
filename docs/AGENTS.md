@@ -81,12 +81,12 @@ npx @agenteract/vite
 This is your primary tool for "seeing" the application's current user interface. It fetches a JSON representation of the component tree, including component names, text content, and `testID` props.
 
 **Workflow:**
-1.  Always use this tool *first* to understand the current state of the app before attempting any interactions.
-2.  Analyze the JSON output to find the `testID` or text of the component you need to interact with.
+1.  First, use this tool to understand the current state of the app.
+2.  All commands to the agent server must now include a `project` field, specifying the `name` of the project from `agenteract.config.js` that you want to target.
 
 **Command:**
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"action":"getViewHierarchy"}'
+curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"project": "react-app", "action":"getViewHierarchy"}'
 ```
 
 Note that if the above curl command fails with exit code 7, the user probably needs to run the app/agent bridge:
@@ -103,7 +103,7 @@ This tool allows you to send commands to the application to simulate user intera
 
 **Workflow:**
 1.  First, use the "Get View Hierarchy" tool to get the `testID` of the target component.
-2.  Construct a `curl` command with the appropriate `action` and `payload`.
+2.  Construct a `curl` command with the appropriate `project`, `action`, and `payload`.
 
 ### Supported Actions
 
@@ -111,9 +111,9 @@ This tool allows you to send commands to the application to simulate user intera
 Simulates a press on a component. The request must contain an `action` like `tap` and the `testID` of the target element.
 
 **Command Example:**
-To tap a button with `testID: "login-button"`:
+To tap a button with `testID: "login-button"` in the project named `expo-app`:
 ```bash
-curl -s -X POST http://localhost:866/gemini-agent -H 'Content-Type: application/json' -d '{"action":"tap", "testID":"button"}'
+curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"project": "expo-app", "action":"tap", "testID":"button"}'
 ```
 
 **Creating components:**

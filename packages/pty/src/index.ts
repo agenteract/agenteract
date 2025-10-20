@@ -1,21 +1,20 @@
 import { spawn } from 'node-pty';
 import express from 'express';
-import { detectInvoker } from '@agenteract/core';
 
-export function startPty(bin: string, args: string[], port: number) {
+export function startPty(bin: string, args: string[], port: number, cwd?: string) {
     const app = express();
 
-    const { pkgManager, isNpx, isPnpmDlx } = detectInvoker();
-
-    const command = pkgManager === 'pnpm' ? 'pnpx' : isNpx ? 'npx' : 'npx';
-    const commandArgs = isPnpmDlx ? ['pnpm', 'dlx', bin, ...args] : [bin, ...args];
+    // Use npx for better compatibility with tools like expo and vite
+    // pnpm dlx has issues with Metro bundler and file resolution
+    const command = 'npx';
+    const commandArgs = [bin, ...args];
     
     // Start command inside a pseudo-terminal
     const shell = spawn(command, commandArgs, {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        cwd: process.cwd(),
+        cwd: cwd || process.cwd(),
         env: process.env,
     });
 
@@ -27,26 +26,17 @@ export function startPty(bin: string, args: string[], port: number) {
         if (logBuffer.length > MAX_LINES) logBuffer.shift();
     }
 
-    if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);       // immediate key events
-        process.stdin.resume();               // start reading
-        process.stdin.setEncoding('utf8');
-
-        process.stdin.on('data', (key) => {
-            // Optional: handle Ctrl+C manually
-            if (key.toString() === '\u0003') {
-                console.log('^C');
-                shell.kill();                     // stop the PTY
-                process.exit();
-            }
-
-            shell.write(key.toString());
-        });
-    }
-
     shell.onData((data) => {
         process.stdout.write(data);
         data.split(/\r?\n/).forEach((l) => l && addLine(l));
+    });
+
+    // Forward stdin to the PTY (for keyboard input from multiplexer)
+    if (process.stdin.isTTY) {
+        process.stdin.setRawMode(true);
+    }
+    process.stdin.on('data', (data: Buffer) => {
+        shell.write(data.toString('utf8'));
     });
 
     app.get('/logs', (req, res) => {

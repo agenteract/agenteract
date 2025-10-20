@@ -7,7 +7,7 @@ import { AgentDebugBridge } from '@agenteract/react'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <>
-    <AgentDebugBridge />
+    <AgentDebugBridge projectName="react-app" />
     <App />
     </>
   </StrictMode>,

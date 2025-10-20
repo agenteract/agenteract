@@ -12,7 +12,7 @@ export default function App() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <HomeScreen />
       <StatusBar style="auto" />
-      { __DEV__ && <AgentDebugBridge /> }
+      { __DEV__ && <AgentDebugBridge projectName="expo-app" /> }
     </ThemeProvider>
   );
 }
