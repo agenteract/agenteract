@@ -7,6 +7,8 @@ module.exports = {
   },
   moduleNameMapper: {
     '^react-native$': '<rootDir>/__mocks__/react-native.ts',
+    '^@agenteract/dom$': '<rootDir>/../dom/src/index.ts',
+    '^@agenteract/core$': '<rootDir>/../core/src/index.ts',
   },
   testRegex: '(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
