@@ -2,7 +2,7 @@
 
 You are an expert developer assistant. Your primary goal is to interact with a running application to inspect its state and use this information to perform your duties effectively.
 
-You can interact with the application by sending HTTP POST requests to the agent server running on `http://localhost:8766/gemini-agent`.
+You can interact with the application by using the `@agenteract/agents` CLI.
 
 ## Project Detection
 
@@ -18,12 +18,12 @@ These logs come from the development server process (like Vite or Expo Metro). T
 
 **Expo Command**
 ```bash
-curl "http://localhost:8790/logs?since=20"
+pnpm agenteract-agents dev-logs expo --since 20
 ```
 
 **Vite Command**
 ```bash
-curl "http://localhost:8791/logs?since=20"
+pnpm agenteract-agents dev-logs vite --since 20
 ```
 
 ### 2. In-App Console Logs
@@ -32,7 +32,7 @@ These logs are captured from the running application's `console.log`, `console.w
 
 **Command**
 ```bash
-curl "http://localhost:8766/logs?since=20"
+pnpm agenteract-agents logs <project-name> --since 20
 ```
 
 `since` identifies how many log lines you want to tail.
@@ -51,7 +51,7 @@ Similarly, you can send keystrokes (`cmd` in the json payment) to the dev server
 
 **Command**
 ```bash
-curl -X POST http://localhost:8790/cmd -H 'Content-Type: application/json' -d '{"cmd":"r"}'
+pnpm agenteract-agents cmd expo r
 ```
 
 **Vite Commands**
@@ -61,19 +61,19 @@ curl -X POST http://localhost:8790/cmd -H 'Content-Type: application/json' -d '{
 
 **Command**
 ```bash
-curl -X POST http://localhost:8791/cmd -H 'Content-Type: application/json' -d '{"cmd":"r"}'
+pnpm agenteract-agents cmd vite r
 ```
 
 If dev server commands don't work, instruct the user to start the CLI wrapper:
 
 **Expo**
 ```bash
-npx @agenteract/expo 
+pnpm agenterexpo
 ```
 
 **Vite**
 ```bash
-npx @agenteract/vite
+pnpm agentervite
 ```
 
 ## Tool: Get View Hierarchy
@@ -86,15 +86,15 @@ This is your primary tool for "seeing" the application's current user interface.
 
 **Command:**
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"project": "react-app", "action":"getViewHierarchy"}'
+pnpm agenteract-agents hierarchy react-app
 ```
 
-Note that if the above curl command fails with exit code 7, the user probably needs to run the app/agent bridge:
+Note that if the above command fails, the user probably needs to run the app/agent bridge:
 (You don't run this, ask the user to run it in a separate shell!)
 
 It appears as if the agent server might not be running. Kindly run this in a shell:
 ```bash
-npx @agenteract/server 
+pnpm agenterserve dev
 ```
 
 ## Tool: Interact with App
@@ -103,7 +103,7 @@ This tool allows you to send commands to the application to simulate user intera
 
 **Workflow:**
 1.  First, use the "Get View Hierarchy" tool to get the `testID` of the target component.
-2.  Construct a `curl` command with the appropriate `project`, `action`, and `payload`.
+2.  Construct a command with the appropriate `project`, `action`, and `payload`.
 
 ### Supported Actions
 
@@ -113,7 +113,7 @@ Simulates a press on a component. The request must contain an `action` like `tap
 **Command Example:**
 To tap a button with `testID: "login-button"` in the project named `expo-app`:
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -H 'Content-Type: application/json' -d '{"project": "expo-app", "action":"tap", "testID":"button"}'
+pnpm agenteract-agents tap expo-app login-button
 ```
 
 **Creating components:**
