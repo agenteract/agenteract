@@ -93,7 +93,7 @@ pnpm install
 pnpm build
 npm config set registry http://localhost:4873/
 npx npm-cli-adduser -r http://localhost:4873 -u test -p test -e test@test.com
-pnpm -r --filter "@agenteract/*" exec npm publish --registry http://localhost:4873
+pnpm -r --filter "@agenteract/*" exec pnpm publish --registry http://localhost:4873
 pnpm test:integration
 
 # Cleanup

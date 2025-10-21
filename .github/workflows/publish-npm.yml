@@ -58,8 +58,8 @@ jobs:
 
       - name: Publish to NPM
         run: |
-          # Publish all packages with provenance
-          pnpm -r --filter "@agenteract/*" exec npm publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance
+          # Publish all packages with provenance (pnpm properly resolves workspace dependencies)
+          pnpm -r --filter "@agenteract/*" publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
