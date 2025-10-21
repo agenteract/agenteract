@@ -4,3 +4,7 @@ dist
 .DS_Store
 .idea
 .vscode
+
+# Verdaccio storage (local testing)
+.verdaccio/storage/
+.verdaccio/htpasswd

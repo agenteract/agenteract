@@ -1,0 +1,130 @@
+name: Integration Tests
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+  # Run on pushes to main (post-merge validation)
+  push:
+    branches: [ main ]
+  # Run on release branches
+  push:
+    branches: [ 'release/**' ]
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      verdaccio:
+        image: verdaccio/verdaccio:5
+        ports:
+          - 4873:4873
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:4873/-/ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install expect (for authentication)
+        run: sudo apt-get update && sudo apt-get install -y expect
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Configure npm registry for Verdaccio
+        run: |
+          npm config set registry http://localhost:4873/
+          pnpm config set registry http://localhost:4873/
+
+      - name: Authenticate with Verdaccio
+        run: |
+          expect << 'EOF'
+          set timeout 30
+          spawn npm adduser --registry http://localhost:4873
+          expect "Username:"
+          send "test\r"
+          expect "Password:"
+          send "test\r"
+          expect "Email: (this IS public)"
+          send "test@test.com\r"
+          expect {
+            "Logged in" {
+              puts "✓ Authentication successful"
+              exit 0
+            }
+            timeout {
+              puts "✗ Authentication timed out"
+              exit 1
+            }
+          }
+          EOF
+
+      - name: Verify authentication
+        run: |
+          npm whoami --registry http://localhost:4873
+          echo "✓ Authenticated successfully"
+
+      - name: Publish packages to Verdaccio
+        run: |
+          # Publish all packages to local registry
+          pnpm -r --filter "@agenteract/*" exec npm publish --registry http://localhost:4873 || {
+            echo "Some packages may have failed to publish"
+            exit 1
+          }
+
+      - name: Wait for packages to be available
+        run: sleep 2
+
+      - name: Verify packages are published
+        run: |
+          # List all packages to verify they're available
+          npm view @agenteract/core --registry http://localhost:4873
+          npm view @agenteract/react --registry http://localhost:4873
+
+      - name: Run integration tests
+        run: |
+          # Create a temporary directory for testing
+          mkdir -p /tmp/integration-test
+          cd /tmp/integration-test
+          
+          # Initialize a test project
+          npm init -y
+          
+          # Install packages from Verdaccio
+          npm install @agenteract/core @agenteract/react --registry http://localhost:4873
+          
+          # Verify installation
+          node -e "require('@agenteract/core'); console.log('✓ @agenteract/core imported successfully')"
+          
+          # Test import resolution
+          echo "import '@agenteract/core';" > test.mjs
+          node test.mjs
+          echo "✓ Integration tests passed!"
+
+      - name: Run custom integration tests
+        if: hashFiles('tests/integration/**') != ''
+        env:
+          REGISTRY: http://localhost:4873
+        run: pnpm run test:integration
+

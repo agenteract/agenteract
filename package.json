@@ -9,7 +9,16 @@
     "build": "pnpm -r build",
     "clean": "pnpm -r exec rm -rf dist node_modules",
     "dev": "pnpm --parallel --filter \"@agenteract/*\" run dev",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:integration": "bash tests/integration/install-packages.test.sh",
+    "verdaccio:start": "bash scripts/start-verdaccio.sh",
+    "verdaccio:stop": "bash scripts/stop-verdaccio.sh",
+    "verdaccio:publish": "bash scripts/publish-local.sh",
+    "verdaccio:test": "bash scripts/test-verdaccio-auth.sh",
+    "version:patch": "bash scripts/version.sh patch",
+    "version:minor": "bash scripts/version.sh minor",
+    "version:major": "bash scripts/version.sh major",
+    "version:prerelease": "bash scripts/prerelease.sh"
   },
   "keywords": [
     "agent",

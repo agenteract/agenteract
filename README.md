@@ -250,6 +250,55 @@ pnpm --filter @agenteract/react test
 
 Tests are run automatically on every push and pull request to the `main` branch using GitHub Actions.
 
+### **Integration Testing**
+
+Integration tests verify that packages can be installed and used correctly after publication. They use [Verdaccio](https://verdaccio.org/), a lightweight private npm registry running in Docker.
+
+**Local testing workflow:**
+
+```bash
+# Start local npm registry
+pnpm verdaccio:start
+
+# Build and publish packages to local registry
+pnpm verdaccio:publish
+
+# Run integration tests
+pnpm test:integration
+
+# Clean up
+pnpm verdaccio:stop
+```
+
+**GitHub Actions:** Integration tests run automatically on PRs and pushes to `main` and `release/**` branches using Verdaccio as a service container.
+
+**Authentication:** Uses `expect` to automate the authentication process. See [docs/VERDACCIO_AUTH_QUICK.md](docs/VERDACCIO_AUTH_QUICK.md) for details.
+
+See [docs/INTEGRATION_TESTING.md](docs/INTEGRATION_TESTING.md) for complete information.
+
+### **Releases & Publishing**
+
+We support multiple release strategies with automated NPM publishing:
+
+```bash
+# Version bump and release
+pnpm version:patch  # 1.0.0 → 1.0.1
+pnpm version:minor  # 1.0.0 → 1.1.0
+pnpm version:major  # 1.0.0 → 2.0.0
+
+# Push tags to trigger NPM publish
+git push && git push --tags
+```
+
+**Prerelease testing:**
+```bash
+pnpm version:prerelease alpha
+git push && git push --tags
+# Published with @alpha tag on NPM
+```
+
+See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release guide and [docs/CI_CD_SUMMARY.md](docs/CI_CD_SUMMARY.md) for a quick reference.
+
 ## **📜 License**
 
 MIT — early experimental research release.  
