@@ -79,10 +79,10 @@ for pkg in packages/*/package.json; do
   
   cd "$PKG_DIR"
   
-  if npm publish --registry "$VERDACCIO_URL" 2>&1 | tee /tmp/npm-publish.log | grep -q "this package is already present"; then
+  if pnpm publish --registry "$VERDACCIO_URL" --no-git-checks 2>&1 | tee /tmp/npm-publish.log | grep -q "this package is already present"; then
     echo "   ⏭️  $PKG_NAME (already exists)"
     ALREADY_EXISTS_COUNT=$((ALREADY_EXISTS_COUNT + 1))
-  elif grep -q "npm notice Publishing" /tmp/npm-publish.log; then
+  elif grep -q "Publishing" /tmp/npm-publish.log; then
     echo "   ✅ $PKG_NAME (published)"
     PUBLISHED_COUNT=$((PUBLISHED_COUNT + 1))
   else

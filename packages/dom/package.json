@@ -2,17 +2,20 @@
   "name": "@agenteract/dom",
   "version": "0.0.1",
   "description": "DOM utilities for Agenteract",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/cjs/src/index.js",
+  "module": "./dist/esm/src/index.js",
+  "types": "./dist/cjs/src/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "npm run build:cjs && npm run build:esm && npm run build:post",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:post": "echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && echo '{\"type\":\"module\"}' > dist/esm/package.json"
   },
   "exports": {
     ".": {
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "import": "./dist/esm/src/index.js",
+      "require": "./dist/cjs/src/index.js",
+      "types": "./dist/cjs/src/index.d.ts"
     }
   },
   "license": "MIT",
