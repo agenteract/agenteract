@@ -3,11 +3,7 @@
   "include": ["src"],
   "compilerOptions": {
     "jsx": "react-jsx",
-    "outDir": "dist",
-    "composite": true
-  },
-  "references": [
-    { "path": "../core" },
-    { "path": "../dom" }
-  ]
+    "module": "CommonJS",
+    "outDir": "dist"
+  }
 }

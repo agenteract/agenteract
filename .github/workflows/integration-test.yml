@@ -1,0 +1,144 @@
+name: Integration Tests
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+  # Run on pushes to main (post-merge validation)
+  # Run on release branches
+  push:
+    branches: [ main, 'release/**' ]
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      verdaccio:
+        image: verdaccio/verdaccio:5
+        ports:
+          - 4873:4873
+
+    steps:
+      - name: Wait for Verdaccio to start
+        run: |
+          echo "Waiting for Verdaccio to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
+              echo "✓ Verdaccio is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "✗ Verdaccio failed to start"
+          echo "Container logs:"
+          docker ps -a
+          docker logs $(docker ps -a -q --filter ancestor=verdaccio/verdaccio:5)
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install expect (for authentication)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Dpkg::Options::="--force-confnew" -o Dpkg::Options::="--force-confdef" expect
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Configure npm registry for Verdaccio
+        run: |
+          npm config set registry http://localhost:4873/
+          pnpm config set registry http://localhost:4873/
+
+      - name: Authenticate with Verdaccio
+        run: |
+          expect << 'EOF'
+          set timeout 30
+          spawn npm adduser --registry http://localhost:4873
+          expect "Username:"
+          send "test\r"
+          expect "Password:"
+          send "test\r"
+          expect "Email: (this IS public)"
+          send "test@test.com\r"
+          expect {
+            "Logged in" {
+              puts "✓ Authentication successful"
+              exit 0
+            }
+            timeout {
+              puts "✗ Authentication timed out"
+              exit 1
+            }
+          }
+          EOF
+
+      - name: Verify authentication
+        run: |
+          npm whoami --registry http://localhost:4873
+          echo "✓ Authenticated successfully"
+
+      - name: Publish packages to Verdaccio
+        run: |
+          # Use pnpm publish which properly resolves workspace dependencies
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
+            echo "Publishing failed"
+            exit 1
+          }
+
+      - name: Wait for packages to be available
+        run: sleep 2
+
+      - name: Verify packages are published
+        run: |
+          # List all packages to verify they're available
+          npm view @agenteract/core --registry http://localhost:4873
+          npm view @agenteract/react --registry http://localhost:4873
+
+      - name: Run integration tests
+        run: |
+          # Create a temporary directory for testing
+          mkdir -p /tmp/integration-test
+          cd /tmp/integration-test
+          
+          # Initialize a test project
+          npm init -y
+          
+          # Install packages from Verdaccio
+          npm install @agenteract/core @agenteract/react --registry http://localhost:4873
+          
+          # Verify installation
+          node -e "require('@agenteract/core'); console.log('✓ @agenteract/core imported successfully')"
+          
+          # Test import resolution
+          echo "import '@agenteract/core';" > test.mjs
+          node test.mjs
+          echo "✓ Integration tests passed!"
+
+      - name: Run custom integration tests
+        if: hashFiles('tests/integration/**') != ''
+        env:
+          REGISTRY: http://localhost:4873
+        run: pnpm run test:integration
+

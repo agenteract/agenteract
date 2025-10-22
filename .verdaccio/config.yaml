@@ -1,0 +1,75 @@
+# Verdaccio Configuration for Local Testing
+# This config allows easy authentication for development
+
+storage: /verdaccio/storage
+plugins: /verdaccio/plugins
+
+# Web UI settings
+web:
+  title: Agenteract Local Registry
+  enable: true
+
+# Authentication
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    # Maximum amount of users allowed to register, defaults to "+inf".
+    # You can set this to -1 to disable registration.
+    max_users: 1000
+
+# Uplinks (fallback to public npm)
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+    max_fails: 3
+    timeout: 30s
+
+# Package access control
+packages:
+  '@agenteract/*':
+    # Allow all authenticated users to publish
+    access: $authenticated
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+  '@*/*':
+    # Scoped packages
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+  '**':
+    # Allow public access to all packages
+    access: $all
+    # Only authenticated users can publish
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+# Server settings
+server:
+  keepAliveTimeout: 60
+
+# Logs
+logs:
+  - { type: stdout, format: pretty, level: info }
+
+# Listen on all interfaces
+listen:
+  - 0.0.0.0:4873
+
+# Security
+security:
+  api:
+    jwt:
+      sign:
+        expiresIn: 7d
+  web:
+    sign:
+      expiresIn: 7d
+
+# Maximum size of uploaded package
+max_body_size: 100mb
+

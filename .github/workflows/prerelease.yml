@@ -1,0 +1,87 @@
+name: Prerelease
+
+# Publish prerelease versions from develop branch
+# Example: 0.0.1-dev.123
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Prerelease tag (dev, alpha, beta, rc)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - alpha
+          - beta
+          - rc
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for proper versioning
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Run tests
+        run: pnpm run test
+
+      - name: Version packages (prerelease)
+        run: |
+          # Get short commit SHA for unique version
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          
+          # Version each package
+          pnpm -r --filter "@agenteract/*" exec npm version prerelease --preid=${{ inputs.tag }}-${COMMIT_SHA} --no-git-tag-version
+
+      - name: Publish to NPM (prerelease)
+        run: |
+          pnpm -r --filter "@agenteract/*" publish --access public --tag ${{ inputs.tag }} --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Report published versions
+        run: |
+          echo "## Published Prerelease Packages" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tag: \`${{ inputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              name=$(node -p "require('./$pkg').name")
+              version=$(node -p "require('./$pkg').version")
+              echo "- \`$name@$version\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+

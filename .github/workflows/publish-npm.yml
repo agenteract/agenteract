@@ -1,0 +1,82 @@
+name: Publish to NPM
+
+on:
+  # Trigger on version tags (e.g., v1.0.0, v1.2.3-beta.1)
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Required for NPM provenance
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm run build
+
+      - name: Run tests
+        run: pnpm run test
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Publishing version: $TAG"
+
+      - name: Check if prerelease
+        id: prerelease
+        run: |
+          if [[ "${{ steps.version.outputs.version }}" =~ (alpha|beta|rc|next) ]]; then
+            echo "tag=next" >> $GITHUB_OUTPUT
+            echo "This is a prerelease"
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "This is a stable release"
+          fi
+
+      - name: Publish to NPM
+        run: |
+          # Publish all packages with provenance (pnpm properly resolves workspace dependencies)
+          pnpm -r --filter "@agenteract/*" publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            const isPrerelease = tag.includes('alpha') || tag.includes('beta') || tag.includes('rc');
+            
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `Release ${tag}`,
+              body: `Published to NPM with tag: ${{ steps.prerelease.outputs.tag }}`,
+              draft: false,
+              prerelease: isPrerelease
+            });
+
