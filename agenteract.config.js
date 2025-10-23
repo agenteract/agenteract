@@ -26,5 +26,10 @@ export default {
       type: 'vite',
       ptyPort: 8791,
     },
+    {
+      name: 'swift-app',
+      path: './examples/swift-app',
+      type: 'native'
+    }
   ],
 };

@@ -1,0 +1,3 @@
+[submodule "packages/swift"]
+	path = packages/swift
+	url = https://github.com/agenteract/agenteract-swift.git
