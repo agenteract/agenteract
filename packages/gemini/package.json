@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/gemini",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Gemini-specific agent instructions for Agenteract",
   "files": [
     "dist"

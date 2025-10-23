@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/pty",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "PTY process manager for Agenteract",
   "type": "module",
   "main": "dist/index.js",

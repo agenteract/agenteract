@@ -1,6 +1,6 @@
 {
   "name": "agenteract",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Agenteract - agent to app interaction framework",
   "license": "MIT",
   "author": "Michael Ribbons",

@@ -1,7 +1,7 @@
 {
   "name": "@agenteract/expo-example",
   "main": "index.js",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "scripts": {
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",

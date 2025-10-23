@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/expo",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Expo bridge utilities for Agenteract",
   "type": "module",
   "main": "dist/cli.js",
