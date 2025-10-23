@@ -1,15 +1,37 @@
 import fs from 'fs';
 import path from 'path';
+import { glob } from 'glob';
 
-const docsPath = path.resolve('../../docs/AGENTS.md');
-const distPath = path.resolve('dist/AGENTS.md');
+async function createBuild() {
+    const docsPath = path.resolve('../../docs/AGENTS.md');
+    const distPath = path.resolve('dist/AGENTS.md');
 
-const content = fs.readFileSync(docsPath, 'utf8');
+    const packageJsonFiles = await glob('../../packages/**/package.json', {
+        ignore: ['**/node_modules/**', '**/agents/**'], // Ignore the agents package itself
+    });
 
-const transformedContent = content
-  .replace(/pnpm agenteract-agents/g, 'npx @agenteract/agents')
-  .replace(/pnpm agenterexpo/g, 'npx @agenteract/expo')
-  .replace(/pnpm agentervite/g, 'npx @agenteract/vite')
-  .replace(/pnpm agenterserve/g, 'npx @agenteract/server');
+    let content = fs.readFileSync(docsPath, 'utf8');
 
-fs.writeFileSync(distPath, transformedContent);
+    // Specific replacement for the main CLI commands
+    content = content.replace(/pnpm agenteract-agents/g, 'npx @agenteract/cli');
+
+    // Dynamic replacements for other tools
+    for (const file of packageJsonFiles) {
+        const packageJson = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (packageJson.bin) {
+            for (const binName in packageJson.bin) {
+                const packageName = packageJson.name;
+                // Make sure we don't re-replace the command we just fixed
+                if (binName !== 'agenteract-agents') {
+                    const pnpmCommand = `pnpm ${binName}`;
+                    const npxCommand = `npx ${packageName}`;
+                    content = content.replace(new RegExp(pnpmCommand, 'g'), npxCommand);
+                }
+            }
+        }
+    }
+
+    fs.writeFileSync(distPath, content);
+}
+
+createBuild();

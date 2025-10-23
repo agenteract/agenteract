@@ -157,6 +157,9 @@ importers:
       axios:
         specifier: ^1.7.2
         version: 1.12.2
+      glob:
+        specifier: ^10.4.1
+        version: 10.4.5
       yargs:
         specifier: ^17.7.2
         version: 17.7.2

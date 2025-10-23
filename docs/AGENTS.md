@@ -66,14 +66,8 @@ pnpm agenteract-agents cmd vite r
 
 If dev server commands don't work, instruct the user to start the CLI wrapper:
 
-**Expo**
 ```bash
-pnpm agenterexpo
-```
-
-**Vite**
-```bash
-pnpm agentervite
+pnpm agenteract dev
 ```
 
 ## Tool: Get View Hierarchy

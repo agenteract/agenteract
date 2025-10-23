@@ -3,7 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import axios from 'axios';
 
-const agentServerUrl = 'http://localhost:8766/gemini-agent';
+const agentServerUrl = 'http://localhost:8766';
 const expoServerUrl = 'http://localhost:8790';
 const viteServerUrl = 'http://localhost:8791';
 
@@ -30,7 +30,16 @@ yargs(hideBin(process.argv))
         const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
-        if (error instanceof Error) {
+        if (axios.isAxiosError(error) && error.response?.status === 503) {
+          const responseData = error.response.data;
+          let errorMessage = `Error: ${responseData.error}`;
+          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
+            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
+          } else {
+            errorMessage += '\nNo projects are currently connected to the agent server.';
+          }
+          console.error(errorMessage);
+        } else if (error instanceof Error) {
           console.error('Error getting logs:', error.message);
         } else {
           console.error('An unknown error occurred');
@@ -112,13 +121,22 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        const response = await axios.post(agentServerUrl, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'getViewHierarchy',
         });
         console.log(JSON.stringify(response.data, null, 2));
       } catch (error) {
-        if (error instanceof Error) {
+        if (axios.isAxiosError(error) && error.response?.status === 503) {
+          const responseData = error.response.data;
+          let errorMessage = `Error: ${responseData.error}`;
+          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
+            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
+          } else {
+            errorMessage += '\nNo projects are currently connected to the agent server.';
+          }
+          console.error(errorMessage);
+        } else if (error instanceof Error) {
           console.error('Error getting view hierarchy:', error.message);
         } else {
           console.error('An unknown error occurred');
@@ -144,13 +162,22 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        await axios.post(agentServerUrl, {
+        await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'tap',
           testID: argv.testID,
         });
       } catch (error) {
-        if (error instanceof Error) {
+        if (axios.isAxiosError(error) && error.response?.status === 503) {
+          const responseData = error.response.data;
+          let errorMessage = `Error: ${responseData.error}`;
+          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
+            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
+          } else {
+            errorMessage += '\nNo projects are currently connected to the agent server.';
+          }
+          console.error(errorMessage);
+        } else if (error instanceof Error) {
           console.error('Error tapping component:', error.message);
         } else {
           console.error('An unknown error occurred');
