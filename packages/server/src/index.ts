@@ -85,7 +85,11 @@ app.post('/gemini-agent', (req, res) => {
   const activeSocket = projectSockets.get(projectName);
 
   if (!activeSocket) {
-    return res.status(503).json({ error: `Project "${projectName}" is not connected.` });
+    const availableProjects = Array.from(projectSockets.keys());
+    return res.status(503).json({ 
+      error: `Project "${projectName}" is not connected.`,
+      availableProjects
+    });
   }
 
   const id = uuidv4();
@@ -110,7 +114,11 @@ app.get('/logs', (req, res) => {
 
     const activeSocket = projectSockets.get(projectName);
     if (!activeSocket) {
-        return res.status(503).json({ error: `Project "${projectName}" is not connected.` });
+        const availableProjects = Array.from(projectSockets.keys());
+        return res.status(503).json({ 
+            error: `Project "${projectName}" is not connected.`,
+            availableProjects 
+        });
     }
 
     const id = uuidv4();
