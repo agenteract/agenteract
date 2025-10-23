@@ -1,5 +1,7 @@
 # **Agenteract**
 
+*Let your agents interact...*
+
 **Agenteract** is an experimental bridge that lets large-language-model agents *see* and *interact* with running applications — starting with **React Native / Expo** and **Gemini CLI**.
 
 It exposes the app’s internal state, view hierarchy, and actionable controls over a secure WebSocket, enabling agents (or test harnesses) to observe and trigger UI events just like a developer or user would.
@@ -59,33 +61,171 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | `@agenteract/core` | Core schema, message protocol, and bridge utilities |
 | `@agenteract/react` | React / React Native bindings (`useAgentBinding`, registry hooks) |
 | `@agenteract/examples` | Demo apps (Expo first, web and desktop next) |
+| [agenteract-swift](https://github.com/agenteract/agenteract-swift) | iOS / Swift Package
 
 ## **🚀 Getting Started (Preview)**
 
-Install:
+## **1. Installation**
 
-`npm install @agenteract/react`
+First, you'll need to install the Agenteract CLI and server. These tools manage the communication between the AI agent and your local development servers.
 
-Add the bridge to your app root:
+```bash
+npm install -g @agenteract/cli @agenteract/server
+```
 
-```ts
-import { AgenteractBridge } from '@agenteract/react';
+Next, install the appropriate package for your project.
+
+**For React Native (Expo):**
+
+```bash
+npm install @agenteract/expo
+```
+
+**For React (Vite):**
+
+```bash
+npm install @agenteract/react
+```
+
+## 3. AGENTS.md
+
+Next, install `AGENTS.md` - This will allow your coding assistant to undertand how agenteract works. 
+
+If you already have an `AGENTS.md`, our contents will be appended.
+
+```bash
+npx @agenteract/agents
+```
+
+Copy the file to a specific agent name if required:
+
+```bash
+cp AGENTS.md GEMINI.md
+```
+
+Now you can reference the file for your agent in a message, or restart the a CLI for it to take effect.
+
+## 2. Configuration
+
+Create an `agenteract.config.js` file in the root of your project. This file defines which applications Agenteract will manage.
+
+Here is an example configuration for a monorepo containing an Expo and a Vite project:
+
+```javascript
+// agenteract.config.js
+export default {
+  /**
+   * The port for the central Agenteract server.
+   * The agent connects to this port.
+   */
+  port: 8766,
+
+  /**
+   * An array of projects to manage.
+   */
+  projects: [
+    {
+      // A unique identifier for this app. Used for targeting commands.
+      name: 'expo-app',
+      // The path to the app's root directory, relative to this config file.
+      path: './examples/expo-example',
+      // The type of project. Can be 'expo' or 'vite'.
+      type: 'expo',
+      // The port for this app's dev server PTY bridge.
+      ptyPort: 8790,
+    },
+    {
+      name: 'react-app',
+      path: './examples/react-example',
+      type: 'vite',
+      ptyPort: 8791,
+    },
+    {
+      name: 'swift-app',
+      path: './examples/swift-app',
+      type: 'native'
+    }
+  ],
+};
+```
+
+### Configuration Options
+
+-   `port`: The main port for the Agenteract server.
+-   `projects`: An array of project objects.
+    -   `name`: A unique name for your app.
+    -   `path`: The relative path to your app's root directory.
+    -   `type`: The project type. Supported types are `expo` and `vite`.
+    -   `ptyPort`: A unique port for the PTY (pseudo-terminal) bridge that allows Agenteract to interact with your app's dev server.
+
+## 3. Instrumenting Your Application
+
+To allow Agenteract to "see" and interact with your application, you need to add the `AgentBridge` component to your app's entry point.
+
+**For React Native (Expo) - `App.tsx`:**
+
+```tsx
+import { AgentBridge } from '@agenteract/expo';
+import { View, Text } from 'react-native';
 
 export default function App() {
   return (
-    <>
-      <AgenteractBridge />
-      <YourApp />
-    </>
+    <View style={{ flex: 1 }}>
+      {/* Your existing application */}
+      <Text>Welcome to my app!</Text>
+
+      {/* Add the AgentBridge */}
+      <AgentBridge />
+    </View>
   );
 }
 ```
 
-Connect an external agent or test client:
+**For React (Vite) - `src/App.tsx`:**
 
-```bash
-node examples/agent-client.js
+```tsx
+import { AgentBridge } from '@agenteract/react';
+
+function App() {
+  return (
+    <>
+      {/* Your existing application */}
+      <h1>Welcome to my app!</h1>
+
+      {/* Add the AgentBridge */}
+      <AgentBridge />
+    </>
+  );
+}
+
+export default App;
 ```
+
+**For Swift UI**
+
+See [agenteract-swift](https://github.com/agenteract/agenteract-swift)
+
+## 4. Running Agenteract
+
+With your configuration in place and your app instrumented, you can now start the Agenteract server.
+
+1.  **Start the Agenteract Server:**
+    Open a terminal and run the following command from the root of your project (where your `agenteract.config.js` is located):
+
+    ```bash
+    agenteract start
+    ```
+
+    This command will:
+    -   Start the central Agenteract server on the configured `port`.
+    -   Start a PTY bridge for each project on its configured `ptyPort`.
+    -   Automatically start the development server for each of your configured projects (e.g., `npm run dev` or `npx expo start`).
+
+2.  **Interact with Your App:**
+    AI agents can now connect to the Agenteract server using the tools described in `AGENTS.md`. The agent can now view your app's component hierarchy and perform actions like tapping buttons or typing into text fields.
+
+Your agent is now ready to Agenteract!
+
 
 ---
 
@@ -108,6 +248,7 @@ First, clone the repository and ensure you have [pnpm](https://pnpm.io/) install
 ```bash
 git clone https://github.com/agenteract/agenteract.git
 cd agenteract
+git submodule update --init --recursive
 npm install -g pnpm
 ```
 
@@ -301,10 +442,7 @@ See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release 
 
 ## **📜 License**
 
-MIT — early experimental research release.  
+MIT
  Copyright © 2025 Agenteract Project.
 
 ---
-
-“What ARIA did for screen readers, Agenteract aims to do for intelligent agents, developers, and automation”
-
