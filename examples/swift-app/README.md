@@ -4,21 +4,31 @@ This is an example iOS app demonstrating how to integrate Agenteract with Swift/
 
 ## Setup
 
-### 1. Add Files to Xcode Project
+### 1. Add Agenteract Swift Package to Xcode Project
 
-The Swift files have been created, but you need to add them to your Xcode project:
+The example app uses the local Agenteract Swift package:
 
 1. Open `AgenteractSwiftExample.xcodeproj` in Xcode
-2. Right-click on the `AgenteractSwiftExample` folder in the Project Navigator
-3. Select "Add Files to 'AgenteractSwiftExample'..."
-4. Navigate to the `AgenteractSwiftExample` folder and select:
-   - `AgentDebugBridge.swift`
-   - `AgentBinding.swift`
-5. Make sure "Copy items if needed" is **unchecked** (files are already in the right location)
-6. Make sure "Add to targets" has `AgenteractSwiftExample` checked
-7. Click "Add"
+2. Select the project in the Project Navigator
+3. Select the `AgenteractSwiftExample` target
+4. Go to the "General" tab
+5. Scroll to "Frameworks, Libraries, and Embedded Content"
+6. Click the "+" button
+7. Click "Add Other..." → "Add Package Dependency..."
+8. In the search field, paste the local path: `../../agenteract/agenteract/packages/swift`
+   - Or click "Add Local..." and navigate to `packages/swift`
+9. Click "Add Package"
+10. Ensure the `Agenteract` library is selected and click "Add Package"
 
-### 2. Build and Run
+### 2. Update Imports
+
+Make sure your Swift files import the Agenteract module:
+
+```swift
+import Agenteract
+```
+
+### 3. Build and Run
 
 1. Select a simulator or device
 2. Press `Cmd + R` to build and run

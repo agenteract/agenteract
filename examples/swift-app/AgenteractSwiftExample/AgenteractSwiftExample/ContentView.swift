@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Agenteract
 
 struct ContentView: View {
     @State private var tapCount = 0

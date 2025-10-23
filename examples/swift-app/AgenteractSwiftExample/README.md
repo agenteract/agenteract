@@ -1,20 +1,15 @@
 # Integrating Agenteract in a SwiftUI App
 
-This guide explains how to integrate the Agenteract debug bridge and logging functionality into your SwiftUI application. This will allow the `agenteract` CLI to inspect your app's view hierarchy, simulate user interactions, and view application logs.
+### 1. Add Agenteract Swift Package to Xcode Project
 
-## Prerequisites
+The example app uses the local Agenteract Swift package:
 
-Ensure the Agenteract development environment is running. This is typically started with the `agenteract dev` command in your project's root directory. This command starts the necessary agent and log servers that the app will connect to.
-
-## Step 1: Add Bridge and Helper Files to Your Project
-
-The integration requires three files from this example project:
-
-1.  `AgentDebugBridge.swift`: Contains the core logic for connecting to the Agenteract servers.
-2.  `Logger.swift`: Provides a convenient wrapper for logging.
-3.  `AgentBinding.swift`: Provides a `ViewModifier` to simplify exposing UI elements to Agenteract.
-
-Copy all three of these files into your Xcode project. Ensure they are included in your app's target.
+1. Open XCode
+2. Create a new IOS / Swift UI project
+3. Click "Add Other..." → "Add Package Dependency..."
+4. Enter `https://github.com/agenteract/agenteract-swift` in Search for URL or package
+5. Click "Add Package"
+8. Ensure the `Agenteract` library is selected and click "Add Package"
 
 ## Step 2: Instantiate the Bridge in Your Root View
 
@@ -25,6 +20,7 @@ In your main `ContentView.swift` or equivalent root view, embed your primary vie
 ```swift
 // ContentView.swift
 import SwiftUI
+import Agenteract
 
 struct ContentView: View {
     var body: some View {

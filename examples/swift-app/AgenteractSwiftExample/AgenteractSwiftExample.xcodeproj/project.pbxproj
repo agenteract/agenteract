@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		514A11172EAA5691000CDAC4 /* Agenteract in Frameworks */ = {isa = PBXBuildFile; productRef = 514A11162EAA5691000CDAC4 /* Agenteract */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		514A11012EA9F707000CDAC4 /* AgenteractSwiftExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgenteractSwiftExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				514A11172EAA5691000CDAC4 /* Agenteract in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = AgenteractSwiftExample;
 			packageProductDependencies = (
+				514A11162EAA5691000CDAC4 /* Agenteract */,
 			);
 			productName = AgenteractSwiftExample;
 			productReference = 514A11012EA9F707000CDAC4 /* AgenteractSwiftExample.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 514A10F82EA9F707000CDAC4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				514A11152EAA5691000CDAC4 /* XCLocalSwiftPackageReference "../../../packages/swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 514A11022EA9F707000CDAC4 /* Products */;
 			projectDirPath = "";
@@ -320,6 +329,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		514A11152EAA5691000CDAC4 /* XCLocalSwiftPackageReference "../../../packages/swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../packages/swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		514A11162EAA5691000CDAC4 /* Agenteract */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Agenteract;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 514A10F92EA9F707000CDAC4 /* Project object */;
 }
