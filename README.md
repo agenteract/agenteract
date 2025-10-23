@@ -60,17 +60,22 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | ----- | ----- |
 | `@agenteract/core` | Core schema, message protocol, and bridge utilities |
 | `@agenteract/react` | React / React Native bindings (`useAgentBinding`, registry hooks) |
-| `@agenteract/examples` | Demo apps (Expo first, web and desktop next) |
+| `@agenteract/expo` | Expo bridge utilities and CLI |
+| `@agenteract/vite` | Vite bridge utilities and CLI |
+| `@agenteract/cli` | Unified command-line interface for Agenteract |
+| `@agenteract/server` | Agent command server and runtime bridge |
+| `@agenteract/agents` | Agent instructions installer (creates AGENTS.md) |
+| `@agenteract/dom` | DOM utilities for web applications |
 | [agenteract-swift](https://github.com/agenteract/agenteract-swift) | iOS / Swift Package
 
 ## **🚀 Getting Started (Preview)**
 
 ## **1. Installation**
 
-First, you'll need to install the Agenteract CLI and server. These tools manage the communication between the AI agent and your local development servers.
+First, you'll need to install the Agenteract CLI. This tool manages the communication between the AI agent and your local development servers.
 
 ```bash
-npm install -g @agenteract/cli @agenteract/server
+npm install -g @agenteract/cli
 ```
 
 Next, install the appropriate package for your project.
@@ -87,9 +92,9 @@ npm install @agenteract/expo
 npm install @agenteract/react
 ```
 
-## 3. AGENTS.md
+## **2. AGENTS.md**
 
-Next, install `AGENTS.md` - This will allow your coding assistant to undertand how agenteract works. 
+Next, install `AGENTS.md` - This will allow your coding assistant to understand how agenteract works.
 
 If you already have an `AGENTS.md`, our contents will be appended.
 
@@ -103,9 +108,9 @@ Copy the file to a specific agent name if required:
 cp AGENTS.md GEMINI.md
 ```
 
-Now you can reference the file for your agent in a message, or restart the a CLI for it to take effect.
+Now you can reference the file for your agent in a message, or restart the CLI for it to take effect.
 
-## 2. Configuration
+## **3. Configuration**
 
 Create an `agenteract.config.js` file in the root of your project. This file defines which applications Agenteract will manage.
 
@@ -155,10 +160,10 @@ export default {
 -   `projects`: An array of project objects.
     -   `name`: A unique name for your app.
     -   `path`: The relative path to your app's root directory.
-    -   `type`: The project type. Supported types are `expo` and `vite`.
+    -   `type`: The project type. Supported types are `expo`, `vite`, and `native`.
     -   `ptyPort`: A unique port for the PTY (pseudo-terminal) bridge that allows Agenteract to interact with your app's dev server.
 
-## 3. Instrumenting Your Application
+## **4. Instrumenting Your Application**
 
 To allow Agenteract to "see" and interact with your application, you need to add the `AgentBridge` component to your app's entry point.
 
@@ -205,24 +210,22 @@ export default App;
 
 See [agenteract-swift](https://github.com/agenteract/agenteract-swift)
 
-## 4. Running Agenteract
+## **5. Running Agenteract**
 
-With your configuration in place and your app instrumented, you can now start the Agenteract server.
+With your configuration in place and your app instrumented, you can now start Agenteract.
 
-1.  **Start the Agenteract Server:**
-    Open a terminal and run the following command from the root of your project (where your `agenteract.config.js` is located):
+Open a terminal and run the following command from the root of your project (where your `agenteract.config.js` is located):
 
-    ```bash
-    agenteract start
-    ```
+```bash
+npx @agenteract/cli dev
+```
 
-    This command will:
-    -   Start the central Agenteract server on the configured `port`.
-    -   Start a PTY bridge for each project on its configured `ptyPort`.
-    -   Automatically start the development server for each of your configured projects (e.g., `npm run dev` or `npx expo start`).
+This command will:
+-   Start the central Agenteract server on the configured `port`.
+-   Start a PTY bridge for each project on its configured `ptyPort`.
+-   Automatically start the development server for each of your configured projects (e.g., `npm run dev` or `npx expo start`).
 
-2.  **Interact with Your App:**
-    AI agents can now connect to the Agenteract server using the tools described in `AGENTS.md`. The agent can now view your app's component hierarchy and perform actions like tapping buttons or typing into text fields.
+AI agents can now connect to the Agenteract server using the tools described in `AGENTS.md`. The agent can view your app's component hierarchy and perform actions like tapping buttons or typing into text fields.
 
 Your agent is now ready to Agenteract!
 
@@ -277,66 +280,39 @@ pnpm link --global
 
 ### **3. Run the Development Environment**
 
-You'll need three separate terminal sessions
-
-**Terminal 1: Start the Agent Server**
-
-The agent server is the bridge that the app connects to and the agent sends commands to.
+Start the Agenteract development environment using the unified CLI:
 
 ```bash
-# This can run from anywhere, eventually the server will support multiple apps under dev/test
-pnpm agenterserve
+pnpm agenteract dev
 
-# once published, you can use npm:
-npx @agenteract/server
+# once published, you can use:
+agenteract start
 ```
 
-This starts the HTTP and WebSocket servers. You should see output confirming it's running:
-`HTTP server for commands listening on port 8766`
-`WebSocket server for app listening on port 8765`
+This will:
+- Start the central Agenteract server
+- Start PTY bridges for each configured project
+- Automatically launch all development servers defined in your `agenteract.config.js`
 
-**Terminal 2: Run the Expo Demo App**
-
-The `@agenteract/expo` package is a wrapper around the standard `expo` CLI that injects the necessary agent logic.
-
-```bash
-cd examples/expo-demo
-pnpm agenterexpo
-
-# once published, you can use npm:
-npx @agenteract/expo
-```
-
-
-This will launch the Metro bundler for the demo app located in `examples/expo-example`. Press `i` to start the iOS Simulator or `a` for the Android Emulator.
-
-Or for a vite project:
-```bash
-cd examples/react-example
-pnpm @agentervite
-
-# once published, you can use npm:
-npx @agenteract/vite
-```
+The multiplexed output will show logs from all your running applications in a single terminal.
 
 ### **4. Observe and Interact**
 
-Once the app is running, it will automatically connect to the agent server. You should see connection logs in the agent server terminal.
+Once the app is running, it will automatically connect to the agent server. You should see connection logs in the multiplexed output.
 
 You can manually simulate an agent command to test the connection:
 
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"getViewHierarchy"}'
+curl -s -X POST http://localhost:8766/expo-app -d '{"action":"getViewHierarchy"}'
 ```
 
 The server will forward this to the app, and the app will respond with a JSON payload of its view hierarchy.
 
-### **Terminal 3: Agent Interaction**
+### **5. Agent Interaction**
 
 This step creates or appends to your AGENTS.md file. This informs coding agents how to interact with the app.
 
 ```bash
-cd examples/expo-example
 npx @agenteract/agents
 ```
 
@@ -362,10 +338,10 @@ Because [packages/agents/AGENTS.md](packages/agents/AGENTS.md) contains instruct
 ### **✅ Verification Checklist**
 
 *   All packages build successfully with `pnpm build`.
-*   The agent server starts and listens on ports 8765 (WS) and 8766 (HTTP).
-*   The Expo app builds and connects to the server.
-*   The agent server console shows "React Native app connected."
-*   Sending a `getViewHierarchy` command via `curl` returns a JSON tree.
+*   The Agenteract server starts and listens on the configured port (default 8766).
+*   All configured apps start and connect to the server.
+*   The multiplexed output shows connection messages from your apps.
+*   Sending a `getViewHierarchy` command via `curl` to your app returns a JSON tree.
 
 ## **🧪 Testing**
 
@@ -413,7 +389,7 @@ pnpm verdaccio:stop
 
 **GitHub Actions:** Integration tests run automatically on PRs and pushes to `main` and `release/**` branches using Verdaccio as a service container.
 
-**Authentication:** Uses `expect` to automate the authentication process. See [docs/VERDACCIO_AUTH_QUICK.md](docs/VERDACCIO_AUTH_QUICK.md) for details.
+**Authentication:** Uses `expect` to automate the authentication process. See [docs/VERDACCIO_AUTH.md](docs/VERDACCIO_AUTH.md) for details.
 
 See [docs/INTEGRATION_TESTING.md](docs/INTEGRATION_TESTING.md) for complete information.
 
@@ -442,8 +418,12 @@ See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release 
 
 ## **📜 License**
 
-MIT
- Copyright © 2025 Agenteract Project.
+This project uses dual licensing:
+
+- **MIT License**: Most packages (`@agenteract/react`, `@agenteract/expo`, `@agenteract/vite`, `@agenteract/cli`, `@agenteract/server`, `@agenteract/dom`, `@agenteract/gemini`)
+- **Apache-2.0 License**: Core infrastructure packages (`@agenteract/core`, `@agenteract/agents`, `@agenteract/pty`)
+
+Copyright © 2025 Agenteract Project.
 
 ---
 
