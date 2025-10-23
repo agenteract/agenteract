@@ -11,6 +11,23 @@
   "bin": {
     "agenterserve": "dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "server",
+    "websocket",
+    "bridge",
+    "coding-agent"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",

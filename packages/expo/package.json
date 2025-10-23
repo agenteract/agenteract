@@ -8,6 +8,23 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/expo"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "expo",
+    "react-native",
+    "bridge",
+    "coding-agent"
+  ],
   "scripts": {
     "dev": "tsc -p tsconfig.json --watch",
     "build": "tsc -p tsconfig.json"

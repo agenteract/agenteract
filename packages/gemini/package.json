@@ -1,8 +1,25 @@
 {
   "name": "@agenteract/gemini",
   "version": "0.0.1",
+  "description": "Gemini-specific agent instructions for Agenteract",
   "files": [
     "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/gemini"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "gemini",
+    "instructions",
+    "coding-agent"
   ],
   "scripts": {
     "build": "mkdir -p dist; cp ../../docs/AGENTS.md dist/GEMINI.md"

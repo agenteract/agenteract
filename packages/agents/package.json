@@ -7,6 +7,22 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/agents"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "instructions",
+    "coding-agent",
+    "documentation"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node build.js"
   },

@@ -8,6 +8,23 @@
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/vite"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "vite",
+    "react",
+    "bridge",
+    "coding-agent"
+  ],
   "scripts": {
     "dev": "tsc -p tsconfig.json --watch",
     "build": "tsc -p tsconfig.json"
