@@ -269,13 +269,13 @@ We need to use linking to work locally:
 
 Usage:
 ```bash
-cd packages/expo
-pnpm link --global
-cd ../../
 cd packages/server
 pnpm link --global
 cd packages/agents
 pnpm link --global
+cd packages/cli
+pnpm link --global
+
 ```
 
 ### **3. Run the Development Environment**
@@ -286,7 +286,7 @@ Start the Agenteract development environment using the unified CLI:
 pnpm agenteract dev
 
 # once published, you can use:
-agenteract start
+npx @agenteract/cli dev
 ```
 
 This will:
@@ -313,14 +313,9 @@ The server will forward this to the app, and the app will respond with a JSON pa
 This step creates or appends to your AGENTS.md file. This informs coding agents how to interact with the app.
 
 ```bash
-npx @agenteract/agents
+npx @agenteract/agents md [dest] # You can specific the name, eg GEMINI.md
 ```
 
-If you are using Gemini:
-```bash
-cat AGENTS.md >> GEMINI.md
-rm AGENTS.md
-```
 
 If you are using a separate agent to your IDE, start it now, otherwise you can use the built in agent (Tested with Cursor, Gemini CLI)
 
