@@ -173,6 +173,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@agenteract/core':
+        specifier: workspace:*
+        version: link:../core
       node-pty:
         specifier: ^1.0.0
         version: 1.0.0
