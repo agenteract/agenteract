@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/agents",
-  "version": "0.0.4-rc.e62f48d.0",
+  "version": "0.0.4-rc.056078a.0",
   "description": "Copies agent instructions to the current project",
   "type": "module",
   "main": "dist/cli.js",
