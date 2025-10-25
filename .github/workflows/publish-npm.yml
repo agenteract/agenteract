@@ -81,6 +81,9 @@ jobs:
               continue
             fi
 
+            # Sanitize package name for log file (replace / and @ with -)
+            LOG_NAME=$(echo "$PKG_NAME" | tr '/@' '--')
+
             echo ""
             echo "📦 Checking $PKG_NAME@$PKG_VERSION..."
 
@@ -94,16 +97,18 @@ jobs:
             echo "   📤 Publishing to NPM..."
             cd "$PKG_DIR"
 
-            if pnpm publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance --no-git-checks 2>&1 | tee /tmp/npm-publish-$PKG_NAME.log; then
+            # Capture output and exit code
+            if pnpm publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance --no-git-checks > /tmp/npm-publish-${LOG_NAME}.log 2>&1; then
               echo "   ✅ Published successfully"
               PUBLISHED_COUNT=$((PUBLISHED_COUNT + 1))
             else
               # Check if it failed because it already exists (race condition)
-              if grep -q "cannot publish over the previously published versions" /tmp/npm-publish-$PKG_NAME.log; then
+              if grep -q "cannot publish over the previously published versions" /tmp/npm-publish-${LOG_NAME}.log 2>/dev/null; then
                 echo "   ⏭️  Already published (race condition), skipping"
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
               else
                 echo "   ❌ Failed to publish"
+                cat /tmp/npm-publish-${LOG_NAME}.log
                 FAILED_COUNT=$((FAILED_COUNT + 1))
               fi
             fi
