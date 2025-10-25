@@ -8,6 +8,38 @@ You can interact with the application by using the `@agenteract/agents` CLI.
 
 Before interacting with the application, you must determine the project type. You can do this by inspecting the `package.json` file for dependencies like `expo` or `vite`.
 
+
+## Installing `AgentDebugBridge`
+
+To communicate with the app, an AgentDebugBride is required. The setup method differs by app:
+Expo: 
+* AgentDebugBridge example: 
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/expo-example/app/App.tsx
+
+* Packages: 
+`@agenteract/expo`
+
+React: 
+AgentDebugBridge example:
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/react-example/src/main.tsx
+
+* Packages: 
+`@agenteract/react`
+
+Swift UI:
+
+* AgentDebugBridge example:
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/swift-app/AgenteractSwiftExample/AgenteractSwiftExample/ContentView.swift
+
+Packages:
+`https://github.com/agenteract/agenteract-swift` (SPM)
+
+
+*@agenteract tools should run using npx - They don't need to be installed to the user's project. It is only done this way in the main repo for convinience.*
+
 ## Tool: Get Logs
 
 There are two types of logs available: **Dev Server Logs** and **In-App Console Logs**.
@@ -78,6 +110,10 @@ This is your primary tool for "seeing" the application's current user interface.
 1.  First, use this tool to understand the current state of the app.
 2.  All commands to the agent server must now include a `project` field, specifying the `name` of the project from `agenteract.config.js` that you want to target.
 
+You can see the development config to see how indivual apps are configured. Note that the example shows a monorepo setup. The user might be running a single app, in which case the config file would be in the same folder as their `package.json`
+
+https://github.com/agenteract/agenteract/blob/main/agenteract.config.js
+
 **Command:**
 ```bash
 pnpm agenteract-agents hierarchy react-app
@@ -117,37 +153,13 @@ For you to be able to interact with a component, two things are required
 1. a `testID`
 2. a way to call event handlers
 
-This is achieved with the `useAgentBinding` hook: 
+For react based apps, this is achieved with the `createAgentBinding` function: 
 
-```ts
-export function useAgentBinding<T extends object>({
-  testID,
-  onPress,
-  onChangeText,
-}: AgentBindingProps) {
-  const ref = useRef<T>(null);
+https://github.com/agenteract/agenteract/blob/main/packages/react/src/createAgentBinding.ts
 
-  // register this node + handlers in the global registry
-  useEffect(() => {
-    registerNode(testID, { ref, onPress, onChangeText });
-    return () => unregisterNode(testID);
-  }, [testID, onPress, onChangeText]);
+(Consult the AgentDebugBridge package source for implementation details of other platforms.)
 
-  // return a “blobject” that can be spread directly into any component
-  return useMemo(
-    () => ({
-      ref,
-      testID,
-      onPress,
-      onChangeText,
-      accessible: true,
-    }),
-    [onPress, onChangeText, testID]
-  );
-}
-```
-
-This hook simultaneously registers handler functions against their test ID for simulated events, and returns everything as a prop for use within the component, eg:
+This function simultaneously registers handler functions against their test ID for simulated events, and returns everything as a prop for use within the component, eg:
 
 ```ts
 import { createAgentBinding } from '@agenteract/react';
