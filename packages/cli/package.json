@@ -32,11 +32,13 @@
     "android"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build:core": "cd ../core && tsc -p tsconfig.json",
+    "build": "npm run build:core && tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "jest --config jest.config.cjs"
   },
   "dependencies": {
+    "@agenteract/core": "workspace:*",
     "yargs": "^17.7.2",
     "node-pty": "^1.0.0"
   },

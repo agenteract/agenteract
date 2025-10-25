@@ -1,17 +1,48 @@
 // packages/cli/src/commands/dev.ts
+import fs from 'node:fs';
 import { loadConfig, MissingConfigError } from '../config.js';
+import { detectInvoker } from '@agenteract/core';
+const { pkgManager, isNpx } = detectInvoker();
 import path from 'path';
 import pty, { IPty } from 'node-pty';
 
+const spawnBin = pkgManager === 'pnpm' ? 'pnpm' : 'npx';
+
+const agentserverVersion = process.env.AGENTERACT_SERVER_VERSION ? `@${process.env.AGENTERACT_SERVER_VERSION}` : '';
+const agenterServePackage = pkgManager === 'pnpm' ? 'agenterserve' : '@agenteract/server' + agentserverVersion;
+
+// If we're in the agenteract monorepo, use the local packages
+// get nearest package.json
+const nearestPackageJson = findNearestPackageJson(process.cwd());
+const isAgenteractPackage = nearestPackageJson?.name?.startsWith('@agenteract/') || nearestPackageJson?.name === 'agenteract';
+
 const typeToCommandMap: { [key: string]: string } = {
-  expo: 'agenterexpo',
-  vite: 'agentervite',
+  expo: isAgenteractPackage ? 'agenterexpo' : '@agenteract/expo',
+  vite: isAgenteractPackage ? 'agentervite' : '@agenteract/vite',
 };
 
 interface Terminal {
   name: string;
   ptyProcess?: IPty; // Optional: not all terminals have a process
   buffer: string[];
+}
+
+function findNearestPackageJson(startDir: string): any | null {
+  let currentDir = startDir;
+  
+  while (true) {
+    const packageJsonPath = path.join(currentDir, 'package.json');
+    
+    if (fs.existsSync(packageJsonPath)) {
+      return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    }
+    
+    const parentDir = path.dirname(currentDir);
+    if (parentDir === currentDir) {
+      return null; // reached root
+    }
+    currentDir = parentDir;
+  }
 }
 
 const handleMissingConfig = (_: MissingConfigError) => {
@@ -39,7 +70,7 @@ export async function runDevCommand(args: { config: string }) {
 
   const commands = [
     {
-      command: `pnpm agenterserve --port ${config.port}`,
+      command: `${spawnBin} ${agenterServePackage} --port ${config.port}`,
       name: 'agent-server',
       cwd: rootDir,
       type: 'pty',
@@ -48,7 +79,7 @@ export async function runDevCommand(args: { config: string }) {
 
   if (config.projects.some((p: any) => p.type === 'native')) {
     commands.push({
-      command: `pnpm agenterserve --log-only`,
+      command: `${spawnBin} ${agenterServePackage} --log-only`,
       name: 'log-server',
       cwd: rootDir,
       type: 'pty',
@@ -56,7 +87,7 @@ export async function runDevCommand(args: { config: string }) {
   }
 
   commands.push(...config.projects.map((project: any) => ({
-    command: project.type === 'native' ? '' : `pnpm ${typeToCommandMap[project.type]} --port ${project.ptyPort}`,
+    command: project.type === 'native' ? '' : `${spawnBin} ${typeToCommandMap[project.type]} --port ${project.ptyPort}`,
     name: project.name,
     cwd: path.resolve(rootDir, project.path),
     type: project.type,
@@ -72,6 +103,7 @@ export async function runDevCommand(args: { config: string }) {
     let ptyProcess: IPty | undefined;
 
     if (cmdInfo.type !== 'native' && cmdInfo.command) {
+      console.log(`Spawning command: ${cmdInfo.command}`);
       const shell = process.env.SHELL || '/bin/bash';
       ptyProcess = pty.spawn(shell, ['-c', cmdInfo.command], {
         name: 'xterm-color',
@@ -79,6 +111,11 @@ export async function runDevCommand(args: { config: string }) {
         rows: process.stdout.rows,
         cwd: cmdInfo.cwd,
         env: process.env as { [key: string]: string },
+      });
+
+      ptyProcess.onExit((e: { exitCode: number; signal?: number }) => {
+        const { exitCode, signal } = e;
+        console.log(`PTY process exited with code: ${exitCode} and signal: ${signal}`);
       });
 
       ptyProcess.onData((data: string) => {
