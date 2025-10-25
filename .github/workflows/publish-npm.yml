@@ -58,9 +58,78 @@ jobs:
 
       - name: Publish to NPM
         run: |
-          # Publish all packages with provenance (pnpm properly resolves workspace dependencies)
-          # --no-git-checks is required because GitHub Actions checks out tags in detached HEAD state
-          pnpm -r --filter "@agenteract/*" publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance --no-git-checks
+          # Publish only packages whose versions don't exist on NPM yet
+          # This allows independent package versioning
+
+          PUBLISHED_COUNT=0
+          SKIPPED_COUNT=0
+          FAILED_COUNT=0
+
+          echo "🔍 Checking packages for publishing..."
+
+          for pkg in packages/*/package.json; do
+            if [ ! -f "$pkg" ]; then
+              continue
+            fi
+
+            PKG_DIR=$(dirname "$pkg")
+            PKG_NAME=$(node -p "require('./$pkg').name" 2>/dev/null || echo "unknown")
+            PKG_VERSION=$(node -p "require('./$pkg').version" 2>/dev/null || echo "unknown")
+
+            # Skip if not an @agenteract package
+            if [[ ! "$PKG_NAME" =~ ^@agenteract/ ]]; then
+              continue
+            fi
+
+            echo ""
+            echo "📦 Checking $PKG_NAME@$PKG_VERSION..."
+
+            # Check if version exists on NPM
+            if npm view "$PKG_NAME@$PKG_VERSION" version 2>/dev/null; then
+              echo "   ⏭️  Already exists on NPM, skipping"
+              SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+              continue
+            fi
+
+            echo "   📤 Publishing to NPM..."
+            cd "$PKG_DIR"
+
+            if pnpm publish --access public --tag ${{ steps.prerelease.outputs.tag }} --provenance --no-git-checks 2>&1 | tee /tmp/npm-publish-$PKG_NAME.log; then
+              echo "   ✅ Published successfully"
+              PUBLISHED_COUNT=$((PUBLISHED_COUNT + 1))
+            else
+              # Check if it failed because it already exists (race condition)
+              if grep -q "cannot publish over the previously published versions" /tmp/npm-publish-$PKG_NAME.log; then
+                echo "   ⏭️  Already published (race condition), skipping"
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+              else
+                echo "   ❌ Failed to publish"
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+              fi
+            fi
+
+            cd - > /dev/null
+          done
+
+          echo ""
+          echo "──────────────────────────────────────"
+          echo "📊 Publishing Summary:"
+          echo "   ✅ Published: $PUBLISHED_COUNT"
+          echo "   ⏭️  Skipped: $SKIPPED_COUNT"
+          echo "   ❌ Failed: $FAILED_COUNT"
+          echo "──────────────────────────────────────"
+
+          if [ $FAILED_COUNT -gt 0 ]; then
+            echo "❌ Some packages failed to publish"
+            exit 1
+          fi
+
+          if [ $PUBLISHED_COUNT -eq 0 ] && [ $SKIPPED_COUNT -eq 0 ]; then
+            echo "⚠️  No packages found to publish"
+            exit 1
+          fi
+
+          echo "✅ Publishing complete!"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
