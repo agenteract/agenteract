@@ -55,10 +55,19 @@ pnpm verdaccio:stop      # Cleanup
 
 ### Versioning & Release
 ```bash
+# Stable releases (all packages)
 pnpm version:patch       # 1.0.0 → 1.0.1
 pnpm version:minor       # 1.0.0 → 1.1.0
 pnpm version:major       # 1.0.0 → 2.0.0
-pnpm version:prerelease  # Create alpha/beta
+
+# Prereleases (all packages)
+pnpm version:alpha       # 1.0.0 → 1.0.1-alpha.abc123
+pnpm version:beta        # Beta prerelease
+pnpm version:rc          # Release candidate
+
+# Specific packages (use script directly)
+./scripts/version.sh minor agents        # Single package
+./scripts/version.sh patch core,react    # Multiple packages
 ```
 
 ### Publishing
@@ -121,16 +130,21 @@ gh workflow run prerelease.yml -f tag=alpha
 
 ### Prerelease Testing
 ```
-Option A - Manual:
-1. Run: pnpm version:prerelease alpha
+Option A - Manual (All packages):
+1. Run: pnpm version:alpha (or beta/rc)
 2. Push tags: git push && git push --tags
-3. Packages published with @alpha tag
+3. Packages published with @next tag
 
-Option B - GitHub Actions:
+Option B - Manual (Specific packages):
+1. Run: ./scripts/version.sh alpha agents,core
+2. Push tags: git push && git push --tags
+3. Only specified packages published with @next tag
+
+Option C - GitHub Actions:
 1. Go to Actions → Prerelease
 2. Click "Run workflow"
 3. Select tag type (alpha/beta/rc)
-4. Packages published with selected tag
+4. All packages published with @next tag
 ```
 
 ## 🛡️ Security & Quality Gates

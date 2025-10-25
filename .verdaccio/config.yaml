@@ -31,7 +31,6 @@ packages:
     access: $authenticated
     publish: $authenticated
     unpublish: $authenticated
-    proxy: npmjs
 
   '@*/*':
     # Scoped packages

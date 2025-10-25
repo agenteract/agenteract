@@ -18,7 +18,9 @@
     "version:patch": "bash scripts/version.sh patch",
     "version:minor": "bash scripts/version.sh minor",
     "version:major": "bash scripts/version.sh major",
-    "version:prerelease": "bash scripts/prerelease.sh",
+    "version:alpha": "bash scripts/version.sh alpha",
+    "version:beta": "bash scripts/version.sh beta",
+    "version:rc": "bash scripts/version.sh rc",
     "test:full_integration": "pnpm verdaccio:start && pnpm verdaccio:publish && pnpm test:integration; pnpm verdaccio:stop"
   },
   "keywords": [

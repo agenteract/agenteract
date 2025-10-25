@@ -140,6 +140,13 @@ We follow [Semantic Versioning](https://semver.org/):
 
 ## Manual Release Process
 
+All versioning is handled by the unified `version.sh` script, which supports:
+- Stable releases (patch, minor, major)
+- Prereleases (alpha, beta, rc)
+- Single package updates
+- Multiple package updates
+- All package updates
+
 ### Stable Release
 
 ```bash
@@ -150,13 +157,19 @@ git pull
 # 2. Run the version script
 ./scripts/version.sh patch  # or minor, major
 
+# For single package:
+./scripts/version.sh minor agents
+
+# For multiple packages:
+./scripts/version.sh patch agents,core,react
+
 # 3. Review changes
 git show
 
 # 4. Push to trigger publish
 git push && git push --tags
 
-# 5. GitHub Actions automatically publishes to NPM
+# 5. GitHub Actions automatically publishes only updated packages to NPM
 ```
 
 ### Prerelease
@@ -166,10 +179,17 @@ git push && git push --tags
 git checkout develop
 
 # 2. Create prerelease version
-./scripts/prerelease.sh alpha
+./scripts/version.sh alpha    # All packages
+./scripts/version.sh beta agents    # Single package
+./scripts/version.sh rc agents,core    # Multiple packages
 
-# 3. Push to trigger publish
+# 3. Review changes
+git show
+
+# 4. Push to trigger publish
 git push && git push --tags
+
+# 5. Packages published with @next tag on NPM
 ```
 
 Or use the GitHub Actions UI:
@@ -220,17 +240,37 @@ Or use the GitHub Actions UI:
 
 ## Prerelease Process
 
+### Prerelease Workflow
+
+Prereleases allow you to test changes before a stable release. The prerelease versions use the format: `1.0.0-alpha.abc123` (where abc123 is the git commit hash).
+
+**Standard process:**
+```bash
+# Current version: 1.0.0
+
+# Bump to next version and immediately create prerelease
+./scripts/version.sh minor              # → 1.1.0
+./scripts/version.sh alpha              # → 1.1.1-alpha.abc123
+
+# Additional testing creates more prereleases
+./scripts/version.sh alpha              # → 1.1.2-alpha.def456
+./scripts/version.sh beta               # → 1.1.3-beta.xyz789
+
+# Graduate to stable release
+./scripts/version.sh patch              # → 1.1.3 (removes prerelease suffix)
+```
+
 ### Manual Script Method
 
 ```bash
-# Alpha release (early testing)
-./scripts/prerelease.sh alpha
+# Alpha release (early testing) - All packages
+./scripts/version.sh alpha
 
-# Beta release (feature complete, testing)
-./scripts/prerelease.sh beta
+# Beta release (feature complete) - Single package
+./scripts/version.sh beta agents
 
-# Release candidate (production-ready testing)
-./scripts/prerelease.sh rc
+# Release candidate (production-ready testing) - Multiple packages
+./scripts/version.sh rc agents,core
 
 # Push to publish
 git push && git push --tags
@@ -414,30 +454,49 @@ git reset --hard v1.0.0
 # Setup
 chmod +x scripts/*.sh
 
-# Stable releases
+# Stable releases - All packages
 ./scripts/version.sh patch  # 1.0.0 → 1.0.1
 ./scripts/version.sh minor  # 1.0.0 → 1.1.0
 ./scripts/version.sh major  # 1.0.0 → 2.0.0
 
-# Prereleases
-./scripts/prerelease.sh alpha
-./scripts/prerelease.sh beta
-./scripts/prerelease.sh rc
+# Stable releases - Specific packages
+./scripts/version.sh minor agents              # Single package
+./scripts/version.sh patch agents,core,react   # Multiple packages
+
+# Prereleases - All packages
+./scripts/version.sh alpha  # 1.0.0 → 1.0.1-alpha.abc123
+./scripts/version.sh beta   # 1.0.1-alpha.0 → 1.0.2-beta.def456
+./scripts/version.sh rc     # 1.0.2-beta.0 → 1.0.3-rc.xyz789
+
+# Prereleases - Specific packages
+./scripts/version.sh alpha agents              # Single package
+./scripts/version.sh beta agents,core          # Multiple packages
+
+# Graduate prerelease to stable
+./scripts/version.sh patch  # 1.0.3-rc.0 → 1.0.3
 
 # Publish
 git push && git push --tags
 
 # Manual GitHub Actions trigger
 gh workflow run prerelease.yml -f tag=alpha
+
+# NPM scripts (shortcuts)
+pnpm version:patch    # All packages, patch bump
+pnpm version:minor    # All packages, minor bump
+pnpm version:major    # All packages, major bump
+pnpm version:alpha    # All packages, alpha prerelease
+pnpm version:beta     # All packages, beta prerelease
+pnpm version:rc       # All packages, RC prerelease
 ```
 
 ---
 
 ## Related Files
 
-- `.github/workflows/publish-npm.yml` - Main publishing workflow
-- `.github/workflows/release-please.yml` - Automated releases (optional)
+- `.github/workflows/publish-npm.yml` - Main publishing workflow (selective package publishing)
+- `.github/workflows/release-please.yml` - Automated releases (optional, disabled)
 - `.github/workflows/prerelease.yml` - Prerelease workflow
-- `scripts/version.sh` - Version bumping script
-- `scripts/prerelease.sh` - Prerelease creation script
+- `scripts/version.sh` - Unified version script (stable + prerelease, single + multi package)
+- `.verdaccio/config.yaml` - Local testing registry configuration
 

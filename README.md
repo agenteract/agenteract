@@ -393,10 +393,14 @@ See [docs/INTEGRATION_TESTING.md](docs/INTEGRATION_TESTING.md) for complete info
 We support multiple release strategies with automated NPM publishing:
 
 ```bash
-# Version bump and release
+# Version bump and release (all packages)
 pnpm version:patch  # 1.0.0 → 1.0.1
 pnpm version:minor  # 1.0.0 → 1.1.0
 pnpm version:major  # 1.0.0 → 2.0.0
+
+# Version bump for specific packages
+./scripts/version.sh minor agents        # Single package
+./scripts/version.sh patch core,react    # Multiple packages
 
 # Push tags to trigger NPM publish
 git push && git push --tags
@@ -404,9 +408,15 @@ git push && git push --tags
 
 **Prerelease testing:**
 ```bash
-pnpm version:prerelease alpha
+pnpm version:alpha   # All packages
+pnpm version:beta    # All packages
+pnpm version:rc      # All packages
+
+./scripts/version.sh alpha agents        # Single package
+./scripts/version.sh beta agents,core    # Multiple packages
+
 git push && git push --tags
-# Published with @alpha tag on NPM
+# Published with @next tag on NPM
 ```
 
 See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release guide and [docs/CI_CD_SUMMARY.md](docs/CI_CD_SUMMARY.md) for a quick reference.

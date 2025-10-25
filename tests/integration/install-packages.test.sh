@@ -11,6 +11,8 @@ START_DIR=$(pwd)
 echo "🧪 Running integration tests..."
 echo "Registry: $REGISTRY"
 
+npm cache clean --force; 
+
 # Create test directory
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR"
