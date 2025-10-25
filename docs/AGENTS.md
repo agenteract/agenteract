@@ -18,7 +18,17 @@ Expo:
 https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/expo-example/app/App.tsx
 
 * Packages: 
+`@agenteract/react` (`AgentDebugBridge`)
+
+The following can be installed either in the app, or at the monorepo root if applicable.
+
 `@agenteract/expo`
+
+`@agenteract/cli`
+
+`@agenteract/server`
+
+`@agenteract/agents`
 
 React: 
 AgentDebugBridge example:
@@ -26,7 +36,17 @@ AgentDebugBridge example:
 https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/react-example/src/main.tsx
 
 * Packages: 
-`@agenteract/react`
+`@agenteract/react` (`AgentDebugBridge`)
+
+The following can be installed either in the app, or at the monorepo root if applicable.
+
+`@agenteract/vite`
+
+`@agenteract/cli`
+
+`@agenteract/server`
+
+`@agenteract/agents`
 
 Swift UI:
 
@@ -37,8 +57,13 @@ https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples
 Packages:
 `https://github.com/agenteract/agenteract-swift` (SPM)
 
+These will be called via npx, you will need to press y [enter] the first time they run.
 
-*@agenteract tools should run using npx - They don't need to be installed to the user's project. It is only done this way in the main repo for convinience.*
+`@agenteract/cli`
+
+`@agenteract/server`
+
+`@agenteract/agents`
 
 ## Tool: Get Logs
 
