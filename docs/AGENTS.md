@@ -96,7 +96,7 @@ pnpm agenteract-agents cmd expo r
 pnpm agenteract-agents cmd vite r
 ```
 
-If dev server commands don't work, instruct the user to start the CLI wrapper:
+If commands don't work, instruct the user to start the CLI wrapper:
 
 ```bash
 pnpm agenteract dev
@@ -124,7 +124,7 @@ Note that if the above command fails, the user probably needs to run the app/age
 
 It appears as if the agent server might not be running. Kindly run this in a shell:
 ```bash
-pnpm agenterserve dev
+pnpm agenteract dev
 ```
 
 ## Tool: Interact with App
