@@ -11,6 +11,32 @@ const agentServerUrl = 'http://localhost:8766';
 const expoServerUrl = 'http://localhost:8790';
 const viteServerUrl = 'http://localhost:8791';
 
+const handleRequestError = (error: any) => {
+  if (!axios.isAxiosError(error)) {
+    if (error instanceof Error) {
+      console.error('Error getting logs:', error.message);
+    } else {
+      console.error('An unknown error occurred');
+    }
+    return;
+  }
+
+  if (error.code === 'ECONNREFUSED') {
+    console.error('Could not connect to the agent server. Please run npx @agenteract/cli dev to start the development environment.');
+  } else if (error.response?.status === 503) {
+    const responseData = error.response.data;
+    let errorMessage = `Error: ${responseData.error}`;
+    if (responseData.availableProjects && responseData.availableProjects.length > 0) {
+      errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
+    } else {
+      errorMessage += '\nNo projects are currently connected to the agent server.';
+    }
+    console.error(errorMessage);
+  } else {
+    console.error(`Error connecting to the agent server: ${error.code}`);
+  }
+}
+
 yargs(hideBin(process.argv))
   .command(
     'logs <project>',
@@ -34,20 +60,7 @@ yargs(hideBin(process.argv))
         const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 503) {
-          const responseData = error.response.data;
-          let errorMessage = `Error: ${responseData.error}`;
-          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
-            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
-          } else {
-            errorMessage += '\nNo projects are currently connected to the agent server.';
-          }
-          console.error(errorMessage);
-        } else if (error instanceof Error) {
-          console.error('Error getting logs:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+        handleRequestError(error);
       }
     }
   )
@@ -75,11 +88,7 @@ yargs(hideBin(process.argv))
         const response = await axios.get(`${url}/logs?since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
-        if (error instanceof Error) {
-          console.error('Error getting dev logs:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+        handleRequestError(error);
       }
     }
   )
@@ -105,11 +114,7 @@ yargs(hideBin(process.argv))
         const url = argv.type === 'expo' ? expoServerUrl : viteServerUrl;
         await axios.post(`${url}/cmd`, { cmd: argv.command });
       } catch (error) {
-        if (error instanceof Error) {
-          console.error('Error sending command:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+        handleRequestError(error);
       }
     }
   )
@@ -131,20 +136,7 @@ yargs(hideBin(process.argv))
         });
         console.log(JSON.stringify(response.data, null, 2));
       } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 503) {
-          const responseData = error.response.data;
-          let errorMessage = `Error: ${responseData.error}`;
-          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
-            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
-          } else {
-            errorMessage += '\nNo projects are currently connected to the agent server.';
-          }
-          console.error(errorMessage);
-        } else if (error instanceof Error) {
-          console.error('Error getting view hierarchy:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+        handleRequestError(error);
       }
     }
   )
@@ -172,20 +164,7 @@ yargs(hideBin(process.argv))
           testID: argv.testID,
         });
       } catch (error) {
-        if (axios.isAxiosError(error) && error.response?.status === 503) {
-          const responseData = error.response.data;
-          let errorMessage = `Error: ${responseData.error}`;
-          if (responseData.availableProjects && responseData.availableProjects.length > 0) {
-            errorMessage += `\nAvailable projects: ${responseData.availableProjects.join(', ')}`;
-          } else {
-            errorMessage += '\nNo projects are currently connected to the agent server.';
-          }
-          console.error(errorMessage);
-        } else if (error instanceof Error) {
-          console.error('Error tapping component:', error.message);
-        } else {
-          console.error('An unknown error occurred');
-        }
+        handleRequestError(error);
       }
     }
   )
@@ -225,6 +204,7 @@ yargs(hideBin(process.argv))
       }
     }
   )
+  .strictCommands()
   .demandCommand(1, 'You must provide a valid command.')
   .help()
   .parse();

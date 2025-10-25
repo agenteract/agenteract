@@ -1,5 +1,5 @@
 // packages/cli/src/commands/dev.ts
-import { loadConfig } from '../config.js';
+import { loadConfig, MissingConfigError } from '../config.js';
 import path from 'path';
 import pty, { IPty } from 'node-pty';
 
@@ -14,9 +14,23 @@ interface Terminal {
   buffer: string[];
 }
 
+const handleMissingConfig = (_: MissingConfigError) => {
+  console.error('agenteract.config.js is missing. Use `npx @agenteract/cli add-config` to create it.');
+  return;
+}
+
 export async function runDevCommand(args: { config: string }) {
   const rootDir = path.dirname(path.resolve(args.config));
-  const config = await loadConfig(rootDir);
+  let config: any;
+  try {
+    config = await loadConfig(rootDir);
+  } catch (error) {
+    if (error instanceof MissingConfigError) {
+      handleMissingConfig(error);
+      return;
+    }
+    throw error;
+  }
 
   if (!config || !config.projects) {
     console.error('Invalid config: projects array not found.');

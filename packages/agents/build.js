@@ -13,7 +13,7 @@ async function createBuild() {
     let content = fs.readFileSync(docsPath, 'utf8');
 
     // Specific replacement for the main CLI commands
-    content = content.replace(/pnpm agenteract-agents/g, 'npx @agenteract/cli');
+    content = content.replace(/pnpm agenteract-agents/g, 'npx @agenteract/agents');
 
     // Dynamic replacements for other tools
     for (const file of packageJsonFiles) {
@@ -23,8 +23,8 @@ async function createBuild() {
                 const packageName = packageJson.name;
                 // Make sure we don't re-replace the command we just fixed
                 if (binName !== 'agenteract-agents') {
-                    const pnpmCommand = `pnpm ${binName}`;
-                    const npxCommand = `npx ${packageName}`;
+                    const pnpmCommand = `pnpm ${binName} `;
+                    const npxCommand = `npx ${packageName} `;
                     content = content.replace(new RegExp(pnpmCommand, 'g'), npxCommand);
                 }
             }
