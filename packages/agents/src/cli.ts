@@ -3,6 +3,10 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import axios from 'axios';
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
 const agentServerUrl = 'http://localhost:8766';
 const expoServerUrl = 'http://localhost:8790';
 const viteServerUrl = 'http://localhost:8791';
@@ -179,6 +183,42 @@ yargs(hideBin(process.argv))
           console.error(errorMessage);
         } else if (error instanceof Error) {
           console.error('Error tapping component:', error.message);
+        } else {
+          console.error('An unknown error occurred');
+        }
+      }
+    }
+  )
+  .command(
+    'md [dest]',
+    'Generate agent instructions',
+    (yargs) => {
+      return yargs
+        .positional('dest', {
+          describe: 'Destination file',
+          type: 'string',
+          default: 'AGENTS.md',
+        });
+    },
+    async (argv) => {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+
+      // This path is relative to the dist/cli.js file after compilation
+      const sourcePath = path.resolve(__dirname, 'AGENTS.md');
+      const destPath = path.join(process.cwd(), argv.dest);
+
+      try {
+        if (!fs.existsSync(destPath)) {
+          fs.writeFileSync(destPath, fs.readFileSync(sourcePath, 'utf8'));
+        } else {
+          console.log(`${argv.dest} already exists, appending to it.`);
+          fs.appendFileSync(destPath, '\n' + fs.readFileSync(sourcePath, 'utf8'));
+        }
+        console.log(`${argv.dest} has been created in your project root.`);
+      } catch (error) {
+        if (error instanceof Error) {
+          console.error('Error generating agent instructions:', error.message);
         } else {
           console.error('An unknown error occurred');
         }

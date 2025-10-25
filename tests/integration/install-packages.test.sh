@@ -6,6 +6,7 @@ set -e
 
 TEST_DIR="/tmp/agenteract-integration-test-$$"
 REGISTRY="${REGISTRY:-http://localhost:4873}"
+START_DIR=$(pwd)
 
 echo "🧪 Running integration tests..."
 echo "Registry: $REGISTRY"
@@ -20,7 +21,8 @@ npm init -y > /dev/null
 
 # Install packages
 echo "Installing @agenteract packages from $REGISTRY..."
-npm install @agenteract/core @agenteract/react --registry "$REGISTRY"
+npm install @agenteract/core @agenteract/react @agenteract/agents --registry "$REGISTRY"
+
 
 # Test 1: CommonJS require
 echo "Test 1: CommonJS import..."
@@ -66,6 +68,47 @@ node -e "
   echo "❌ Package exports verification failed"
   exit 1
 }
+
+# Test 5: @agenteract/agents CLI
+echo "Test 5: Verifying @agenteract/agents CLI..."
+
+# Start mock server
+pwd
+npx tsx "$START_DIR/tests/integration/mock-server.ts" &
+SERVER_PID=$!
+sleep 2 # Give servers time to start
+
+# check server process
+ps -p $SERVER_PID > /dev/null || { echo "❌ mock server process not found"; exit 1; }
+
+# Function to kill server on exit
+cleanup_server() {
+  kill $SERVER_PID > /dev/null 2>&1
+}
+trap cleanup_server EXIT
+
+# Run CLI tests
+echo "Running @agenteract/agents CLI tests..."
+
+npx @agenteract/agents logs my-project | grep "agent log line 1" > /dev/null || { echo "❌ agents: logs command failed"; exit 1; }
+echo "✓ agents: logs command works"
+
+npx @agenteract/agents dev-logs expo | grep "expo log line 1" > /dev/null || { echo "❌ agents: dev-logs expo command failed"; exit 1; }
+echo "✓ agents: dev-logs expo command works"
+
+npx @agenteract/agents dev-logs vite | grep "vite log line 1" > /dev/null || { echo "❌ agents: dev-logs vite command failed"; exit 1; }
+echo "✓ agents: dev-logs vite command works"
+
+npx @agenteract/agents cmd expo r || { echo "❌ agents: cmd expo command failed"; exit 1; }
+echo "✓ agents: cmd expo command works"
+
+npx @agenteract/agents hierarchy my-project | grep '"hierarchy": "mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
+echo "✓ agents: hierarchy command works"
+
+npx @agenteract/agents tap my-project my-button || { echo "❌ agents: tap command failed"; exit 1; }
+echo "✓ agents: tap command works"
+
+echo "✓ @agenteract/agents CLI tests passed!"
 
 # Cleanup
 cd /
