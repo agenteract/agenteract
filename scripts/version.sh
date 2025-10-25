@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Unified version script for single, multiple, or all packages
 # Supports stable releases (patch, minor, major) and prereleases (alpha, beta, rc)
 #
@@ -55,7 +55,7 @@ git pull --rebase
 echo ""
 
 # Get list of all packages
-declare -a ALL_PACKAGES
+ALL_PACKAGES=()
 for pkg in packages/*/package.json; do
   if [ -f "$pkg" ]; then
     PKG_SHORT_NAME=$(basename $(dirname "$pkg"))
@@ -64,7 +64,7 @@ for pkg in packages/*/package.json; do
 done
 
 # Determine which packages to update
-declare -a TARGET_PACKAGES
+TARGET_PACKAGES=()
 if [ -z "$PACKAGES_ARG" ]; then
   # No packages specified = all packages
   TARGET_PACKAGES=("${ALL_PACKAGES[@]}")
@@ -85,9 +85,10 @@ fi
 echo ""
 
 # Validate packages exist and collect version info
-declare -A CURRENT_VERSIONS
-declare -A NEW_VERSIONS
-declare -a VALID_PACKAGES
+# Using parallel arrays for portability (no associative arrays needed)
+VALID_PACKAGES=()
+CURRENT_VERSIONS=()
+NEW_VERSIONS=()
 
 echo -e "${BLUE}📋 Analyzing packages...${NC}"
 echo ""
@@ -123,9 +124,10 @@ for pkg_name in "${TARGET_PACKAGES[@]}"; do
   git checkout package.json 2>/dev/null || true
   cd - > /dev/null
 
-  CURRENT_VERSIONS["$pkg_name"]="$CURRENT_VERSION"
-  NEW_VERSIONS["$pkg_name"]="$NEW_VERSION"
+  # Store in parallel arrays (same index for each array)
   VALID_PACKAGES+=("$pkg_name")
+  CURRENT_VERSIONS+=("$CURRENT_VERSION")
+  NEW_VERSIONS+=("$NEW_VERSION")
 
   echo -e "  ${GREEN}✓${NC} $FULL_NAME"
   echo -e "    $CURRENT_VERSION ${YELLOW}→${NC} $NEW_VERSION"
@@ -143,17 +145,33 @@ else
 fi
 echo ""
 
+# Helper function to find index of package in VALID_PACKAGES array
+get_package_index() {
+  local pkg_name="$1"
+  local i=0
+  for p in "${VALID_PACKAGES[@]}"; do
+    if [ "$p" = "$pkg_name" ]; then
+      echo "$i"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  echo "-1"
+  return 1
+}
+
 # Determine root package version (highest version among all packages)
 echo -e "${BLUE}🔍 Calculating root package version...${NC}"
 
 # Get all package versions (current)
-declare -a ALL_VERSIONS
+ALL_VERSIONS=()
 for pkg in packages/*/package.json; do
   if [ -f "$pkg" ]; then
     PKG_SHORT_NAME=$(basename $(dirname "$pkg"))
     if [[ " ${VALID_PACKAGES[@]} " =~ " ${PKG_SHORT_NAME} " ]]; then
-      # Package will be updated
-      ALL_VERSIONS+=("${NEW_VERSIONS[$PKG_SHORT_NAME]}")
+      # Package will be updated - get new version from parallel array
+      idx=$(get_package_index "$PKG_SHORT_NAME")
+      ALL_VERSIONS+=("${NEW_VERSIONS[$idx]}")
     else
       # Package stays the same
       CURRENT_VER=$(node -p "require('./$pkg').version")
@@ -192,6 +210,7 @@ echo -e "${GREEN}✅ Confirmed! Applying version changes...${NC}"
 echo ""
 
 # Apply version changes
+idx=0
 for pkg_name in "${VALID_PACKAGES[@]}"; do
   PACKAGE_DIR="packages/$pkg_name"
   cd "$PACKAGE_DIR"
@@ -201,7 +220,8 @@ for pkg_name in "${VALID_PACKAGES[@]}"; do
     npm version "$VERSION_TYPE" --no-git-tag-version > /dev/null
   fi
   cd - > /dev/null
-  echo -e "  ${GREEN}✓${NC} Updated $pkg_name to ${NEW_VERSIONS[$pkg_name]}"
+  echo -e "  ${GREEN}✓${NC} Updated $pkg_name to ${NEW_VERSIONS[$idx]}"
+  idx=$((idx + 1))
 done
 
 # Update root package version
@@ -219,7 +239,7 @@ git add .
 if [ "$IS_PRERELEASE" = true ]; then
   if [ ${#VALID_PACKAGES[@]} -eq 1 ]; then
     FULL_NAME=$(node -p "require('./packages/${VALID_PACKAGES[0]}/package.json').name")
-    COMMIT_MSG="chore: prerelease $FULL_NAME v${NEW_VERSIONS[${VALID_PACKAGES[0]}]}"
+    COMMIT_MSG="chore: prerelease $FULL_NAME v${NEW_VERSIONS[0]}"
   elif [ ${#VALID_PACKAGES[@]} -eq ${#ALL_PACKAGES[@]} ]; then
     COMMIT_MSG="chore: prerelease v$HIGHEST_VERSION"
   else
@@ -228,7 +248,7 @@ if [ "$IS_PRERELEASE" = true ]; then
 else
   if [ ${#VALID_PACKAGES[@]} -eq 1 ]; then
     FULL_NAME=$(node -p "require('./packages/${VALID_PACKAGES[0]}/package.json').name")
-    COMMIT_MSG="chore: bump $FULL_NAME to v${NEW_VERSIONS[${VALID_PACKAGES[0]}]}"
+    COMMIT_MSG="chore: bump $FULL_NAME to v${NEW_VERSIONS[0]}"
   elif [ ${#VALID_PACKAGES[@]} -eq ${#ALL_PACKAGES[@]} ]; then
     COMMIT_MSG="chore: release v$HIGHEST_VERSION"
   else
@@ -254,9 +274,11 @@ echo ""
 echo "Root version: $CURRENT_ROOT_VERSION → $HIGHEST_VERSION"
 echo ""
 echo "Updated packages:"
+idx=0
 for pkg_name in "${VALID_PACKAGES[@]}"; do
   FULL_NAME=$(node -p "require('./packages/$pkg_name/package.json').name")
-  echo "  • $FULL_NAME: ${CURRENT_VERSIONS[$pkg_name]} → ${NEW_VERSIONS[$pkg_name]}"
+  echo "  • $FULL_NAME: ${CURRENT_VERSIONS[$idx]} → ${NEW_VERSIONS[$idx]}"
+  idx=$((idx + 1))
 done
 echo ""
 echo -e "${BLUE}Next steps:${NC}"
