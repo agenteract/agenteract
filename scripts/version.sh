@@ -183,9 +183,17 @@ done
 # Find highest version using semver comparison
 HIGHEST_VERSION="0.0.0"
 for ver in "${ALL_VERSIONS[@]}"; do
+  # For stable releases, strip prerelease suffixes to get the base version
+  COMPARE_VER="$ver"
+  if [ "$IS_PRERELEASE" = false ]; then
+    # Strip prerelease suffix (everything after and including first -)
+    COMPARE_VER="${ver%%-*}"
+  fi
+
   # Simple semver comparison (assumes format X.Y.Z)
-  if [ "$(printf '%s\n' "$ver" "$HIGHEST_VERSION" | sort -V | tail -n1)" = "$ver" ]; then
-    HIGHEST_VERSION="$ver"
+  COMPARE_HIGHEST="${HIGHEST_VERSION%%-*}"
+  if [ "$(printf '%s\n' "$COMPARE_VER" "$COMPARE_HIGHEST" | sort -V | tail -n1)" = "$COMPARE_VER" ]; then
+    HIGHEST_VERSION="$COMPARE_VER"
   fi
 done
 
