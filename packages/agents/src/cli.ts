@@ -204,6 +204,7 @@ yargs(hideBin(process.argv))
       }
     }
   )
+  .strictCommands()
   .demandCommand(1, 'You must provide a valid command.')
   .help()
   .parse();
