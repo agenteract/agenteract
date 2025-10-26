@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/agents",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Agent tools for Agenteract",
   "type": "module",
   "main": "dist/cli.js",
