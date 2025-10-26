@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/server",
-  "version": "0.0.3-rc.e62f48d.0",
+  "version": "0.0.3",
   "description": "Agent command server and runtime bridge for Agenteract",
   "type": "module",
   "main": "dist/index.js",
