@@ -154,6 +154,12 @@ export default {
 };
 ```
 
+It's also possible to build configuration from the command line, run the following for more info:
+
+```bash
+npx @agenteract/cli add-config 
+```
+
 ### Configuration Options
 
 -   `port`: The main port for the Agenteract server.

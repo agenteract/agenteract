@@ -30,6 +30,13 @@ The following can be installed either in the app, or at the monorepo root if app
 
 `@agenteract/agents`
 
+Usage:
+```tsx
+import { AgentDebugBridge } from '@agenteract/react';
+// ...
+{ __DEV__ && <AgentDebugBridge projectName="myExpoApp" /> }
+```
+
 React: 
 AgentDebugBridge example:
 
@@ -48,6 +55,14 @@ The following can be installed either in the app, or at the monorepo root if app
 
 `@agenteract/agents`
 
+Usage:
+
+```tsx
+import { AgentDebugBridge } from '@agenteract/react';
+// ...
+{ __DEV__ && <AgentDebugBridge projectName="myReactApp" /> }
+```
+
 Swift UI:
 
 * AgentDebugBridge example:
@@ -64,6 +79,54 @@ These will be called via npx, you will need to press y [enter] the first time th
 `@agenteract/server`
 
 `@agenteract/agents`
+
+Usage:
+
+```swift
+import Agenteract
+// ...
+.background(
+    AgentDebugBridge(projectName: "mySwiftApp")
+)
+```
+
+## Dev Server Setup
+
+Agenteract offers a multiplexed terminal application that serves two purposes:
+1. Route app interaction commands to multiple apps
+2. Handle AgentDebugBridge connections from apps
+3. Buffer dev server (eg Expo, Vite) logs and expose them to agents
+
+For this to work, we need to configure the dev server. This can be done at a workspace root, or within a single application.
+
+### *Step 1: Configuration*
+
+The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
+
+```bash
+pnpm ageneract add-config <path> <projectName> <type>
+```
+
+`Path`:
+
+Path to a project containing a package.json (Only required for NodeJS based projects)
+
+`Project Name`:
+
+Project Name as supplied to `AgentDebugBridge`
+
+`Type`:
+
+`expo`|`vite`|`native`
+
+
+### *Step 2: Start Dev Server and apps*
+
+The user (Not the agent) can now start their dev server.
+
+Use Tab to switch between apps. This enables user to launch the app and see diagnostic output. 
+
+At this point the agent should also have access to dev server logs.
 
 ## Tool: Get Logs
 
