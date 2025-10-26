@@ -78,7 +78,7 @@ echo "Test 5: Verifying @agenteract/agents CLI..."
 pwd
 npx tsx "$START_DIR/tests/integration/mock-server.ts" &
 SERVER_PID=$!
-sleep 2 # Give servers time to start
+sleep 3 # Give servers time to start
 
 # check server process
 ps -p $SERVER_PID > /dev/null || { echo "❌ mock server process not found"; exit 1; }
@@ -104,7 +104,7 @@ echo "✓ agents: dev-logs vite command works"
 npx @agenteract/agents cmd expo r || { echo "❌ agents: cmd expo command failed"; exit 1; }
 echo "✓ agents: cmd expo command works"
 
-npx @agenteract/agents hierarchy my-project | grep '"hierarchy": "mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
+npx @agenteract/agents hierarchy my-project | grep '"hierarchy":"mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
 echo "✓ agents: hierarchy command works"
 
 npx @agenteract/agents tap my-project my-button || { echo "❌ agents: tap command failed"; exit 1; }

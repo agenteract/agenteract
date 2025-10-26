@@ -134,7 +134,9 @@ yargs(hideBin(process.argv))
           project: argv.project,
           action: 'getViewHierarchy',
         });
-        console.log(JSON.stringify(response.data, null, 2));
+        // don't pretty print the response, keep it small
+        // Note: tried yaml but it is less compact due to spaces
+        console.log(JSON.stringify(response.data));
       } catch (error) {
         handleRequestError(error);
       }
