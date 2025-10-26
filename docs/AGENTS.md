@@ -104,7 +104,7 @@ For this to work, we need to configure the dev server. This can be done at a wor
 The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
 
 ```bash
-pnpm ageneract add-config <path> <projectName> <type>
+pnpm agenteract add-config <path> <projectName> <type>
 ```
 
 `Path`:
