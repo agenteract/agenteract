@@ -32,24 +32,15 @@ echo "🔐 Setting up authentication..."
 if npm whoami --registry "$VERDACCIO_URL" &> /dev/null; then
   echo "✓ Already authenticated as: $(npm whoami --registry $VERDACCIO_URL)"
 else
-  # Authenticate using expect
-  if ! command -v expect &> /dev/null; then
-    echo "❌ Error: 'expect' is required but not installed"
-    echo ""
-    echo "Install expect:"
-    echo "  macOS:  brew install expect"
-    echo "  Ubuntu: sudo apt-get install expect"
-    echo ""
-    echo "Or authenticate manually:"
-    echo "  npm adduser --registry $VERDACCIO_URL"
-    exit 1
-  fi
-  
+  # Authenticate using TypeScript script
   echo "   Authenticating user '$VERDACCIO_USER'..."
-  if bash "$(dirname "$0")/verdaccio-auth.sh"; then
+  if npx tsx "$(dirname "$0")/verdaccio-auth.ts"; then
     echo "✓ Successfully authenticated"
   else
     echo "❌ Authentication failed"
+    echo ""
+    echo "Or authenticate manually:"
+    echo "  npm adduser --registry $VERDACCIO_URL"
     exit 1
   fi
 fi

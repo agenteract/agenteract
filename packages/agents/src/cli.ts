@@ -37,6 +37,53 @@ const handleRequestError = (error: any) => {
   }
 }
 
+const waitAndFetchLogs = async (project: string, waitMs: number, logCount: number) => {
+  await new Promise(resolve => setTimeout(resolve, waitMs));
+  try {
+    const response = await axios.get(`${agentServerUrl}/logs?project=${project}&since=${logCount}`);
+    return response.data;
+  } catch (error) {
+    // Return empty string if we can't fetch logs, but don't fail the whole operation
+    return '';
+  }
+}
+
+const filterHierarchy = (node: any, key: string, value: string): any[] => {
+  const matches: any[] = [];
+
+  const traverse = (current: any): boolean => {
+    if (!current || typeof current !== 'object') {
+      return false;
+    }
+
+    // Check if current node matches the filter
+    if (current[key] === value) {
+      matches.push(current);
+      return true;
+    }
+
+    // If this is an array, check each element
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        traverse(item);
+      }
+      return false;
+    }
+
+    // Traverse all properties of the object
+    for (const prop in current) {
+      if (current.hasOwnProperty(prop)) {
+        traverse(current[prop]);
+      }
+    }
+
+    return false;
+  };
+
+  traverse(node);
+  return matches;
+}
+
 yargs(hideBin(process.argv))
   .command(
     'logs <project>',
@@ -122,11 +169,34 @@ yargs(hideBin(process.argv))
     'hierarchy <project>',
     'Get the view hierarchy of a project',
     (yargs) => {
-      return yargs.positional('project', {
-        describe: 'Project name',
-        type: 'string',
-        demandOption: true,
-      });
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        })
+        .option('filter-key', {
+          alias: 'k',
+          type: 'string',
+          description: 'Filter hierarchy by key (e.g., testID, type)',
+        })
+        .option('filter-value', {
+          alias: 'v',
+          type: 'string',
+          description: 'Filter hierarchy by value (used with filter-key)',
+        });
     },
     async (argv) => {
       try {
@@ -134,7 +204,30 @@ yargs(hideBin(process.argv))
           project: argv.project,
           action: 'getViewHierarchy',
         });
-        console.log(JSON.stringify(response.data, null, 2));
+
+        let outputData = response.data;
+
+        // Apply client-side filtering if both key and value are provided
+        if (argv.filterKey && argv.filterValue) {
+          const matches = filterHierarchy(outputData, argv.filterKey, argv.filterValue);
+          if (matches.length > 0) {
+            outputData = matches.length === 1 ? matches[0] : matches;
+          } else {
+            console.log(`No matches found for ${argv.filterKey}=${argv.filterValue}`);
+            return;
+          }
+        }
+
+        // don't pretty print the response, keep it small
+        // Note: tried yaml but it is less compact due to spaces
+        console.log(JSON.stringify(outputData));
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
       } catch (error) {
         handleRequestError(error);
       }
@@ -154,6 +247,18 @@ yargs(hideBin(process.argv))
           describe: 'The testID of the component to tap',
           type: 'string',
           demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
         });
     },
     async (argv) => {
@@ -163,6 +268,13 @@ yargs(hideBin(process.argv))
           action: 'tap',
           testID: argv.testID,
         });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
       } catch (error) {
         handleRequestError(error);
       }

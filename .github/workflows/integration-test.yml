@@ -56,13 +56,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install expect (for authentication)
-        run: |
-          sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Dpkg::Options::="--force-confnew" -o Dpkg::Options::="--force-confdef" expect
-        env:
-          DEBIAN_FRONTEND: noninteractive
-
       - name: Build packages
         run: pnpm run build
 
@@ -72,27 +65,12 @@ jobs:
           pnpm config set registry http://localhost:4873/
 
       - name: Authenticate with Verdaccio
-        run: |
-          expect << 'EOF'
-          set timeout 30
-          spawn npm adduser --registry http://localhost:4873
-          expect "Username:"
-          send "test\r"
-          expect "Password:"
-          send "test\r"
-          expect "Email: (this IS public)"
-          send "test@test.com\r"
-          expect {
-            "Logged in" {
-              puts "✓ Authentication successful"
-              exit 0
-            }
-            timeout {
-              puts "✗ Authentication timed out"
-              exit 1
-            }
-          }
-          EOF
+        run: npx tsx scripts/verdaccio-auth.ts
+        env:
+          VERDACCIO_URL: http://localhost:4873
+          VERDACCIO_USER: test
+          VERDACCIO_PASS: test
+          VERDACCIO_EMAIL: test@test.com
 
       - name: Verify authentication
         run: |
