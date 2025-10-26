@@ -37,6 +37,17 @@ const handleRequestError = (error: any) => {
   }
 }
 
+const waitAndFetchLogs = async (project: string, waitMs: number, logCount: number) => {
+  await new Promise(resolve => setTimeout(resolve, waitMs));
+  try {
+    const response = await axios.get(`${agentServerUrl}/logs?project=${project}&since=${logCount}`);
+    return response.data;
+  } catch (error) {
+    // Return empty string if we can't fetch logs, but don't fail the whole operation
+    return '';
+  }
+}
+
 yargs(hideBin(process.argv))
   .command(
     'logs <project>',
@@ -122,11 +133,24 @@ yargs(hideBin(process.argv))
     'hierarchy <project>',
     'Get the view hierarchy of a project',
     (yargs) => {
-      return yargs.positional('project', {
-        describe: 'Project name',
-        type: 'string',
-        demandOption: true,
-      });
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        });
     },
     async (argv) => {
       try {
@@ -137,6 +161,13 @@ yargs(hideBin(process.argv))
         // don't pretty print the response, keep it small
         // Note: tried yaml but it is less compact due to spaces
         console.log(JSON.stringify(response.data));
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
       } catch (error) {
         handleRequestError(error);
       }
@@ -156,6 +187,18 @@ yargs(hideBin(process.argv))
           describe: 'The testID of the component to tap',
           type: 'string',
           demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
         });
     },
     async (argv) => {
@@ -165,6 +208,13 @@ yargs(hideBin(process.argv))
           action: 'tap',
           testID: argv.testID,
         });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
       } catch (error) {
         handleRequestError(error);
       }

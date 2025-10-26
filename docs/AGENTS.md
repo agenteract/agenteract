@@ -207,6 +207,18 @@ https://github.com/agenteract/agenteract/blob/main/agenteract.config.js
 pnpm agenteract-agents hierarchy react-app
 ```
 
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Example with custom options:**
+```bash
+pnpm agenteract-agents hierarchy react-app --wait 1000 --log-count 20
+```
+
+**Automatic Log Capture:**
+After fetching the view hierarchy, this command automatically waits (default 500ms) and captures recent console logs. This provides a complete picture of the app's current state, including any console output that occurred during rendering. The logs are displayed after the hierarchy data under a "--- Console Logs ---" separator.
+
 Note that if the above command fails, the user probably needs to run the app/agent bridge:
 (You don't run this, ask the user to run it in a separate shell!)
 
@@ -233,6 +245,18 @@ To tap a button with `testID: "login-button"` in the project named `expo-app`:
 ```bash
 pnpm agenteract-agents tap expo-app login-button
 ```
+
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Example with custom options:**
+```bash
+pnpm agenteract-agents tap expo-app login-button --wait 1000 --log-count 20
+```
+
+**Automatic Log Capture:**
+After performing the tap action, this command automatically waits (default 500ms) to allow any resulting actions to complete, then captures recent console logs. This eliminates the need for a separate round trip to check what happened after the interaction. The logs are displayed after the action completes under a "--- Console Logs ---" separator.
 
 **Creating components:**
 
