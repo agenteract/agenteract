@@ -1,6 +1,6 @@
 # Verdaccio Authentication - Quick Guide
 
-**TL;DR:** Authentication works automatically with the `pnpm verdaccio:publish` script using `expect`.
+**TL;DR:** Authentication works automatically with the `pnpm verdaccio:publish` script using a TypeScript helper.
 
 ## How It Works
 
@@ -9,10 +9,12 @@
    - Uses htpasswd authentication
    - Stores users in `/verdaccio/storage/htpasswd`
 
-2. **Authentication Script** (`scripts/verdaccio-auth.sh`)
-   - Uses `expect` to automate `npm adduser`
+2. **Authentication Script** (`scripts/verdaccio-auth.ts`)
+   - TypeScript script that automates `npm adduser`
+   - Uses Node.js child_process to handle interactive prompts
    - Creates user: `test` / `test` / `test@test.com`
    - Non-interactive (no manual input needed)
+   - No external dependencies required (just Node.js)
 
 3. **Publish Script** (`scripts/publish-local.sh`)
    - Checks if already authenticated
@@ -22,12 +24,9 @@
 
 ## Prerequisites
 
-**macOS:** `expect` is pre-installed ✅
+**All platforms:** Just Node.js and npm (already required for the project) ✅
 
-**Linux:**
-```bash
-sudo apt-get install expect
-```
+No additional dependencies needed!
 
 ## Usage
 
@@ -47,29 +46,39 @@ pnpm verdaccio:stop
 
 ## The Solution
 
-After trying several approaches (HTTP API, npm-cli-adduser with args, etc.), the working solution is:
+After trying several approaches (HTTP API, npm-cli-adduser with args, expect, etc.), the working solution is:
 
-**Use `expect` to automate the interactive `npm adduser` command.**
+**Use a TypeScript script with Node.js child_process to automate the interactive `npm adduser` command.**
 
-```bash
-# scripts/verdaccio-auth.sh
-expect << EOF
-spawn npm adduser --registry http://localhost:4873
-expect "Username:"
-send "test\r"
-expect "Password:"
-send "test\r"
-expect "Email:"
-send "test@test.com\r"
-expect "Logged in"
-EOF
+```typescript
+// scripts/verdaccio-auth.ts
+import { spawn } from 'child_process';
+
+const npmProcess = spawn('npm', ['adduser', '--registry', VERDACCIO_URL], {
+  stdio: ['pipe', 'pipe', 'pipe'],
+});
+
+// Listen for prompts and respond automatically
+npmProcess.stdout?.on('data', (data: Buffer) => {
+  const text = data.toString();
+  if (text.includes('Username:')) {
+    npmProcess.stdin?.write(`${VERDACCIO_USER}\n`);
+  } else if (text.includes('Password:')) {
+    npmProcess.stdin?.write(`${VERDACCIO_PASS}\n`);
+  } else if (text.includes('Email:')) {
+    npmProcess.stdin?.write(`${VERDACCIO_EMAIL}\n`);
+  }
+});
 ```
 
 This works because:
 - ✅ Verdaccio's htpasswd plugin expects interactive authentication
-- ✅ `expect` handles the prompts automatically
+- ✅ Node.js child_process handles stdin/stdout piping
 - ✅ Simple and reliable
 - ✅ Works with default Verdaccio configuration
+- ✅ No external dependencies (just Node.js)
+- ✅ Cross-platform compatible
+- ✅ Faster CI runs (no need to install expect package)
 
 ## Troubleshooting
 
@@ -78,14 +87,6 @@ This works because:
 **Cause:** Verdaccio config has `max_users: -1`
 
 **Fix:** Change to `max_users: 1000` in `.verdaccio/config.yaml`
-
-### Error: "expect: command not found"
-
-**Cause:** `expect` not installed
-
-**Fix:** 
-- macOS: Already installed (should not happen)
-- Linux: `sudo apt-get install expect`
 
 ### Error: "ENEEDAUTH"
 
@@ -108,45 +109,41 @@ pnpm verdaccio:publish
 
 ## GitHub Actions
 
-In CI, authentication uses `expect` (same as local):
+In CI, authentication uses the TypeScript script (same as local):
 
 ```yaml
-- name: Install expect (for authentication)
-  run: sudo apt-get update && sudo apt-get install -y expect
-
 - name: Authenticate with Verdaccio
-  run: |
-    expect << 'EOF'
-    spawn npm adduser --registry http://localhost:4873
-    expect "Username:"
-    send "test\r"
-    expect "Password:"
-    send "test\r"
-    expect "Email:"
-    send "test@test.com\r"
-    expect "Logged in"
-    EOF
+  run: npx tsx scripts/verdaccio-auth.ts
+  env:
+    VERDACCIO_URL: http://localhost:4873
+    VERDACCIO_USER: test
+    VERDACCIO_PASS: test
+    VERDACCIO_EMAIL: test@test.com
 ```
 
-**Why install expect?**
-- Ubuntu runners don't have `expect` pre-installed by default
-- Ensures consistency between local and CI environments
-- Simple, reliable authentication method
+**Benefits for CI:**
+- ✅ No need to install external packages (like expect)
+- ✅ Faster CI runs (no apt-get update/install step)
+- ✅ Uses Node.js which is already available in CI
+- ✅ Ensures consistency between local and CI environments
+- ✅ Simple, reliable authentication method
 
 ## Key Files
 
 - `.verdaccio/config.yaml` - Verdaccio configuration
-- `scripts/verdaccio-auth.sh` - Authentication helper (uses expect)
+- `scripts/verdaccio-auth.ts` - TypeScript authentication helper (uses Node.js child_process)
+- `scripts/verdaccio-auth.sh` - Legacy bash authentication helper (deprecated, kept for reference)
 - `scripts/publish-local.sh` - Main publish script (calls auth helper)
 - `scripts/test-verdaccio-auth.sh` - Diagnostic tool
 
 ## What We Fixed
 
 1. ✅ **Error handling** - Scripts now fail with non-zero exit codes
-2. ✅ **Authentication** - Works automatically with `expect`
+2. ✅ **Authentication** - Migrated from `expect` to TypeScript for faster CI and no external dependencies
 3. ✅ **Config** - Changed `max_users: -1` to `max_users: 1000`
 4. ✅ **Graceful handling** - "Already exists" errors don't fail the script
 5. ✅ **Clear output** - Shows summary of what was published
+6. ✅ **CI Performance** - Removed apt-get install step, significantly faster CI runs
 
 ## Related Documentation
 

@@ -52,14 +52,10 @@ echo ""
 if [ "$ALREADY_AUTHENTICATED" = false ]; then
   echo "Test 4: Testing authentication capability..."
   
-  if command -v expect &> /dev/null; then
-    echo "✅ 'expect' is installed (required for automated auth)"
-    echo "   Run: pnpm verdaccio:publish to authenticate and publish"
-  else
-    echo "⚠️  'expect' is not installed"
-    echo "   Install: brew install expect (macOS) or sudo apt-get install expect (Linux)"
-    echo "   Or authenticate manually: npm adduser --registry $VERDACCIO_URL"
-  fi
+  echo "ℹ️  Automated authentication available via TypeScript script"
+  echo "   Run: npx tsx scripts/verdaccio-auth.ts"
+  echo "   Or run: pnpm verdaccio:publish to authenticate and publish"
+  echo "   Or authenticate manually: npm adduser --registry $VERDACCIO_URL"
   echo ""
 fi
 
