@@ -111,7 +111,9 @@ find node_modules -name "cli.js" | while read -r file; do
   cat $file | grep 'stringify'
 done
 
-cat node_modules/@agenteract/agents/dist/cli.js | grep 'stringify'
+# remove after @agenteract/agents@0.0.5 is published
+ls -l node_modules/@agenteract/agents/package.json
+cat node_modules/@agenteract/agents/package.json
 
 cat /tmp/hierarchy.txt
 

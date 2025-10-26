@@ -1,7 +1,7 @@
 {
   "name": "@agenteract/agents",
   "version": "0.0.4",
-  "description": "Copies agent instructions to the current project",
+  "description": "Agent tools for Agenteract",
   "type": "module",
   "main": "dist/cli.js",
   "files": [
@@ -24,7 +24,7 @@
     "documentation"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node build.js"
+    "build": "rm -rf dist; tsc -p tsconfig.json && node build.js"
   },
   "bin": {
     "agenteract-agents": "dist/cli.js"
