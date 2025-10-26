@@ -210,11 +210,29 @@ pnpm agenteract-agents hierarchy react-app
 **Optional Parameters:**
 - `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+- `--filter-key` or `-k`: Filter hierarchy by property name (e.g., testID, type)
+- `--filter-value` or `-v`: Filter hierarchy by property value (used with filter-key)
 
 **Example with custom options:**
 ```bash
 pnpm agenteract-agents hierarchy react-app --wait 1000 --log-count 20
 ```
+
+**Filtering the Hierarchy:**
+You can filter the hierarchy to focus on specific components by providing a key-value pair. When a match is found, the command returns that node and all its children. This is useful for reducing the output size and focusing on specific parts of the UI.
+
+```bash
+# Filter by testID
+pnpm agenteract-agents hierarchy react-app --filter-key testID --filter-value login-form
+
+# Filter by component type
+pnpm agenteract-agents hierarchy react-app -k type -v Button
+
+# Combine filtering with custom log options
+pnpm agenteract-agents hierarchy react-app -k testID -v settings-panel -w 1000 -l 15
+```
+
+If multiple nodes match the filter, all matches and their children are returned. The filtering is performed client-side after fetching the full hierarchy.
 
 **Automatic Log Capture:**
 After fetching the view hierarchy, this command automatically waits (default 500ms) and captures recent console logs. This provides a complete picture of the app's current state, including any console output that occurred during rendering. The logs are displayed after the hierarchy data under a "--- Console Logs ---" separator.

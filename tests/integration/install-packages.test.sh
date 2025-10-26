@@ -104,7 +104,18 @@ echo "✓ agents: dev-logs vite command works"
 npx @agenteract/agents cmd expo r || { echo "❌ agents: cmd expo command failed"; exit 1; }
 echo "✓ agents: cmd expo command works"
 
-npx @agenteract/agents hierarchy my-project | grep '"hierarchy":"mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
+npx @agenteract/agents hierarchy my-project > /tmp/hierarchy.txt
+
+find node_modules -name "cli.js" | while read -r file; do
+  echo "Checking $file"
+  cat $file | grep 'stringify'
+done
+
+cat node_modules/@agenteract/agents/dist/cli.js | grep 'stringify'
+
+cat /tmp/hierarchy.txt
+
+cat /tmp/hierarchy.txt | grep '"hierarchy":"mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
 echo "✓ agents: hierarchy command works"
 
 npx @agenteract/agents tap my-project my-button || { echo "❌ agents: tap command failed"; exit 1; }
