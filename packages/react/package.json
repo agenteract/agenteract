@@ -2,8 +2,9 @@
   "name": "@agenteract/react",
   "version": "0.0.2",
   "description": "React and React Native bridge utilities for Agenteract",
-  "main": "./dist/react/src/index.js",
-  "types": "./dist/react/src/index.d.ts",
+  "main": "./dist/cjs/react/src/index.js",
+  "module": "./dist/esm/react/src/index.js",
+  "types": "./dist/cjs/react/src/index.d.ts",
   "files": [
     "dist"
   ],
@@ -25,14 +26,17 @@
     "coding-agent"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:cjs && npm run build:esm && npm run build:post",
+    "build:cjs": "tsc -p tsconfig.cjs.json",
+    "build:esm": "tsc -p tsconfig.esm.json",
+    "build:post": "echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
     "test": "jest --config jest.config.cjs"
   },
   "exports": {
     ".": {
-      "import": "./dist/react/src/index.js",
-      "require": "./dist/react/src/index.js",
-      "types": "./dist/react/src/index.d.ts"
+      "import": "./dist/esm/react/src/index.js",
+      "require": "./dist/cjs/react/src/index.js",
+      "types": "./dist/cjs/react/src/index.d.ts"
     }
   },
   "peerDependencies": {
