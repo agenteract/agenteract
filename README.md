@@ -112,7 +112,11 @@ Now you can reference the file for your agent in a message, or restart the CLI f
 
 ## **3. Configuration**
 
-Create an `agenteract.config.js` file in the root of your project. This file defines which applications Agenteract will manage.
+The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
+
+```bash
+npx @agenteract/cli add-config <path> <projectName> <type>
+```
 
 Here is an example configuration for a monorepo containing an Expo and a Vite project:
 
@@ -152,12 +156,6 @@ export default {
     }
   ],
 };
-```
-
-It's also possible to build configuration from the command line, run the following for more info:
-
-```bash
-npx @agenteract/cli add-config 
 ```
 
 ### Configuration Options
