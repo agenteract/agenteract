@@ -44,11 +44,11 @@ describe('Agent Actions', () => {
   });
 
   describe('simulateScroll', () => {
-    it('should call scrollTo for a found node', () => {
-      const mockScrollTo = jest.fn();
-      (getNode as jest.Mock).mockReturnValue({ ref: { current: { scrollTo: mockScrollTo } } });
+    it('should call scrollBy for a found node', () => {
+      const mockScrollBy = jest.fn();
+      (getNode as jest.Mock).mockReturnValue({ ref: { current: { scrollBy: mockScrollBy } } });
       simulateScroll('test-id', 'down', 100);
-      expect(mockScrollTo).toHaveBeenCalledWith({ y: 100, x: 0, animated: true });
+      expect(mockScrollBy).toHaveBeenCalledWith({ left: 0, top: 100, behavior: 'smooth' });
     });
 
     it('should not throw for a node without scrollTo', () => {
