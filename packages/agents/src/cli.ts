@@ -281,6 +281,227 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
+    'input <project> <testID> <value>',
+    'Input text into a component in a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('testID', {
+          describe: 'The testID of the input component',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('value', {
+          describe: 'The text value to input',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        });
+    },
+    async (argv) => {
+      try {
+        await axios.post(`${agentServerUrl}/gemini-agent`, {
+          project: argv.project,
+          action: 'input',
+          testID: argv.testID,
+          value: argv.value,
+        });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'scroll <project> <testID> <direction> [amount]',
+    'Scroll a component in a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('testID', {
+          describe: 'The testID of the scrollable component',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('direction', {
+          describe: 'Scroll direction',
+          type: 'string',
+          choices: ['up', 'down', 'left', 'right'],
+          demandOption: true,
+        })
+        .positional('amount', {
+          describe: 'Amount to scroll in pixels',
+          type: 'number',
+          default: 100,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        });
+    },
+    async (argv) => {
+      try {
+        await axios.post(`${agentServerUrl}/gemini-agent`, {
+          project: argv.project,
+          action: 'scroll',
+          testID: argv.testID,
+          direction: argv.direction,
+          amount: argv.amount,
+        });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'swipe <project> <testID> <direction> [velocity]',
+    'Swipe gesture on a component in a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('testID', {
+          describe: 'The testID of the component to swipe on',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('direction', {
+          describe: 'Swipe direction',
+          type: 'string',
+          choices: ['up', 'down', 'left', 'right'],
+          demandOption: true,
+        })
+        .positional('velocity', {
+          describe: 'Swipe velocity',
+          type: 'string',
+          choices: ['slow', 'medium', 'fast'],
+          default: 'medium',
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        });
+    },
+    async (argv) => {
+      try {
+        await axios.post(`${agentServerUrl}/gemini-agent`, {
+          project: argv.project,
+          action: 'swipe',
+          testID: argv.testID,
+          direction: argv.direction,
+          velocity: argv.velocity,
+        });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'longPress <project> <testID>',
+    'Long press a component in a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('testID', {
+          describe: 'The testID of the component to long press',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+          default: 500,
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        });
+    },
+    async (argv) => {
+      try {
+        await axios.post(`${agentServerUrl}/gemini-agent`, {
+          project: argv.project,
+          action: 'longPress',
+          testID: argv.testID,
+        });
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
     'md [dest]',
     'Generate agent instructions',
     (yargs) => {

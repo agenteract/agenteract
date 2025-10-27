@@ -60,19 +60,61 @@ export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | '
     console.log('Node not found with ID:', id);
     return false;
   }
-  if (!node.ref?.current?.scrollTo) {
-    console.log('Node cannot be scrolled with ID:', id);
+
+  const element = node.ref?.current;
+  if (!element) {
+    console.log('Node has no ref with ID:', id);
     return false;
   }
 
-  const scrollOptions = {
-    y: direction === 'down' ? amount : direction === 'up' ? -amount : 0,
-    x: direction === 'right' ? amount : direction === 'left' ? -amount : 0,
-    animated: true,
-  };
+  const platform = getPlatform();
 
-  node.ref.current.scrollTo(scrollOptions);
-  return true;
+  // Calculate relative scroll offset
+  const deltaX = direction === 'right' ? amount : direction === 'left' ? -amount : 0;
+  const deltaY = direction === 'down' ? amount : direction === 'up' ? -amount : 0;
+
+  if (platform === 'web') {
+    // For web, use scrollBy for relative scrolling
+    if (typeof element.scrollBy === 'function') {
+      element.scrollBy({
+        left: deltaX,
+        top: deltaY,
+        behavior: 'smooth',
+      });
+      return true;
+    } else {
+      console.log('Element does not support scrollBy with ID:', id);
+      return false;
+    }
+  } else {
+    // For React Native, we need to track position and use scrollTo with calculated absolute position
+    if (typeof element.scrollTo !== 'function') {
+      console.log('Element does not support scrollTo with ID:', id);
+      return false;
+    }
+
+    // Initialize scroll position if not tracked
+    if (!node.scrollPosition) {
+      node.scrollPosition = { x: 0, y: 0 };
+    }
+
+    // Calculate new absolute position
+    const newX = Math.max(0, node.scrollPosition.x + deltaX);
+    const newY = Math.max(0, node.scrollPosition.y + deltaY);
+
+    // Update tracked position
+    node.scrollPosition.x = newX;
+    node.scrollPosition.y = newY;
+
+    // Scroll to new position
+    element.scrollTo({
+      x: newX,
+      y: newY,
+      animated: true,
+    });
+
+    return true;
+  }
 }
 
 export function simulateLongPress(id: string) {
@@ -90,6 +132,141 @@ export function simulateLongPress(id: string) {
     return true;
   }
   return false;
+}
+
+export function simulateSwipe(
+  id: string,
+  direction: 'up' | 'down' | 'left' | 'right',
+  velocity: 'slow' | 'medium' | 'fast' = 'medium'
+) {
+  const node = getNode(id);
+  if (!node) {
+    console.log('Node not found with ID:', id);
+    return false;
+  }
+
+  // First check if there's an explicit onSwipe handler registered
+  if (node.onSwipe) {
+    node.onSwipe(direction, velocity);
+    return true;
+  }
+
+  // Otherwise fall back to dispatching events
+  const element = node.ref?.current;
+  if (!element) {
+    console.log('Node has no ref with ID:', id);
+    return false;
+  }
+
+  const platform = getPlatform();
+
+  // Velocity presets in pixels
+  const velocityMap = { slow: 300, medium: 600, fast: 1200 };
+  const distance = velocityMap[velocity];
+
+  if (platform === 'web') {
+    // For web, we'll dispatch touch events to simulate a swipe gesture
+    const rect = element.getBoundingClientRect?.();
+    if (!rect) {
+      console.log('Cannot get element bounds for swipe with ID:', id);
+      return false;
+    }
+
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+
+    let endX = startX;
+    let endY = startY;
+
+    switch (direction) {
+      case 'up':
+        endY = startY - distance;
+        break;
+      case 'down':
+        endY = startY + distance;
+        break;
+      case 'left':
+        endX = startX - distance;
+        break;
+      case 'right':
+        endX = startX + distance;
+        break;
+    }
+
+    // Dispatch touch events
+    const touchStart = new TouchEvent('touchstart', {
+      touches: [{
+        clientX: startX,
+        clientY: startY,
+        identifier: 0,
+        target: element,
+      } as Touch],
+      bubbles: true,
+      cancelable: true,
+    });
+
+    const touchMove = new TouchEvent('touchmove', {
+      touches: [{
+        clientX: endX,
+        clientY: endY,
+        identifier: 0,
+        target: element,
+      } as Touch],
+      bubbles: true,
+      cancelable: true,
+    });
+
+    const touchEnd = new TouchEvent('touchend', {
+      changedTouches: [{
+        clientX: endX,
+        clientY: endY,
+        identifier: 0,
+        target: element,
+      } as Touch],
+      bubbles: true,
+      cancelable: true,
+    });
+
+    element.dispatchEvent(touchStart);
+    // Small delay to simulate gesture
+    setTimeout(() => {
+      element.dispatchEvent(touchMove);
+      setTimeout(() => {
+        element.dispatchEvent(touchEnd);
+      }, 50);
+    }, 50);
+
+    return true;
+  } else {
+    // For React Native without explicit handler, try ScrollView horizontal swipe
+    if (element.scrollTo && typeof element.scrollTo === 'function') {
+      // If it's a scrollable element, use scroll for swipe
+      const scrollAmount = distance;
+      const deltaX = direction === 'right' ? -scrollAmount : direction === 'left' ? scrollAmount : 0;
+      const deltaY = direction === 'down' ? -scrollAmount : direction === 'up' ? scrollAmount : 0;
+
+      if (!node.scrollPosition) {
+        node.scrollPosition = { x: 0, y: 0 };
+      }
+
+      const newX = Math.max(0, node.scrollPosition.x + deltaX);
+      const newY = Math.max(0, node.scrollPosition.y + deltaY);
+
+      node.scrollPosition.x = newX;
+      node.scrollPosition.y = newY;
+
+      element.scrollTo({
+        x: newX,
+        y: newY,
+        animated: true,
+      });
+
+      return true;
+    }
+
+    console.log('No swipe handler or scrollable element found with ID:', id);
+    return false;
+  }
 }
 
 
@@ -115,6 +292,9 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
       break;
     case "longPress":
       success = simulateLongPress(cmd.testID);
+      break;
+    case "swipe":
+      success = simulateSwipe(cmd.testID, cmd.direction, cmd.velocity);
       break;
     default:
       socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}`, id: cmd.id }));
