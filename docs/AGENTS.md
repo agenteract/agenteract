@@ -276,6 +276,106 @@ pnpm agenteract-agents tap expo-app login-button --wait 1000 --log-count 20
 **Automatic Log Capture:**
 After performing the tap action, this command automatically waits (default 500ms) to allow any resulting actions to complete, then captures recent console logs. This eliminates the need for a separate round trip to check what happened after the interaction. The logs are displayed after the action completes under a "--- Console Logs ---" separator.
 
+#### `input`
+Simulates text input into a text field or input component.
+
+**Command Example:**
+To input text into a field with `testID: "username-input"` in the project named `expo-app`:
+```bash
+pnpm agenteract-agents input expo-app username-input "john@example.com"
+```
+
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Note:** The component must have an `onChange` (web) or `onChangeText` (React Native) handler registered via `createAgentBinding`.
+
+#### `scroll`
+Scrolls a scrollable component (like ScrollView, FlatList, or a scrollable div) in a specific direction by a given amount. **Scrolling is relative** - each scroll command moves the view by the specified amount from its current position.
+
+**Command Example:**
+To scroll down 200 pixels on a list with `testID: "main-list"` in the project named `expo-app`:
+```bash
+pnpm agenteract-agents scroll expo-app main-list down 200
+```
+
+To scroll with default amount (100 pixels):
+```bash
+pnpm agenteract-agents scroll expo-app main-list up
+```
+
+**Parameters:**
+- `direction`: One of `up`, `down`, `left`, or `right`
+- `amount`: Number of pixels to scroll (optional, default: 100)
+
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Implementation Notes:**
+- **Web**: Uses native `scrollBy()` for smooth relative scrolling
+- **React Native**: Automatically tracks scroll position via `onScroll` events. The `createAgentBinding` function automatically adds scroll tracking to any scrollable component, even if you don't provide your own `onScroll` handler. If you do provide an `onScroll` handler, it will be wrapped to track position and then call your handler.
+
+#### `swipe`
+Simulates a swipe gesture on a component, useful for gesture-based navigation like swiping between screens or dismissing items.
+
+**Command Example:**
+To swipe left with medium velocity on a card with `testID: "swipeable-card"` in the project named `expo-app`:
+```bash
+pnpm agenteract-agents swipe expo-app swipeable-card left
+```
+
+To swipe with fast velocity:
+```bash
+pnpm agenteract-agents swipe expo-app swipeable-card left fast
+```
+
+**Parameters:**
+- `direction`: One of `up`, `down`, `left`, or `right`
+- `velocity`: One of `slow`, `medium`, or `fast` (optional, default: "medium")
+
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Implementation:**
+To support swipe gestures, register an `onSwipe` handler via `createAgentBinding`:
+
+```tsx
+<View
+  {...createAgentBinding({
+    testID: 'swipeable-card',
+    onSwipe: (direction, velocity) => {
+      console.log('Swiped:', direction, 'with velocity:', velocity);
+      // Handle swipe - dismiss card, navigate, etc.
+    },
+  })}
+>
+  <Text>Swipe me!</Text>
+</View>
+```
+
+**Fallback behavior:**
+- For **ScrollView** components without an explicit `onSwipe` handler, the swipe command will fall back to programmatic scrolling
+- For **web**, touch events are dispatched to trigger any existing gesture handlers
+- For other React Native components without handlers, an error will be logged
+
+#### `longPress`
+Simulates a long press (press and hold) on a component, typically used for contextual menus or special actions.
+
+**Command Example:**
+To long press on an item with `testID: "list-item-1"` in the project named `expo-app`:
+```bash
+pnpm agenteract-agents longPress expo-app list-item-1
+```
+
+**Optional Parameters:**
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--log-count` or `-l`: Number of log entries to fetch (default: 10)
+
+**Note:** The component must have an `onContextMenu` (web) or `onLongPress` (React Native) handler registered via `createAgentBinding`.
+
 **Creating components:**
 
 For you to be able to interact with a component, two things are required

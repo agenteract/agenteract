@@ -5,6 +5,8 @@ export interface AgentNode {
   onPress?: (...args: any[]) => void;
   onLongPress?: (...args: any[]) => void;
   onChangeText?: (text: string) => void;
+  onSwipe?: (direction: 'up' | 'down' | 'left' | 'right', velocity: 'slow' | 'medium' | 'fast') => void;
+  scrollPosition?: { x: number; y: number };
 }
 
 export const agentRegistry: Record<string, AgentNode> = {};
