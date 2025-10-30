@@ -30,6 +30,12 @@ export default {
       name: 'swift-app',
       path: './examples/swift-app',
       type: 'native'
+    },
+    {
+      name: 'flutter-app',
+      path: './examples/flutter_example',
+      type: 'flutter',
+      ptyPort: 8792,
     }
   ],
 };

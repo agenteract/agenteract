@@ -227,6 +227,22 @@ importers:
         specifier: ^17.0.32
         version: 17.0.33
 
+  packages/flutter-cli:
+    dependencies:
+      '@agenteract/core':
+        specifier: workspace:*
+        version: link:../core
+      '@agenteract/pty':
+        specifier: workspace:*
+        version: link:../pty
+      yargs:
+        specifier: ^17.7.2
+        version: 17.7.2
+    devDependencies:
+      '@types/yargs':
+        specifier: ^17.0.32
+        version: 17.0.33
+
   packages/gemini: {}
 
   packages/pty:

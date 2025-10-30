@@ -90,6 +90,61 @@ import Agenteract
 )
 ```
 
+Flutter:
+
+* AgentDebugBridge example:
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/flutter_example/lib/main.dart
+
+* Packages:
+`agenteract` (Git or local path - not yet on pub.dev)
+
+Installation:
+```yaml
+dependencies:
+  agenteract:
+    git:
+      url: https://github.com/agenteract/agenteract.git
+      path: packages/flutter
+```
+
+The following can be installed either in the app, or at the monorepo root if applicable.
+
+`@agenteract/cli`
+
+`@agenteract/server`
+
+`@agenteract/agents`
+
+Usage:
+
+```dart
+import 'package:agenteract/agenteract.dart';
+import 'package:flutter/foundation.dart';
+// ...
+if (kDebugMode) {
+  return AgentDebugBridge(
+    projectName: 'myFlutterApp',
+    child: MyApp(),
+  );
+}
+```
+
+Making widgets interactive:
+
+```dart
+// Use the .withAgent() extension on any widget
+ElevatedButton(
+  onPressed: () => print('clicked'),
+  child: Text('Click me'),
+).withAgent('submit-button', onTap: () => print('clicked'))
+
+// Text input
+TextField(
+  onChanged: (text) => print(text),
+).withAgent('username-input', onChangeText: (text) => print(text))
+```
+
 ## Dev Server Setup
 
 Agenteract offers a multiplexed terminal application that serves two purposes:
@@ -117,7 +172,12 @@ Project Name as supplied to `AgentDebugBridge`
 
 `Type`:
 
-`expo`|`vite`|`native`
+`expo`|`vite`|`flutter`|`native`
+
+- `expo` - Expo React Native apps
+- `vite` - Vite-based React/Vue apps
+- `flutter` - Flutter apps (hybrid: PTY + WebSocket logs)
+- `native` - Pure native apps like Swift (WebSocket logs only)
 
 
 ### *Step 2: Start Dev Server and apps*
@@ -132,9 +192,24 @@ At this point the agent should also have access to dev server logs.
 
 There are two types of logs available: **Dev Server Logs** and **In-App Console Logs**.
 
+### Logging Architecture by Platform
+
+**Expo/Vite (Web/React Native):**
+- Dev server logs: Captured via PTY from `expo start` / `vite`
+- Runtime logs: Captured via console interception in JavaScript
+
+**Flutter (Hybrid):**
+- Dev server logs: Captured via PTY from `flutter run` (build errors, device connection, hot reload status)
+- Runtime logs: Captured via WebSocket from `debugPrint` calls in the app
+- **Both sources are needed**: PTY logs show build/device issues, WebSocket logs show app runtime behavior
+
+**Swift (Native):**
+- No dev server (Xcode handles building/running)
+- Runtime logs: Sent via WebSocket using `AgentLogger.log()`
+
 ### 1. Dev Server Logs
 
-These logs come from the development server process (like Vite or Expo Metro). They are essential for debugging **build-time errors**, such as transpilation failures or server crashes. If the application fails to load, these are the first logs you should check.
+These logs come from the development server process (like Vite, Expo Metro, or Flutter). They are essential for debugging **build-time errors**, such as transpilation failures, device connection issues, or server crashes. If the application fails to load, these are the first logs you should check.
 
 **Expo Command**
 ```bash
@@ -146,14 +221,34 @@ pnpm agenteract-agents dev-logs expo --since 20
 pnpm agenteract-agents dev-logs vite --since 20
 ```
 
+**Flutter Command**
+```bash
+pnpm agenteract-agents dev-logs flutter --since 20
+```
+
+Note: Flutter dev logs show `flutter run` output including:
+- Build progress and errors
+- Device connection status
+- Hot reload/restart confirmations
+- Framework messages
+
 ### 2. In-App Console Logs
 
-These logs are captured from the running application's `console.log`, `console.warn`, and `console.error` calls. Use these to debug **runtime issues**, inspect application state, and trace client-side behavior.
+These logs are captured from the running application's console/print calls. Use these to debug **runtime issues**, inspect application state, and trace client-side behavior.
+
+**How logs are captured by platform:**
+- **React/Expo/Vite**: Automatic interception of `console.log/warn/error` by AgentDebugBridge
+- **Flutter**: Automatic capture of `debugPrint` calls via ConsoleLogger (sent over WebSocket)
+- **Swift**: Manual logging via `AgentLogger.log()` from the Agenteract Swift package
 
 **Command**
 ```bash
 pnpm agenteract-agents logs <project-name> --since 20
 ```
+
+**Important for Flutter**: Use both `dev-logs flutter` and `logs flutter-app` together:
+- `dev-logs` shows build and device issues from `flutter run`
+- `logs` shows runtime app behavior from your `debugPrint` statements
 
 `since` identifies how many log lines you want to tail.
 
@@ -182,6 +277,18 @@ pnpm agenteract-agents cmd expo r
 **Command**
 ```bash
 pnpm agenteract-agents cmd vite r
+```
+
+**Flutter Commands**
+
+`r`: hot reload the app
+`R`: hot restart the app
+`q`: quit
+`h`: show help
+
+**Command**
+```bash
+pnpm agenteract-agents cmd flutter r
 ```
 
 If commands don't work, instruct the user to start the CLI wrapper:

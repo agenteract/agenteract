@@ -62,11 +62,13 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | `@agenteract/react` | React / React Native bindings (`useAgentBinding`, registry hooks) |
 | `@agenteract/expo` | Expo bridge utilities and CLI |
 | `@agenteract/vite` | Vite bridge utilities and CLI |
+| `@agenteract/flutter-cli` | Flutter bridge utilities and CLI |
 | `@agenteract/cli` | Unified command-line interface for Agenteract |
 | `@agenteract/server` | Agent command server and runtime bridge |
 | `@agenteract/agents` | Agent instructions installer (creates AGENTS.md) |
 | `@agenteract/dom` | DOM utilities for web applications |
-| [agenteract-swift](https://github.com/agenteract/agenteract-swift) | iOS / Swift Package
+| [agenteract-swift](https://github.com/agenteract/agenteract-swift) | iOS / Swift Bindings / Package
+| [flutter](./packages/flutter/) | Flutter Bindings Package
 
 ## **🚀 Getting Started (Preview)**
 
@@ -110,6 +112,8 @@ cp AGENTS.md GEMINI.md
 
 Now you can reference the file for your agent in a message, or restart the CLI for it to take effect.
 
+At this point you can ask your agent to start setting up Agenteract.
+
 ## **3. Configuration**
 
 The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
@@ -150,6 +154,12 @@ export default {
       ptyPort: 8791,
     },
     {
+      name: 'flutter-app',
+      path: './examples/flutter_example',
+      type: 'flutter',
+      ptyPort: 8792,
+    },
+    {
       name: 'swift-app',
       path: './examples/swift-app',
       type: 'native'
@@ -164,7 +174,7 @@ export default {
 -   `projects`: An array of project objects.
     -   `name`: A unique name for your app.
     -   `path`: The relative path to your app's root directory.
-    -   `type`: The project type. Supported types are `expo`, `vite`, and `native`.
+    -   `type`: The project type. Supported types are `expo`, `vite`, `flutter` and `native`.
     -   `ptyPort`: A unique port for the PTY (pseudo-terminal) bridge that allows Agenteract to interact with your app's dev server.
 
 ## **4. Instrumenting Your Application**
@@ -208,6 +218,61 @@ function App() {
 }
 
 export default App;
+```
+
+**For Flutter `lib/main.dart`**:
+
+* AgentDebugBridge example:
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/flutter_example/lib/main.dart
+
+* Packages:
+`agenteract` (Git or local path - not yet on pub.dev)
+
+Installation:
+```yaml
+dependencies:
+  agenteract:
+    git:
+      url: https://github.com/agenteract/agenteract.git
+      path: packages/flutter
+```
+
+The following can be installed either in the app, or at the monorepo root if applicable.
+
+`@agenteract/cli`
+
+`@agenteract/server`
+
+`@agenteract/agents`
+
+Usage:
+
+```dart
+import 'package:agenteract/agenteract.dart';
+import 'package:flutter/foundation.dart';
+// ...
+if (kDebugMode) {
+  return AgentDebugBridge(
+    projectName: 'myFlutterApp',
+    child: MyApp(),
+  );
+}
+```
+
+Making widgets interactive:
+
+```dart
+// Use the .withAgent() extension on any widget
+ElevatedButton(
+  onPressed: () => print('clicked'),
+  child: Text('Click me'),
+).withAgent('submit-button', onTap: () => print('clicked'))
+
+// Text input
+TextField(
+  onChanged: (text) => print(text),
+).withAgent('username-input', onChangeText: (text) => print(text))
 ```
 
 **For Swift UI**
@@ -278,6 +343,12 @@ pnpm link --global
 cd packages/agents
 pnpm link --global
 cd packages/cli
+pnpm link --global
+cd packages/expo
+pnpm link --global
+cd packages/vite
+pnpm link --global
+cd packages/flutter-cli
 pnpm link --global
 
 ```
@@ -429,7 +500,7 @@ See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release 
 
 This project uses dual licensing:
 
-- **MIT License**: Most packages (`@agenteract/react`, `@agenteract/expo`, `@agenteract/vite`, `@agenteract/cli`, `@agenteract/server`, `@agenteract/dom`, `@agenteract/gemini`)
+- **MIT License**: Most packages (`@agenteract/react`, `@agenteract/expo`, `@agenteract/vite`, `@agenteract/flutter-cli`, `@agenteract/flutter`, `@agenteract/cli`, `@agenteract/server`, `@agenteract/dom`, `@agenteract/gemini`)
 - **Apache-2.0 License**: Core infrastructure packages (`@agenteract/core`, `@agenteract/agents`, `@agenteract/pty`)
 
 Copyright © 2025 Agenteract Project.
