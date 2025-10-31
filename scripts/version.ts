@@ -300,7 +300,11 @@ if (isPrerelease) {
 }
 console.log();
 
-// Calculate root package version (highest version)
+// Calculate root package version
+const rootPackageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
+const currentRootVersion = rootPackageJson.version;
+
+// Get all package versions after updates
 const allCurrentVersions = readdirSync(packagesDir, { withFileTypes: true })
   .filter((dirent) => dirent.isDirectory())
   .map((dirent) => {
@@ -313,7 +317,7 @@ const allCurrentVersions = readdirSync(packagesDir, { withFileTypes: true })
   })
   .filter((v): v is string => v !== null);
 
-// Find highest version (strip prerelease for comparison)
+// Find highest package version (strip prerelease for comparison)
 const stripPrerelease = (v: string) => v.split('-')[0];
 const sortedVersions = allCurrentVersions
   .map(v => ({ original: v, base: stripPrerelease(v) }))
@@ -326,16 +330,40 @@ const sortedVersions = allCurrentVersions
     return bPatch - aPatch;
   });
 
-const highestVersion = isPrerelease
+const highestPackageVersion = isPrerelease
   ? sortedVersions[0].original
   : sortedVersions[0].base;
 
-const rootPackageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
-const currentRootVersion = rootPackageJson.version;
+// Calculate new root version:
+// - The root must be >= highest package version
+// - The root must ALWAYS be bumped when packages are updated (to create a new tag)
+let newRootVersion: string;
+
+const currentRootBase = stripPrerelease(currentRootVersion);
+const highestPkgBase = stripPrerelease(highestPackageVersion);
+
+// Compare versions to see if highest package is greater than current root
+const compareVersions = (v1: string, v2: string): number => {
+  const [v1Major, v1Minor, v1Patch] = v1.split('.').map(Number);
+  const [v2Major, v2Minor, v2Patch] = v2.split('.').map(Number);
+
+  if (v1Major !== v2Major) return v1Major - v2Major;
+  if (v1Minor !== v2Minor) return v1Minor - v2Minor;
+  return v1Patch - v2Patch;
+};
+
+if (compareVersions(highestPkgBase, currentRootBase) > 0) {
+  // Highest package version is greater than current root, use it
+  newRootVersion = highestPackageVersion;
+} else {
+  // Highest package is <= current root, so bump the root by the same increment
+  newRootVersion = bumpVersion(currentRootVersion, versionType, prereleaseId);
+}
 
 log('🔍 Root package version:', 'blue');
 console.log(`  Current: ${currentRootVersion}`);
-console.log(`  New:     ${highestVersion}`);
+console.log(`  Highest package: ${highestPackageVersion}`);
+console.log(`  New:     ${newRootVersion}`);
 console.log();
 
 // Confirmation
@@ -386,9 +414,9 @@ log('─────────────────────────
   // Update root package.json
   console.log();
   log('🔄 Updating root package.json...', 'blue');
-  rootPackageJson.version = highestVersion;
+  rootPackageJson.version = newRootVersion;
   writeFileSync('package.json', JSON.stringify(rootPackageJson, null, 2) + '\n');
-  log(`  ✓ Root version set to ${highestVersion}`, 'green');
+  log(`  ✓ Root version set to ${newRootVersion}`, 'green');
 
   // Commit changes
   console.log();
@@ -401,17 +429,17 @@ log('─────────────────────────
     if (packages.length === 1) {
       commitMsg = `chore: prerelease ${packages[0].name} v${packages[0].newVersion}`;
     } else if (packages.length === allPackages.length) {
-      commitMsg = `chore: prerelease v${highestVersion}`;
+      commitMsg = `chore: prerelease v${newRootVersion}`;
     } else {
-      commitMsg = `chore: prerelease ${packages.length} packages v${highestVersion}`;
+      commitMsg = `chore: prerelease ${packages.length} packages v${newRootVersion}`;
     }
   } else {
     if (packages.length === 1) {
       commitMsg = `chore: bump ${packages[0].name} to v${packages[0].newVersion}`;
     } else if (packages.length === allPackages.length) {
-      commitMsg = `chore: release v${highestVersion}`;
+      commitMsg = `chore: release v${newRootVersion}`;
     } else {
-      commitMsg = `chore: bump ${packages.length} packages to v${highestVersion}`;
+      commitMsg = `chore: bump ${packages.length} packages to v${newRootVersion}`;
     }
   }
 
@@ -428,7 +456,7 @@ log('─────────────────────────
     tagPrefix = 'flutter-v';
   }
 
-  const tagName = `${tagPrefix}${highestVersion}`;
+  const tagName = `${tagPrefix}${newRootVersion}`;
   log(`🏷️  Creating git tag: ${tagName}`, 'blue');
 
   try {
@@ -442,7 +470,7 @@ log('─────────────────────────
   log('✅ Version bump complete!', 'green');
   log('──────────────────────────────────────', 'green');
   console.log();
-  console.log(`Root version: ${currentRootVersion} → ${highestVersion}`);
+  console.log(`Root version: ${currentRootVersion} → ${newRootVersion}`);
   console.log();
   console.log('Updated packages:');
   packages.forEach((pkg) => {
@@ -457,7 +485,7 @@ log('─────────────────────────
     console.log();
     log('Installation:', 'blue');
     console.log('  npm install @agenteract/core@next');
-    console.log(`  npm install @agenteract/core@${highestVersion}`);
+    console.log(`  npm install @agenteract/core@${newRootVersion}`);
   } else {
     console.log('  3. GitHub Actions will publish only updated packages to NPM');
   }
