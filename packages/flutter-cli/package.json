@@ -1,0 +1,44 @@
+{
+  "name": "@agenteract/flutter-cli",
+  "version": "0.0.1",
+  "description": "Flutter dev server bridge for Agenteract",
+  "type": "module",
+  "main": "dist/cli.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agenteract/agenteract.git",
+    "directory": "packages/flutter-cli"
+  },
+  "homepage": "https://github.com/agenteract/agenteract#readme",
+  "bugs": {
+    "url": "https://github.com/agenteract/agenteract/issues"
+  },
+  "keywords": [
+    "agenteract",
+    "agent",
+    "flutter",
+    "dart",
+    "bridge",
+    "coding-agent"
+  ],
+  "scripts": {
+    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsc -p tsconfig.json"
+  },
+  "bin": {
+    "agenterflutter": "dist/cli.js"
+  },
+  "dependencies": {
+    "@agenteract/core": "workspace:*",
+    "@agenteract/pty": "workspace:*",
+    "yargs": "^17.7.2"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/yargs": "^17.0.32"
+  }
+}

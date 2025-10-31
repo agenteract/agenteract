@@ -19,6 +19,7 @@ const isAgenteractPackage = nearestPackageJson?.name?.startsWith('@agenteract/')
 const typeToCommandMap: { [key: string]: string } = {
   expo: isAgenteractPackage ? 'agenterexpo' : '@agenteract/expo',
   vite: isAgenteractPackage ? 'agentervite' : '@agenteract/vite',
+  flutter: isAgenteractPackage ? 'agenterflutter' : '@agenteract/flutter-cli',
 };
 
 interface Terminal {
@@ -86,12 +87,30 @@ export async function runDevCommand(args: { config: string }) {
     });
   }
 
-  commands.push(...config.projects.map((project: any) => ({
-    command: project.type === 'native' ? '' : `${spawnBin} ${typeToCommandMap[project.type]} --port ${project.ptyPort}`,
-    name: project.name,
-    cwd: path.resolve(rootDir, project.path),
-    type: project.type,
-  })));
+  commands.push(...config.projects.map((project: any) => {
+    const projectPath = path.resolve(rootDir, project.path);
+    let command = '';
+
+    if (project.type !== 'native') {
+      const baseCommand = `${spawnBin} ${typeToCommandMap[project.type]} --port ${project.ptyPort}`;
+
+      // Flutter needs explicit --cwd because process.cwd() isn't reliable when spawned via shell
+      if (project.type === 'flutter') {
+        command = `${baseCommand} --cwd "${projectPath}"`;
+      } else {
+        command = baseCommand;
+      }
+    }
+
+    return {
+      command,
+      name: project.name,
+      cwd: projectPath,
+      type: project.type,
+      // Flutter is hybrid: has PTY but also uses WebSocket logs
+      isHybrid: project.type === 'flutter',
+    };
+  }));
 
   const terminals: Terminal[] = [];
   let activeIndex = 0;
@@ -101,6 +120,7 @@ export async function runDevCommand(args: { config: string }) {
   commands.forEach((cmdInfo, index) => {
     const buffer: string[] = [];
     let ptyProcess: IPty | undefined;
+    let errorOutput: string[] = []; // Capture error output
 
     if (cmdInfo.type !== 'native' && cmdInfo.command) {
       console.log(`Spawning command: ${cmdInfo.command}`);
@@ -115,13 +135,43 @@ export async function runDevCommand(args: { config: string }) {
 
       ptyProcess.onExit((e: { exitCode: number; signal?: number }) => {
         const { exitCode, signal } = e;
-        console.log(`PTY process exited with code: ${exitCode} and signal: ${signal}`);
+
+        if (exitCode !== 0) {
+          const errorMsg = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[ERROR] ${cmdInfo.name} exited with code ${exitCode}\nCommand: ${cmdInfo.command}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+          // Add error to buffer so it persists in the terminal view
+          buffer.push(errorMsg);
+
+          // Write to console.error immediately so it's visible before screen clears
+          console.error(errorMsg);
+
+          // Show ALL captured error output immediately
+          if (errorOutput.length > 0) {
+            const allErrors = errorOutput.join('\n');
+            console.error('\n📋 Error output from process:\n');
+            console.error(allErrors);
+            console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+            // Also add to buffer
+            buffer.push(`\nError output:\n${allErrors}\n`);
+          }
+        }
       });
 
       ptyProcess.onData((data: string) => {
         const lines = data.split('\n');
         for (const line of lines) {
           if (!line) continue;
+
+          // Capture potential error lines
+          const lowerLine = line.toLowerCase();
+          if (lowerLine.includes('error') ||
+              lowerLine.includes('failed') ||
+              lowerLine.includes('not found') ||
+              lowerLine.includes('command not found')) {
+            errorOutput.push(line);
+            if (errorOutput.length > 20) errorOutput.shift(); // Keep last 20 error lines
+          }
 
           // Exclusive handling for routed logs from the log-server
           if (cmdInfo.name === 'log-server') {
