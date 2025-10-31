@@ -1,0 +1,49 @@
+name: Flutter Tests
+
+on:
+  push:
+    branches: [ main, develop, 'release/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  flutter-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.2'
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Run Flutter package tests
+        working-directory: packages/flutter
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: Run Flutter example tests
+        working-directory: examples/flutter_example
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Build Flutter example (Android)
+        working-directory: examples/flutter_example
+        run: flutter build apk --debug
+
+      - name: Build Flutter example (iOS - build only, no signing)
+        working-directory: examples/flutter_example
+        run: flutter build ios --debug --no-codesign
