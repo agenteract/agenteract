@@ -40,10 +40,7 @@ jobs:
           flutter analyze
           flutter test
 
-      - name: Build Flutter example (Android)
-        working-directory: examples/flutter_example
-        run: flutter build apk --debug
-
-      - name: Build Flutter example (iOS - build only, no signing)
-        working-directory: examples/flutter_example
-        run: flutter build ios --debug --no-codesign
+    # Don't include these until we run on MacOS runners - x86 will be deprecated soon
+      # - name: Build Flutter example (Android)
+      #   working-directory: examples/flutter_example
+      #   run: flutter build apk --debug
