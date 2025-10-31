@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/flutter-cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Flutter dev server bridge for Agenteract",
   "type": "module",
   "main": "dist/cli.js",
