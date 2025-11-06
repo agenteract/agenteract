@@ -26,6 +26,11 @@ interface Terminal {
   name: string;
   ptyProcess?: IPty; // Optional: not all terminals have a process
   buffer: string[];
+  hasExited: boolean;
+  exitCode?: number;
+  canRestart: boolean;
+  restartCommand?: string;
+  restartCwd?: string;
 }
 
 function findNearestPackageJson(startDir: string): any | null {
@@ -134,16 +139,26 @@ export async function runDevCommand(args: { config: string }) {
       });
 
       ptyProcess.onExit((e: { exitCode: number; signal?: number }) => {
-        const { exitCode, signal } = e;
+        const { exitCode } = e;
 
+        // Find this terminal and mark it as exited
+        const terminal = terminals.find(t => t.ptyProcess === ptyProcess);
+        if (terminal) {
+          terminal.hasExited = true;
+          terminal.exitCode = exitCode;
+          terminal.ptyProcess = undefined; // Clear the process reference
+        }
+
+        const statusMsg = exitCode === 0
+          ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✓ ${cmdInfo.name} exited successfully (code ${exitCode})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+          : `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✗ ${cmdInfo.name} exited with code ${exitCode}\nCommand: ${cmdInfo.command}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+        // Add status to buffer so it persists in the terminal view
+        buffer.push(statusMsg);
+
+        // Write to console immediately so it's visible before screen clears
         if (exitCode !== 0) {
-          const errorMsg = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[ERROR] ${cmdInfo.name} exited with code ${exitCode}\nCommand: ${cmdInfo.command}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-
-          // Add error to buffer so it persists in the terminal view
-          buffer.push(errorMsg);
-
-          // Write to console.error immediately so it's visible before screen clears
-          console.error(errorMsg);
+          console.error(statusMsg);
 
           // Show ALL captured error output immediately
           if (errorOutput.length > 0) {
@@ -154,6 +169,17 @@ export async function runDevCommand(args: { config: string }) {
 
             // Also add to buffer
             buffer.push(`\nError output:\n${allErrors}\n`);
+          }
+        } else {
+          console.log(statusMsg);
+        }
+
+        // Add restart instructions if applicable
+        if (terminal && terminal.canRestart) {
+          const restartMsg = '\n💡 Press Enter to restart this process\n';
+          buffer.push(restartMsg);
+          if (activeIndex === index) {
+            process.stdout.write(restartMsg);
           }
         }
       });
@@ -242,23 +268,40 @@ export async function runDevCommand(args: { config: string }) {
         buffer.push(`--- Logs for ${cmdInfo.name} ---\n\n`);
         buffer.push('Waiting for application to connect and send logs...\n');
     }
-    
-    terminals.push({ name: cmdInfo.name, ptyProcess, buffer });
+
+    terminals.push({
+      name: cmdInfo.name,
+      ptyProcess,
+      buffer,
+      hasExited: false,
+      canRestart: cmdInfo.type !== 'native' && !!cmdInfo.command,
+      restartCommand: cmdInfo.command,
+      restartCwd: cmdInfo.cwd,
+    });
   });
 
   const switchTo = (index: number) => {
     activeIndex = index;
     const activeTerminal = terminals[activeIndex];
-    
+
     process.stdout.write('\x1b[2J\x1b[H'); // Clear screen and move cursor to home
-    process.stdout.write(`\x1b[1m--- ${activeTerminal.name} ---\x1b[0m (Tab: cycle, Ctrl+C: exit)\r\n\n`);
-    
-    // Only resize if it's a PTY process
-    if (activeTerminal.ptyProcess) {
+
+    // Add status indicator to title
+    const statusIndicator = activeTerminal.hasExited
+      ? activeTerminal.exitCode === 0 ? ' ✓' : ' ✗'
+      : '';
+    process.stdout.write(`\x1b[1m--- ${activeTerminal.name}${statusIndicator} ---\x1b[0m (Tab: cycle, Ctrl+C: exit)\r\n\n`);
+
+    // Only resize if it's a live PTY process (not exited)
+    if (activeTerminal.ptyProcess && !activeTerminal.hasExited) {
       const { cols, rows } = { cols: process.stdout.columns, rows: process.stdout.rows };
-      activeTerminal.ptyProcess.resize(cols, rows);
+      try {
+        activeTerminal.ptyProcess.resize(cols, rows);
+      } catch (err) {
+        // Process may have exited between the check and resize, ignore
+      }
     }
-    
+
     const linesToShow = Math.min(process.stdout.rows - 3, activeTerminal.buffer.length);
     const startIdx = Math.max(0, activeTerminal.buffer.length - linesToShow);
     for (let i = startIdx; i < activeTerminal.buffer.length; i++) {
@@ -266,12 +309,107 @@ export async function runDevCommand(args: { config: string }) {
     }
   };
 
+  // Function to restart a terminal process
+  const restartTerminal = (terminal: Terminal) => {
+    if (!terminal.canRestart || !terminal.restartCommand || !terminal.restartCwd) {
+      return;
+    }
+
+    const restartMsg = `\n🔄 Restarting ${terminal.name}...\n`;
+    terminal.buffer.push(restartMsg);
+    process.stdout.write(restartMsg);
+
+    terminal.hasExited = false;
+    terminal.exitCode = undefined;
+
+    const shell = process.env.SHELL || '/bin/bash';
+    const newPtyProcess = pty.spawn(shell, ['-c', terminal.restartCommand], {
+      name: 'xterm-color',
+      cols: process.stdout.columns,
+      rows: process.stdout.rows,
+      cwd: terminal.restartCwd,
+      env: process.env as { [key: string]: string },
+    });
+
+    terminal.ptyProcess = newPtyProcess;
+
+    // Reattach exit handler
+    const terminalIndex = terminals.indexOf(terminal);
+    const errorOutput: string[] = [];
+
+    newPtyProcess.onExit((e: { exitCode: number }) => {
+      const { exitCode } = e;
+
+      terminal.hasExited = true;
+      terminal.exitCode = exitCode;
+      terminal.ptyProcess = undefined;
+
+      const statusMsg = exitCode === 0
+        ? `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✓ ${terminal.name} exited successfully (code ${exitCode})\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`
+        : `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✗ ${terminal.name} exited with code ${exitCode}\nCommand: ${terminal.restartCommand}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+      terminal.buffer.push(statusMsg);
+
+      if (exitCode !== 0) {
+        console.error(statusMsg);
+        if (errorOutput.length > 0) {
+          const allErrors = errorOutput.join('\n');
+          console.error('\n📋 Error output from process:\n');
+          console.error(allErrors);
+          console.error('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+          terminal.buffer.push(`\nError output:\n${allErrors}\n`);
+        }
+      } else {
+        console.log(statusMsg);
+      }
+
+      if (terminal.canRestart) {
+        const restartMsg = '\n💡 Press Enter to restart this process\n';
+        terminal.buffer.push(restartMsg);
+        if (activeIndex === terminalIndex) {
+          process.stdout.write(restartMsg);
+        }
+      }
+    });
+
+    // Reattach data handler
+    newPtyProcess.onData((data: string) => {
+      if (activeIndex === terminalIndex) {
+        process.stdout.write(data);
+      }
+
+      const lines = data.split('\n');
+      for (const line of lines) {
+        if (!line) continue;
+
+        const lowerLine = line.toLowerCase();
+        if (lowerLine.includes('error') ||
+            lowerLine.includes('failed') ||
+            lowerLine.includes('not found') ||
+            lowerLine.includes('command not found')) {
+          errorOutput.push(line);
+          if (errorOutput.length > 20) errorOutput.shift();
+        }
+
+        const hasSpinnerCodes = line.includes('\r') ||
+                                (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+
+        if (!hasSpinnerCodes) {
+          terminal.buffer.push(line + '\n');
+          if (terminal.buffer.length > MAX_BUFFER_LINES) {
+            terminal.buffer.shift();
+          }
+        }
+      }
+    });
+  };
+
   // --- Initial Start ---
   process.stdout.write('--- Starting Agenteract Dev Environment ---\r\n');
   process.stdout.write('Initializing terminals...\r\n\n');
-  
+
   await new Promise(resolve => setTimeout(resolve, 100));
-  
+
   // --- Raw Input Handler ---
   if (process.stdin.isTTY && process.stdout.isTTY) {
     process.stdin.setRawMode(true);
@@ -285,9 +423,18 @@ export async function runDevCommand(args: { config: string }) {
     } else if (key === '\u0003') { // Ctrl+C
       terminals.forEach(t => t.ptyProcess?.kill());
       process.exit(0);
+    } else if (key === '\r' || key === '\n') { // Enter key
+      const activeTerminal = terminals[activeIndex];
+      // If terminal has exited and can restart, restart it
+      if (activeTerminal.hasExited && activeTerminal.canRestart) {
+        restartTerminal(activeTerminal);
+      } else if (activeTerminal.ptyProcess) {
+        // Otherwise pass the Enter key to the PTY
+        activeTerminal.ptyProcess.write(key);
+      }
     } else {
-      // Only write to PTY processes
-      if (terminals[activeIndex].ptyProcess) {
+      // Only write to live PTY processes
+      if (terminals[activeIndex].ptyProcess && !terminals[activeIndex].hasExited) {
         terminals[activeIndex].ptyProcess?.write(key);
       }
     }
@@ -295,9 +442,13 @@ export async function runDevCommand(args: { config: string }) {
 
   process.stdout.on('resize', () => {
     terminals.forEach(term => {
-      // Only resize PTY processes
-      if (term.ptyProcess) {
-        term.ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+      // Only resize live PTY processes (not exited)
+      if (term.ptyProcess && !term.hasExited) {
+        try {
+          term.ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+        } catch (err) {
+          // Process may have exited, ignore
+        }
       }
     });
   });
