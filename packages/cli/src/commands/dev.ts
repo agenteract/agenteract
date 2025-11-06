@@ -159,6 +159,13 @@ export async function runDevCommand(args: { config: string }) {
       });
 
       ptyProcess.onData((data: string) => {
+        // For active terminal, write directly to preserve all ANSI escape codes
+        // This ensures spinners, progress bars, and other interactive elements work correctly
+        if (activeIndex === index) {
+          process.stdout.write(data);
+        }
+
+        // For buffering (inactive terminals), we still need to process the data
         const lines = data.split('\n');
         for (const line of lines) {
           if (!line) continue;
@@ -216,13 +223,18 @@ export async function runDevCommand(args: { config: string }) {
             continue;
           }
 
-          // Default handling for all other lines and terminals
-          buffer.push(line + '\n');
-          if (buffer.length > MAX_BUFFER_LINES) {
-            buffer.shift();
-          }
-          if (activeIndex === index) {
-            process.stdout.write(line + '\n');
+          // todo(mribbons): use proper ansi code parsing for background tabs
+          // For buffering: skip lines that are likely spinner/progress bar updates
+          // These contain ANSI escape codes for cursor movement or carriage returns
+          const hasSpinnerCodes = line.includes('\r') ||
+                                  (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+
+          if (!hasSpinnerCodes) {
+            // Only buffer stable lines (not spinner updates)
+            buffer.push(line + '\n');
+            if (buffer.length > MAX_BUFFER_LINES) {
+              buffer.shift();
+            }
           }
         }
       });
