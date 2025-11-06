@@ -7,9 +7,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+// todo: read these from config
 const agentServerUrl = 'http://localhost:8766';
 const expoServerUrl = 'http://localhost:8790';
 const viteServerUrl = 'http://localhost:8791';
+const flutterServerUrl = 'http://localhost:8792';
 
 const handleRequestError = (error: any) => {
   if (!axios.isAxiosError(error)) {
@@ -117,10 +119,10 @@ yargs(hideBin(process.argv))
     (yargs) => {
       return yargs
         .positional('type', {
-          describe: 'Dev server type (expo or vite)',
+          describe: 'Dev server type (expo, vite, flutter)',
           type: 'string',
           demandOption: true,
-          choices: ['expo', 'vite'],
+          choices: ['expo', 'vite', 'flutter'],
         })
         .option('since', {
           alias: 's',
@@ -131,7 +133,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        const url = argv.type === 'expo' ? expoServerUrl : viteServerUrl;
+        const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
         const response = await axios.get(`${url}/logs?since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
@@ -145,10 +147,10 @@ yargs(hideBin(process.argv))
     (yargs) => {
       return yargs
         .positional('type', {
-          describe: 'Dev server type (expo or vite)',
+          describe: 'Dev server type (expo, vite, flutter)',
           type: 'string',
           demandOption: true,
-          choices: ['expo', 'vite'],
+          choices: ['expo', 'vite', 'flutter'],
         })
         .positional('command', {
           describe: 'Command to send',
@@ -158,7 +160,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        const url = argv.type === 'expo' ? expoServerUrl : viteServerUrl;
+        const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
         await axios.post(`${url}/cmd`, { cmd: argv.command });
       } catch (error) {
         handleRequestError(error);
