@@ -6,12 +6,62 @@ import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import {
+  findConfigRoot,
+  loadConfig,
+  getAgentServerUrl,
+  getDevServerUrlByType,
+  MissingConfigError,
+  type AgenteractConfig
+} from './config.js';
 
-// todo: read these from config
-const agentServerUrl = 'http://localhost:8766';
-const expoServerUrl = 'http://localhost:8790';
-const viteServerUrl = 'http://localhost:8791';
-const flutterServerUrl = 'http://localhost:8792';
+// Cache for loaded config
+let cachedConfig: AgenteractConfig | null = null;
+
+/**
+ * Load config with caching
+ */
+async function getConfig(): Promise<AgenteractConfig> {
+  if (cachedConfig) {
+    return cachedConfig;
+  }
+
+  const configRoot = await findConfigRoot();
+  if (!configRoot) {
+    throw new MissingConfigError(
+      'Could not find agenteract.config.js. Please run this command from within an Agenteract project.'
+    );
+  }
+
+  cachedConfig = await loadConfig(configRoot);
+  return cachedConfig;
+}
+
+/**
+ * Get server URLs from config with fallback to defaults
+ */
+async function getServerUrls() {
+  try {
+    const config = await getConfig();
+    return {
+      agentServerUrl: getAgentServerUrl(config),
+      expoServerUrl: getDevServerUrlByType(config, 'expo') || 'http://localhost:8790',
+      viteServerUrl: getDevServerUrlByType(config, 'vite') || 'http://localhost:8791',
+      flutterServerUrl: getDevServerUrlByType(config, 'flutter') || 'http://localhost:8792',
+    };
+  } catch (error) {
+    // Fallback to default URLs if config can't be loaded
+    if (error instanceof MissingConfigError) {
+      console.warn('Warning: Using default server URLs. Config file not found.');
+    }
+    return {
+      agentServerUrl: 'http://localhost:8766',
+      expoServerUrl: 'http://localhost:8790',
+      viteServerUrl: 'http://localhost:8791',
+      flutterServerUrl: 'http://localhost:8792',
+    };
+  }
+}
 
 const handleRequestError = (error: any) => {
   if (!axios.isAxiosError(error)) {
@@ -39,7 +89,7 @@ const handleRequestError = (error: any) => {
   }
 }
 
-const waitAndFetchLogs = async (project: string, waitMs: number, logCount: number) => {
+const waitAndFetchLogs = async (agentServerUrl: string, project: string, waitMs: number, logCount: number) => {
   await new Promise(resolve => setTimeout(resolve, waitMs));
   try {
     const response = await axios.get(`${agentServerUrl}/logs?project=${project}&since=${logCount}`);
@@ -106,6 +156,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
@@ -133,6 +184,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { expoServerUrl, viteServerUrl, flutterServerUrl } = await getServerUrls();
         const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
         const response = await axios.get(`${url}/logs?since=${argv.since}`);
         console.log(response.data);
@@ -160,6 +212,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { expoServerUrl, viteServerUrl, flutterServerUrl } = await getServerUrls();
         const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
         await axios.post(`${url}/cmd`, { cmd: argv.command });
       } catch (error) {
@@ -202,6 +255,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'getViewHierarchy',
@@ -225,7 +279,7 @@ yargs(hideBin(process.argv))
         console.log(JSON.stringify(outputData));
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
@@ -265,6 +319,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'tap',
@@ -272,7 +327,7 @@ yargs(hideBin(process.argv))
         });
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
@@ -317,6 +372,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'input',
@@ -325,7 +381,7 @@ yargs(hideBin(process.argv))
         });
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
@@ -376,6 +432,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'scroll',
@@ -385,7 +442,7 @@ yargs(hideBin(process.argv))
         });
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
@@ -437,6 +494,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'swipe',
@@ -446,7 +504,7 @@ yargs(hideBin(process.argv))
         });
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
@@ -486,6 +544,7 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
+        const { agentServerUrl } = await getServerUrls();
         await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'longPress',
@@ -493,7 +552,7 @@ yargs(hideBin(process.argv))
         });
 
         // Wait and fetch logs
-        const logs = await waitAndFetchLogs(argv.project, argv.wait, argv.logCount);
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
         if (logs) {
           console.log('\n--- Console Logs ---');
           console.log(logs);
