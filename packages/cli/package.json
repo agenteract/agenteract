@@ -32,8 +32,7 @@
     "android"
   ],
   "scripts": {
-    "build:core": "cd ../core && npm run build",
-    "build": "npm run build:core && tsc -p tsconfig.json",
+    "build": "tsc --build",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "jest --config jest.config.cjs"
   },
