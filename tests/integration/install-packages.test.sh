@@ -106,17 +106,6 @@ echo "✓ agents: cmd expo command works"
 
 npx @agenteract/agents hierarchy my-project > /tmp/hierarchy.txt
 
-find node_modules -name "cli.js" | while read -r file; do
-  echo "Checking $file"
-  cat $file | grep 'stringify'
-done
-
-# remove after @agenteract/agents@0.0.5 is published
-ls -l node_modules/@agenteract/agents/package.json
-cat node_modules/@agenteract/agents/package.json
-
-cat /tmp/hierarchy.txt
-
 cat /tmp/hierarchy.txt | grep '"hierarchy":"mock"' > /dev/null || { echo "❌ agents: hierarchy command failed"; exit 1; }
 echo "✓ agents: hierarchy command works"
 
