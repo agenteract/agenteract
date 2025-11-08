@@ -1,0 +1,114 @@
+name: E2E Tests - Vite
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'examples/react-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-vite.yml'
+  # Run on pushes to main (post-merge validation)
+  push:
+    branches: [ main, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/react-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-vite.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-vite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      verdaccio:
+        image: verdaccio/verdaccio:5
+        ports:
+          - 4873:4873
+
+    steps:
+      - name: Wait for Verdaccio to start
+        run: |
+          echo "Waiting for Verdaccio to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
+              echo "✓ Verdaccio is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "✗ Verdaccio failed to start"
+          exit 1
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Install Puppeteer Chrome
+        run: npx puppeteer browsers install chrome
+
+      - name: Cache Puppeteer Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-puppeteer-
+
+      - name: Configure npm registry for Verdaccio
+        run: |
+          npm config set registry http://localhost:4873/
+          pnpm config set registry http://localhost:4873/
+
+      - name: Authenticate with Verdaccio
+        run: npx tsx scripts/verdaccio-auth.ts
+        env:
+          VERDACCIO_URL: http://localhost:4873
+          VERDACCIO_USER: test
+          VERDACCIO_PASS: test
+          VERDACCIO_EMAIL: test@test.com
+
+      - name: Publish packages to Verdaccio
+        run: |
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
+            echo "Publishing failed"
+            exit 1
+          }
+
+      - name: Wait for packages to be available
+        run: sleep 2
+
+      - name: Run Vite E2E tests
+        run: pnpm test:e2e:vite
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-vite-failure-logs
+          path: |
+            .e2e-test-vite/
+            tests/e2e/vite/*.log
+          retention-days: 7
