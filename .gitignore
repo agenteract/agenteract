@@ -8,3 +8,6 @@ dist
 # Verdaccio storage (local testing)
 .verdaccio/storage/
 .verdaccio/htpasswd
+
+# E2E test temp directories
+.e2e-test-*
