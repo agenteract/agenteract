@@ -100,6 +100,13 @@ jobs:
       - name: Wait for packages to be available
         run: sleep 2
 
+      - name: Link CLI packages globally
+        run: |
+          cd packages/cli
+          pnpm link --global
+          cd ../agents
+          pnpm link --global
+
       - name: Run Vite E2E tests
         run: pnpm test:e2e:vite
 
