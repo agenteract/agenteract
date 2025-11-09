@@ -154,6 +154,24 @@ export async function runCommand(command: string): Promise<string> {
 }
 
 /**
+ * Take a screenshot of the iOS simulator
+ * @param outputPath Path where screenshot should be saved (e.g., '/tmp/screenshot.png')
+ * @param deviceId Optional specific device ID. If not provided, uses booted device.
+ */
+export async function takeSimulatorScreenshot(
+  outputPath: string,
+  deviceId?: string
+): Promise<void> {
+  try {
+    const device = deviceId || 'booted';
+    await execAsync(`xcrun simctl io ${device} screenshot "${outputPath}"`);
+    success(`Screenshot saved to ${outputPath}`);
+  } catch (err) {
+    info(`Failed to take screenshot: ${err}`);
+  }
+}
+
+/**
  * Run agenteract-agents command
  */
 export async function runAgentCommand(...args: string[]): Promise<string> {

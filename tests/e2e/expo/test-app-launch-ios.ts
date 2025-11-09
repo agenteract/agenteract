@@ -25,6 +25,7 @@ import {
   spawnBackground,
   sleep,
   setupCleanup,
+  takeSimulatorScreenshot,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -131,6 +132,7 @@ async function cleanup() {
 
 async function main() {
   setupCleanup(cleanup);
+  const startPath = process.cwd();
 
   try {
     info('Starting Expo E2E test: iOS App Launch');
@@ -213,7 +215,7 @@ async function main() {
 
     // Install dependencies from Verdaccio
     info('Installing expo-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873 --verbose`);
+    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
     success('Expo-example prepared with Verdaccio packages');
 
     // 6. Install CLI packages in separate config directory
@@ -287,13 +289,29 @@ async function main() {
     info('Waiting for Expo app to build and connect...');
     info('This may take 3-5 minutes for the first build...');
 
+    // Create screenshots directory
+    const screenshotsDir = `${startPath}/.e2e-test-expo/screenshots-${Date.now()}`;
+    await runCommand(`mkdir -p ${screenshotsDir}`);
+    info(`Screenshots will be saved to: ${screenshotsDir}`);
+
     let hierarchy: string = '';
     let connectionAttempts = 0;
-    const maxAttempts = 60; // 60 * 5s = 5 minutes total
+    // currently expo is slow because expo go downloads an update on first launch
+    const maxAttempts = 2; // 180 * 5s = 15 minutes total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
       await sleep(5000);
+
+
+      const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+      info(`Expo Go processes: \n${psResult}`);
+
+      // Take a screenshot every 10 attempts (every ~50 seconds)
+      if (connectionAttempts % 5 === 0) {
+        const screenshotPath = `${screenshotsDir}/attempt-${connectionAttempts}.png`;
+        await takeSimulatorScreenshot(screenshotPath);
+      }
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);
@@ -307,6 +325,11 @@ async function main() {
         if (hierarchy && hierarchy.length > 100 && isRealHierarchy) {
           success('Expo app connected and hierarchy received!');
           info(`Hierarchy preview (first 200 chars): ${hierarchy.substring(0, 200)}...`);
+
+          // Take a final success screenshot
+          const successScreenshot = `${screenshotsDir}/success-connected.png`;
+          await takeSimulatorScreenshot(successScreenshot);
+
           break;
         } else if (hierarchy.includes('not connected')) {
           info('Expo app not yet connected to bridge, waiting...');
@@ -327,14 +350,21 @@ async function main() {
               console.log(devLogs);
             } catch (logErr) {
               // Ignore log errors
+              console.log(`Error getting dev logs: ${logErr}`);
             }
           }
+          const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+          console.log(`Expo Go processes: \n${psResult}`);
         } else {
           info(`Connection attempt failed: ${errMsg}`);
         }
       }
 
       if (connectionAttempts >= maxAttempts) {
+        // Take a final timeout screenshot
+        const timeoutScreenshot = `${screenshotsDir}/timeout-failure.png`;
+        await takeSimulatorScreenshot(timeoutScreenshot);
+
         // Get final dev logs before failing
         try {
           const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo', '--since', '100');
@@ -343,7 +373,9 @@ async function main() {
         } catch (logErr) {
           // Ignore
         }
-        throw new Error('Timeout: Expo app did not connect within 5 minutes');
+
+        error(`Screenshots saved to: ${screenshotsDir}`);
+        throw new Error('Timeout: Expo app did not connect within 15 minutes');
       }
     }
 

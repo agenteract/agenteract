@@ -160,7 +160,26 @@ pkill -f "agenteract-e2e-test-expo"
 
 ## Running in CI
 
-The Expo E2E tests are designed to run in GitHub Actions CI. See the E2E Testing Strategy document for CI configuration.
+The Expo E2E tests are designed to run in GitHub Actions CI. See `.github/workflows/e2e-expo.yml` for the CI configuration.
+
+### CI Workflow Features
+
+The GitHub Actions workflow (`.github/workflows/e2e-expo.yml`):
+
+1. **macOS runners**: Uses `macos-latest` for iOS simulator support
+2. **Verdaccio**: Installs and runs Verdaccio via npm (Docker not available on macOS runners)
+3. **Simulator boot**: Automatically boots an iPhone simulator before tests
+4. **Artifacts**: Uploads test logs on failure for debugging
+5. **45-minute timeout**: Longer than Flutter (30 min) due to Expo's slower build times
+6. **Cleanup**: Stops Verdaccio, kills Expo Go app, Metro, and all related processes
+
+### CI-Specific Behavior
+
+The test script detects the CI environment (`process.env.CI`) and:
+
+- **Version bumping**: Adds `-e2e.{timestamp}` suffix to package versions to avoid npm conflicts
+- **Artifact preservation**: Skips cleanup of temp directories so artifacts can be uploaded
+- **Extended timeouts**: Waits up to 5 minutes for Expo app to build and connect
 
 **Security Note**: Expo E2E tests should only run on protected branches (main, release/*) because they require macOS runners.
 

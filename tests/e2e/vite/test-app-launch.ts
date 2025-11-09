@@ -161,7 +161,7 @@ export default defineConfig({
 
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873 --verbose`);
+    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
