@@ -141,7 +141,23 @@ export async function runCommand(command: string): Promise<string> {
  * Run agenteract-agents command
  */
 export async function runAgentCommand(...args: string[]): Promise<string> {
-  const command = `pnpm agenteract-agents ${args.join(' ')}`;
+  // Check if first arg is a cwd option (starts with 'cwd:')
+  let commandArgs = args;
+  let cwd: string | undefined;
+
+  if (args[0]?.startsWith('cwd:')) {
+    cwd = args[0].substring(4);
+    commandArgs = args.slice(1);
+  }
+
+  if (cwd) {
+    // Run from the specified directory using the locally installed package
+    const command = `npx @agenteract/agents ${commandArgs.join(' ')}`;
+    const { stdout, stderr } = await execAsync(command, { cwd });
+    return stdout + stderr;
+  }
+
+  const command = `npx @agenteract/agents ${commandArgs.join(' ')}`;
   return runCommand(command);
 }
 
@@ -173,10 +189,17 @@ export function spawnBackground(
   options?: { cwd?: string }
 ): ChildProcess {
   info(`Starting ${name}: ${command} ${args.join(' ')}`);
+
+  // Clear pnpm environment variables so npx is detected correctly
+  const env = { ...process.env };
+  delete env.npm_config_user_agent;
+  delete env.npm_execpath;
+
   const proc = spawn(command, args, {
     stdio: 'pipe',
     detached: false,
     cwd: options?.cwd,
+    env,
   });
 
   // Log output for debugging

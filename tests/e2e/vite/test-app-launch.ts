@@ -9,8 +9,11 @@
  * 4. UI hierarchy can be fetched
  */
 
-import { ChildProcess } from 'child_process';
+import { ChildProcess, exec as execCallback } from 'child_process';
+import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
+
+const exec = promisify(execCallback);
 import {
   info,
   success,
@@ -30,6 +33,7 @@ import {
 
 let agentServer: ChildProcess | null = null;
 let browser: Browser | null = null;
+let testConfigDir: string | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
@@ -50,10 +54,12 @@ async function cleanup() {
   await stopVerdaccio();
 
   // Clean up temp test directory
-  try {
-    await runCommand(`rm -rf ${process.cwd()}/.e2e-test-vite`);
-  } catch (err) {
-    // Ignore cleanup errors
+  if (testConfigDir) {
+    try {
+      await runCommand(`rm -rf ${testConfigDir}`);
+    } catch (err) {
+      // Ignore cleanup errors
+    }
   }
 }
 
@@ -78,19 +84,32 @@ async function main() {
     // 2. Publish packages
     await publishPackages();
 
-    // 3. Install packages in react-example
-    info('Installing packages in react-example...');
+    // 3. Install monorepo dependencies (to get vite and other devDependencies)
+    info('Installing monorepo dependencies...');
+    await runCommand('pnpm install --no-frozen-lockfile');
+    success('Dependencies installed');
+
+    // 3.5. Configure npm registry for react-example and install from Verdaccio
+    info('Configuring npm registry for react-example...');
     await runCommand('cd examples/react-example && npm config set registry http://localhost:4873');
     await runCommand('cd examples/react-example && pnpm install --no-frozen-lockfile');
-    success('Packages installed');
+    success('React-example packages updated from Verdaccio');
+
+    // 3.5. Install CLI packages from Verdaccio so npx uses them
+    // Use /tmp to avoid monorepo detection (CLI should use npx, not pnpm)
+    info('Installing CLI packages from Verdaccio...');
+    testConfigDir = `/tmp/agenteract-e2e-test-vite-${Date.now()}`;
+    await runCommand(`rm -rf ${testConfigDir}`);
+    await runCommand(`mkdir -p ${testConfigDir}`);
+    await runCommand(`cd ${testConfigDir} && echo '{"name":"e2e-test-vite","version":"1.0.0"}' > package.json`);
+    await runCommand(`cd ${testConfigDir} && npm config set registry http://localhost:4873`);
+    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite`);
+    success('CLI packages installed from Verdaccio');
 
     // 4. Create agenteract config for just the react-example
     info('Creating agenteract config for react-example...');
-    const testConfigDir = `${process.cwd()}/.e2e-test-vite`;
-    await runCommand(`rm -rf ${testConfigDir}`); // Clean up any previous test
-    await runCommand(`mkdir -p ${testConfigDir}`);
     await runCommand(
-      `cd ${testConfigDir} && pnpm agenteract add-config ${process.cwd()}/examples/react-example react-app vite`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${process.cwd()}/examples/react-example react-app vite`
     );
     success('Config created');
 
@@ -98,14 +117,24 @@ async function main() {
     info('Starting agenteract dev...');
     info('This will start the Vite dev server and AgentDebugBridge');
     agentServer = spawnBackground(
-      'pnpm',
-      ['agenteract', 'dev'],
+      'npx',
+      ['@agenteract/cli', 'dev'],
       'agenteract-dev',
       { cwd: testConfigDir }
     );
 
-    // Give it time to start dev servers
-    await sleep(10000);
+    // Give servers time to start
+    await sleep(5000);
+
+    // Check dev logs to see what port Vite is running on
+    info('Checking Vite dev server logs...');
+    try {
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'vite', '--since', '50');
+      info('Vite dev logs:');
+      console.log(devLogs);
+    } catch (err) {
+      error(`Failed to get dev logs: ${err}`);
+    }
 
     // 6. Launch headless browser with Puppeteer
     info('Launching headless browser...');
@@ -126,7 +155,7 @@ async function main() {
     await waitFor(
       async () => {
         try {
-          await runAgentCommand('hierarchy', 'react-app');
+          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
           return true;
         } catch {
           return false;
@@ -139,7 +168,7 @@ async function main() {
 
     // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    const hierarchy = await runAgentCommand('hierarchy', 'react-app');
+    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');
@@ -149,19 +178,19 @@ async function main() {
 
     // 10. Test tap interaction
     info('Testing tap interaction on test-button...');
-    const tapResult = await runAgentCommand('tap', 'react-app', 'test-button');
+    const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'react-app', 'test-button');
     assertContains(tapResult, 'success', 'Tap command executed successfully');
     success('Button tap successful');
 
     // 11. Verify tap was logged
     await sleep(500); // Give app time to log the tap
-    const logsAfterTap = await runAgentCommand('logs', 'react-app', '--since', '5');
+    const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '5');
     assertContains(logsAfterTap, 'Simulate button pressed', 'Button press was logged');
     success('Button tap verified in logs');
 
     // 12. Get all logs to verify app is running
     info('Fetching app logs...');
-    const logs = await runAgentCommand('logs', 'react-app', '--since', '15');
+    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '15');
     info('Recent logs:');
     console.log(logs);
 
