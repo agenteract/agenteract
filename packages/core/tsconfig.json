@@ -6,6 +6,7 @@
     "outDir": "dist",
     "declaration": true,
     "composite": true,
-  },
+    "tsBuildInfoFile": ".tsbuildinfo"
+  }
 }
   

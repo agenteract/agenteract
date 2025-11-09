@@ -5,6 +5,12 @@
   "main": "./dist/cjs/src/index.js",
   "module": "./dist/esm/src/index.js",
   "types": "./dist/cjs/src/index.d.ts",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/**/package.json",
+    "!dist/**/*.tsbuildinfo"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/agenteract/agenteract.git",
@@ -26,7 +32,8 @@
     "build:types": "tsc -p tsconfig.json",
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build:post": "echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && echo '{\"type\":\"module\"}' > dist/esm/package.json"
+    "build:post": "mkdir -p dist/cjs dist/esm && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
+    "clean": "rm -rf dist .tsbuildinfo*"
   },
   "exports": {
     ".": {

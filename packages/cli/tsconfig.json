@@ -3,7 +3,8 @@
   "include": ["src", "tests"],
   "compilerOptions": {
     "outDir": "dist",
-    "composite": true
+    "composite": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
   "references": [
     { "path": "../core" }

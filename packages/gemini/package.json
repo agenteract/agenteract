@@ -22,7 +22,8 @@
     "coding-agent"
   ],
   "scripts": {
-    "build": "mkdir -p dist; cp ../../docs/AGENTS.md dist/GEMINI.md"
+    "build": "mkdir -p dist; cp ../../docs/AGENTS.md dist/GEMINI.md",
+    "clean": "rm -rf dist"
   },
   "license": "MIT"
 }
