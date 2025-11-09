@@ -17,6 +17,7 @@
     "test:e2e:expo:ios": "tsx tests/e2e/expo/test-app-launch-ios.ts",
     "test:e2e:flutter:ios": "tsx tests/e2e/flutter/test-app-launch-ios.ts",
     "test:e2e:all": "pnpm test:e2e:vite && pnpm test:e2e:expo:ios && pnpm test:e2e:flutter:ios",
+    "test:e2e:cleanup": "bash tests/e2e/cleanup-all.sh",
     "verdaccio:start": "bash scripts/start-verdaccio.sh",
     "verdaccio:stop": "bash scripts/stop-verdaccio.sh",
     "verdaccio:publish": "bash scripts/publish-local.sh",

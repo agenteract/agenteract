@@ -129,6 +129,22 @@ export async function publishPackages(): Promise<void> {
 }
 
 /**
+ * Escape a shell argument for safe use in shell commands
+ * Wraps arguments containing spaces or special characters in single quotes
+ */
+function escapeShellArg(arg: string): string {
+  // If the argument doesn't contain spaces or special characters, return as-is
+  // Allow: letters, numbers, underscore, dash, dot, forward slash, colon, at sign
+  if (/^[a-zA-Z0-9_\-\.\/:\@=]+$/.test(arg)) {
+    return arg;
+  }
+
+  // For arguments with spaces or special chars, wrap in single quotes
+  // and escape any single quotes within the argument
+  return "'" + arg.replace(/'/g, "'\\''") + "'";
+}
+
+/**
  * Run a shell command and return output
  */
 export async function runCommand(command: string): Promise<string> {
@@ -150,14 +166,17 @@ export async function runAgentCommand(...args: string[]): Promise<string> {
     commandArgs = args.slice(1);
   }
 
+  // Escape all arguments for safe shell usage
+  const escapedArgs = commandArgs.map(escapeShellArg);
+
   if (cwd) {
     // Run from the specified directory using the locally installed package
-    const command = `npx @agenteract/agents ${commandArgs.join(' ')}`;
+    const command = `npx @agenteract/agents ${escapedArgs.join(' ')}`;
     const { stdout, stderr } = await execAsync(command, { cwd });
     return stdout + stderr;
   }
 
-  const command = `npx @agenteract/agents ${commandArgs.join(' ')}`;
+  const command = `npx @agenteract/agents ${escapedArgs.join(' ')}`;
   return runCommand(command);
 }
 
@@ -262,19 +281,47 @@ export async function killProcess(
  * Cleanup function to be called on exit
  */
 export function setupCleanup(cleanupFn: () => Promise<void>): void {
+  let cleanupCalled = false;
+
   const handleExit = async () => {
+    if (cleanupCalled) return;
+    cleanupCalled = true;
+
     try {
       await cleanupFn();
     } catch (err) {
       error(`Cleanup error: ${err}`);
     }
-    process.exit(0);
   };
 
-  process.on('SIGINT', handleExit);
-  process.on('SIGTERM', handleExit);
+  const handleExitSync = () => {
+    if (cleanupCalled) return;
+    cleanupCalled = true;
+
+    // Note: The 'exit' event cannot run async operations
+    // This is a best-effort synchronous cleanup
+    info('Process exiting, attempting synchronous cleanup...');
+    // The actual cleanup will be handled by the test's catch/finally blocks
+  };
+
+  // Register async handlers for signals
+  process.on('SIGINT', async () => {
+    await handleExit();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    await handleExit();
+    process.exit(0);
+  });
+
   process.on('uncaughtException', async (err) => {
     error(`Uncaught exception: ${err}`);
     await handleExit();
+    process.exit(1);
   });
+
+  // Register synchronous handler for explicit process.exit() calls
+  // This serves as a reminder that cleanup should happen before exit
+  process.on('exit', handleExitSync);
 }
