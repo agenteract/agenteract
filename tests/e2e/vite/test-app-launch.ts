@@ -34,6 +34,7 @@ import {
 let agentServer: ChildProcess | null = null;
 let browser: Browser | null = null;
 let testConfigDir: string | null = null;
+let exampleAppDir: string | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
@@ -53,10 +54,18 @@ async function cleanup() {
 
   await stopVerdaccio();
 
-  // Clean up temp test directory
+  // Clean up temp directories
   if (testConfigDir) {
     try {
       await runCommand(`rm -rf ${testConfigDir}`);
+    } catch (err) {
+      // Ignore cleanup errors
+    }
+  }
+
+  if (exampleAppDir) {
+    try {
+      await runCommand(`rm -rf ${exampleAppDir}`);
     } catch (err) {
       // Ignore cleanup errors
     }
@@ -84,19 +93,21 @@ async function main() {
     // 2. Publish packages
     await publishPackages();
 
-    // 3. Install monorepo dependencies (to get vite and other devDependencies)
-    info('Installing monorepo dependencies...');
-    await runCommand('pnpm install --no-frozen-lockfile');
-    success('Dependencies installed');
+    // 3. Copy react-example to /tmp and replace workspace:* dependencies
+    info('Copying react-example to /tmp and preparing for Verdaccio...');
+    exampleAppDir = `/tmp/agenteract-e2e-vite-app-${Date.now()}`;
+    await runCommand(`rm -rf ${exampleAppDir}`);
+    await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
 
-    // 3.5. Configure npm registry for react-example and install from Verdaccio
-    info('Configuring npm registry for react-example...');
-    await runCommand('cd examples/react-example && npm config set registry http://localhost:4873');
-    await runCommand('cd examples/react-example && pnpm install --no-frozen-lockfile');
-    success('React-example packages updated from Verdaccio');
+    // Replace workspace:* with wildcard * for Verdaccio
+    await runCommand(`cd ${exampleAppDir} && sed -i.bak 's/"workspace:\\*"/"*"/g' package.json`);
 
-    // 3.5. Install CLI packages from Verdaccio so npx uses them
-    // Use /tmp to avoid monorepo detection (CLI should use npx, not pnpm)
+    // Install dependencies from Verdaccio
+    info('Installing react-example dependencies from Verdaccio...');
+    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
+    success('React-example prepared with Verdaccio packages');
+
+    // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `/tmp/agenteract-e2e-test-vite-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
@@ -105,10 +116,10 @@ async function main() {
     await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
-    // 4. Create agenteract config for just the react-example
-    info('Creating agenteract config for react-example...');
+    // 5. Create agenteract config pointing to the /tmp app
+    info('Creating agenteract config for react-app in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${process.cwd()}/examples/react-example react-app vite`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app vite`
     );
     success('Config created');
 
