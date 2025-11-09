@@ -132,7 +132,6 @@ async function cleanup() {
 
 async function main() {
   setupCleanup(cleanup);
-  const startPath = process.cwd();
 
   try {
     info('Starting Expo E2E test: iOS App Launch');
@@ -290,14 +289,14 @@ async function main() {
     info('This may take 3-5 minutes for the first build...');
 
     // Create screenshots directory
-    const screenshotsDir = `${startPath}/.e2e-test-expo/screenshots-${Date.now()}`;
+    const screenshotsDir = `${process.env.GITHUB_WORKSPACE ?? process.cwd()}/.e2e-test-expo/screenshots-${Date.now()}`;
     await runCommand(`mkdir -p ${screenshotsDir}`);
     info(`Screenshots will be saved to: ${screenshotsDir}`);
 
     let hierarchy: string = '';
     let connectionAttempts = 0;
     // currently expo is slow because expo go downloads an update on first launch
-    const maxAttempts = 2; // 180 * 5s = 15 minutes total
+    const maxAttempts = 12; // 12 * 5s = 1 minute total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;

@@ -444,17 +444,17 @@ Integration tests verify that packages can be installed and used correctly after
 **Local testing workflow:**
 
 ```bash
-# Start local npm registry
-pnpm verdaccio:start
+# run some basic tests
+pnpm test:full_integration
+```
 
-# Build and publish packages to local registry
-pnpm verdaccio:publish
+We can also run a full set of e2e tests locally. These tests confirm that the AgentDebugBridge and dev cli work together.
 
-# Run integration tests
-pnpm test:integration
-
-# Clean up
-pnpm verdaccio:stop
+```bash
+pnpm test:e2e:vite
+pnpm test:e2e:flutter:ios
+# Expo is currently disabled in CI as there is an undiagnosed issue where the app doesn't respond
+pnpm test:e2e:expo:ios
 ```
 
 **GitHub Actions:** Integration tests run automatically on PRs and pushes to `main` and `release/**` branches using Verdaccio as a service container.
