@@ -167,7 +167,26 @@ bash tests/e2e/flutter/cleanup-orphans.sh
 
 ## Running in CI
 
-The Flutter E2E tests are designed to run in GitHub Actions CI. See `.github/workflows/e2e-flutter.yml` (to be created) for the CI configuration.
+The Flutter E2E tests are designed to run in GitHub Actions CI. See `.github/workflows/e2e-flutter.yml` for the CI configuration.
+
+### CI Workflow Features
+
+The GitHub Actions workflow (`.github/workflows/e2e-flutter.yml`):
+
+1. **macOS runners**: Uses `macos-latest` for iOS simulator support
+2. **Flutter setup**: Installs Flutter SDK 3.27.2 via `subosito/flutter-action@v2`
+3. **Verdaccio**: Runs Verdaccio in Docker for package testing
+4. **Simulator boot**: Automatically boots an iPhone simulator before tests
+5. **Artifacts**: Uploads test logs on failure for debugging
+6. **Cleanup**: Stops Verdaccio, kills processes, and shuts down simulators
+
+### CI-Specific Behavior
+
+The test script detects the CI environment (`process.env.CI`) and:
+
+- **Version bumping**: Adds `-e2e.{timestamp}` suffix to package versions to avoid npm conflicts
+- **Artifact preservation**: Skips cleanup of temp directories so artifacts can be uploaded
+- **Extended timeouts**: Allows for slower CI environment performance
 
 **Security Note**: Flutter E2E tests should only run on protected branches (main, release/*) because they require macOS runners which are expensive and could be a security risk if run on untrusted PRs.
 

@@ -1,0 +1,171 @@
+name: E2E Tests - Flutter
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'examples/flutter-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-flutter.yml'
+  # Run on pushes to main (post-merge validation)
+  push:
+    branches: [ main, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/flutter-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-flutter.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-flutter:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.2'
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Flutter installation
+        run: |
+          flutter --version
+          flutter doctor
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Install Verdaccio
+        run: npm install -g verdaccio
+
+      - name: Start Verdaccio
+        run: |
+          # Start Verdaccio in background
+          verdaccio &
+          VERDACCIO_PID=$!
+          echo "VERDACCIO_PID=$VERDACCIO_PID" >> $GITHUB_ENV
+
+          echo "Waiting for Verdaccio to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
+              echo "✓ Verdaccio is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "✗ Verdaccio failed to start"
+          exit 1
+
+      - name: Configure npm registry for Verdaccio
+        run: |
+          npm config set registry http://localhost:4873/
+          pnpm config set registry http://localhost:4873/
+
+      - name: Authenticate with Verdaccio
+        run: npx tsx scripts/verdaccio-auth.ts
+        env:
+          VERDACCIO_URL: http://localhost:4873
+          VERDACCIO_USER: test
+          VERDACCIO_PASS: test
+          VERDACCIO_EMAIL: test@test.com
+
+      - name: Publish packages to Verdaccio
+        run: |
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
+            echo "Publishing failed"
+            exit 1
+          }
+
+      - name: Wait for packages to be available
+        run: |
+          echo "Waiting for packages to be indexed by Verdaccio..."
+          sleep 5
+
+          echo "Verifying packages are available..."
+          for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/flutter-cli; do
+            echo "Checking $pkg..."
+            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
+              echo "✓ $pkg is available"
+            else
+              echo "✗ $pkg not found in registry"
+              exit 1
+            fi
+          done
+
+      - name: List available iOS simulators
+        run: xcrun simctl list devices available | grep iPhone
+
+      - name: Boot iOS Simulator
+        run: |
+          # Get the first available iPhone simulator
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -o '[0-9A-F\-]\{36\}')
+          echo "Booting simulator: $SIMULATOR_ID"
+          xcrun simctl boot "$SIMULATOR_ID" || true
+
+          # Wait for simulator to boot
+          echo "Waiting for simulator to boot..."
+          for i in {1..30}; do
+            if xcrun simctl list devices | grep "$SIMULATOR_ID" | grep -q "Booted"; then
+              echo "✓ Simulator booted successfully"
+              exit 0
+            fi
+            echo "Attempt $i/30: Waiting for simulator to boot..."
+            sleep 2
+          done
+
+          echo "✗ Simulator failed to boot"
+          exit 1
+
+      - name: Run Flutter E2E tests
+        run: pnpm test:e2e:flutter:ios
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flutter-failure-logs
+          path: |
+            .e2e-test-flutter/
+            tests/e2e/flutter/*.log
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Stop Verdaccio
+          if [ ! -z "$VERDACCIO_PID" ]; then
+            kill $VERDACCIO_PID || true
+          fi
+          pkill -f "verdaccio" || true
+
+          # Kill any remaining Flutter/agenteract processes
+          pkill -f "flutter run" || true
+          pkill -f "@agenteract/cli" || true
+          pkill -f "@agenteract/flutter-cli" || true
+
+          # Shutdown simulator
+          xcrun simctl shutdown all || true
