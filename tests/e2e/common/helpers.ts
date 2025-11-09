@@ -59,14 +59,21 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Check if Verdaccio is running
+ * Check if Verdaccio is running (either via Docker or as a service)
  */
 export async function isVerdaccioRunning(): Promise<boolean> {
+  // First check if Verdaccio is accessible via HTTP
   try {
-    const { stdout } = await execAsync('docker ps');
-    return stdout.includes('agenteract-verdaccio');
+    await execAsync('curl -s http://localhost:4873/-/ping');
+    return true;
   } catch {
-    return false;
+    // Fall back to checking Docker
+    try {
+      const { stdout } = await execAsync('docker ps');
+      return stdout.includes('agenteract-verdaccio');
+    } catch {
+      return false;
+    }
   }
 }
 
