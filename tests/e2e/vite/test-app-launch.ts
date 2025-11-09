@@ -12,6 +12,7 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
+import { readFileSync, writeFileSync } from 'fs';
 
 const exec = promisify(execCallback);
 import {
@@ -99,8 +100,26 @@ async function main() {
     await runCommand(`rm -rf ${exampleAppDir}`);
     await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
 
-    // Replace workspace:* with wildcard * for Verdaccio
-    await runCommand(`cd ${exampleAppDir} && sed -i.bak 's/"workspace:\\*"/"*"/g' package.json`);
+    // Remove node_modules to avoid workspace symlinks
+    await runCommand(`rm -rf ${exampleAppDir}/node_modules`);
+
+    // Replace workspace:* dependencies with * for Verdaccio
+    info('Replacing workspace:* dependencies...');
+    const pkgJsonPath = `${exampleAppDir}/package.json`;
+    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+
+    ['dependencies', 'devDependencies'].forEach(depType => {
+      if (pkgJson[depType]) {
+        Object.keys(pkgJson[depType]).forEach(key => {
+          if (pkgJson[depType][key] === 'workspace:*') {
+            pkgJson[depType][key] = '*';
+          }
+        });
+      }
+    });
+
+    writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+    success('Workspace dependencies replaced');
 
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
