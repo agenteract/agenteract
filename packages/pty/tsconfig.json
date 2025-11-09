@@ -5,7 +5,8 @@
   "compilerOptions": {
     "outDir": "dist",
     "declaration": true,
-    "composite": true
+    "composite": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
   "references": [
     { "path": "../core" }

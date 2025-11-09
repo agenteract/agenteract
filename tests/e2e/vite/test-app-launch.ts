@@ -53,22 +53,24 @@ async function cleanup() {
     await killProcess(agentServer, 'Agenteract dev');
   }
 
-  await stopVerdaccio();
+  // Clean up temp directories (skip in CI to preserve artifacts)
+  if (!process.env.CI) {
+    await stopVerdaccio();
 
-  // Clean up temp directories
-  if (testConfigDir) {
-    try {
-      await runCommand(`rm -rf ${testConfigDir}`);
-    } catch (err) {
-      // Ignore cleanup errors
+    if (testConfigDir) {
+      try {
+        await runCommand(`rm -rf ${testConfigDir}`);
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
-  }
 
-  if (exampleAppDir) {
-    try {
-      await runCommand(`rm -rf ${exampleAppDir}`);
-    } catch (err) {
-      // Ignore cleanup errors
+    if (exampleAppDir) {
+      try {
+        await runCommand(`rm -rf ${exampleAppDir}`);
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
   }
 }
@@ -91,7 +93,29 @@ async function main() {
     // 2. Start Verdaccio
     await startVerdaccio();
 
-    // 2. Publish packages
+    // 2. Bump package versions to avoid npm conflicts (only in CI)
+    // In CI, Verdaccio proxies to npm for packages with existing versions,
+    // causing integrity mismatches. We add a unique suffix to versions.
+    // Locally, Verdaccio has cached packages so this isn't needed.
+    if (process.env.CI) {
+      info('Bumping package versions to avoid npm conflicts (CI only)...');
+      const versionSuffix = `-e2e.${Date.now()}`;
+      const packagesDir = 'packages';
+
+      // Bump versions in all package.json files (in-place, no backup)
+      const packageJsonFiles = (await runCommand(`find ${packagesDir} -name "package.json" -type f`))
+        .trim().split('\n');
+
+      for (const pkgJsonPath of packageJsonFiles) {
+        if (!pkgJsonPath) continue;
+        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+        pkgJson.version = pkgJson.version + versionSuffix;
+        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
+      }
+      success('Package versions bumped');
+    }
+
+    // 3. Publish packages
     await publishPackages();
 
     // 3. Copy react-example to /tmp and replace workspace:* dependencies
@@ -101,7 +125,7 @@ async function main() {
     await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
 
     // Remove node_modules to avoid workspace symlinks
-    await runCommand(`rm -rf ${exampleAppDir}/node_modules`);
+    await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
 
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
@@ -121,9 +145,23 @@ async function main() {
     writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
     success('Workspace dependencies replaced');
 
+    // Fix vite.config.ts to remove monorepo-specific paths
+    info('Fixing vite.config.ts...');
+    const viteConfigPath = `${exampleAppDir}/vite.config.ts`;
+    const newViteConfig = `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+})
+`;
+    writeFileSync(viteConfigPath, newViteConfig);
+    success('Vite config fixed');
+
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
+    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873 --verbose`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
@@ -230,6 +268,7 @@ async function main() {
     process.exit(1);
   } finally {
     await cleanup();
+    process.exit(0);
   }
 }
 

@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
-    "clean": "pnpm -r exec rm -rf dist node_modules",
+    "clean": "pnpm -r exec rm -rf dist node_modules; pnpm -r clean",
     "dev": "pnpm --parallel --filter \"@agenteract/*\" run dev",
     "test": "pnpm -r test && pnpm test:version && echo \"Ran without flutter because they run separately in CI.\"",
     "test:flutter": "cd packages/flutter && flutter test && cd ../../examples/flutter_example && flutter test",
