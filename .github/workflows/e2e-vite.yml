@@ -98,7 +98,20 @@ jobs:
           }
 
       - name: Wait for packages to be available
-        run: sleep 2
+        run: |
+          echo "Waiting for packages to be indexed by Verdaccio..."
+          sleep 5
+
+          echo "Verifying packages are available..."
+          for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite; do
+            echo "Checking $pkg..."
+            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
+              echo "✓ $pkg is available"
+            else
+              echo "✗ $pkg not found in registry"
+              exit 1
+            fi
+          done
 
       - name: Run Vite E2E tests
         run: pnpm test:e2e:vite

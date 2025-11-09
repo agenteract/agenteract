@@ -103,7 +103,7 @@ async function main() {
     await runCommand(`mkdir -p ${testConfigDir}`);
     await runCommand(`cd ${testConfigDir} && echo '{"name":"e2e-test-vite","version":"1.0.0"}' > package.json`);
     await runCommand(`cd ${testConfigDir} && npm config set registry http://localhost:4873`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite`);
+    await runCommand(`cd ${testConfigDir} && npm install --no-package-lock --cache-min 0 @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite`);
     success('CLI packages installed from Verdaccio');
 
     // 4. Create agenteract config for just the react-example
