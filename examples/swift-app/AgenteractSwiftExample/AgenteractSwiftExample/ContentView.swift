@@ -38,7 +38,7 @@ struct ContentView: View {
 
                     AgentButton(testID: "tap-button") {
                         tapCount += 1
-                        AppLogger.info("Button tapped! Count: \(tapCount)")
+                        AppLogger.info("Counter incremented to \(tapCount)")
                     } label: {
                         HStack {
                             Image(systemName: "hand.tap.fill")
@@ -68,6 +68,9 @@ struct ContentView: View {
                         placeholder: "Enter some text",
                         text: $inputText
                     )
+                    .onChange(of: inputText) { newValue in
+                        AppLogger.info("Input text changed to \(newValue)")
+                    }
                     .textFieldStyle(RoundedBorderTextFieldStyle())
 
                     Text("Input value: \(inputText)")
