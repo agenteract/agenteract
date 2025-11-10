@@ -44,7 +44,7 @@ async function cleanup() {
   if (testConfigDir && agentServer && agentServer.pid) {
     try {
       info('Sending quit command to Flutter via agenteract CLI...');
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter', 'q');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', 'q');
       await sleep(2000); // Wait for Flutter to quit
       success('Flutter quit command sent');
     } catch (err) {
@@ -155,29 +155,21 @@ async function main() {
       // Ignore cleanup errors
     }
 
-    // 3. Start Verdaccio
-    await startVerdaccio();
-
-    // 4. Bump package versions to avoid npm conflicts (only in CI)
-    if (process.env.CI) {
-      info('Bumping package versions to avoid npm conflicts (CI only)...');
-      const versionSuffix = `-e2e.${Date.now()}`;
-      const packagesDir = 'packages';
-
-      const packageJsonFiles = (await runCommand(`find ${packagesDir} -name "package.json" -type f`))
-        .trim().split('\n');
-
-      for (const pkgJsonPath of packageJsonFiles) {
-        if (!pkgJsonPath) continue;
-        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-        pkgJson.version = pkgJson.version + versionSuffix;
-        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-      }
-      success('Package versions bumped');
+    // 3. Start Verdaccio (only in local development, CI has it as a service)
+    if (!process.env.CI) {
+      await startVerdaccio();
+    } else {
+      info('Skipping Verdaccio start (already running in CI)');
     }
 
-    // 5. Publish packages
-    await publishPackages();
+    // 4. Publish packages (only in local development, CI publishes in workflow)
+    // Note: In CI, package versions are bumped BEFORE build/publish in the workflow
+    // This ensures Verdaccio serves the bumped versions instead of proxying to npm
+    if (!process.env.CI) {
+      await publishPackages();
+    } else {
+      info('Skipping package publish (already done in CI workflow)');
+    }
 
     // 6. Copy flutter_example to /tmp
     info('Copying flutter_example to /tmp...');
@@ -244,6 +236,16 @@ async function main() {
     );
     success('Config created');
 
+    // Debug: Check what @agenteract/pty package.json looks like
+    info('🔍 DEBUG: Checking installed @agenteract/pty package.json...');
+    try {
+      const ptyPkgJson = await runCommand(`cat ${testConfigDir}/node_modules/@agenteract/pty/package.json`);
+      info('📦 Installed @agenteract/pty package.json:');
+      console.log(ptyPkgJson);
+    } catch (err) {
+      error(`Failed to read @agenteract/pty package.json: ${err}`);
+    }
+
     // 11. Start agenteract dev from test directory
     info('Starting agenteract dev...');
     info('This will start the Flutter dev server and AgentDebugBridge');
@@ -258,12 +260,61 @@ async function main() {
     info('Waiting for agenteract server and Flutter PTY to initialize...');
     await sleep(8000); // Give more time for server to fully start
 
-    // Check dev logs to see if Flutter is starting
+    // Kill any existing instances of the app
+    // Flutter iOS apps run as "Runner.app/Runner" in the simulator
+    await runCommand(`pkill -f "Runner.app/Runner" 2>/dev/null || true`);
+
+    // Check dev logs to see if Flutter is starting and handle device selection
     info('Checking Flutter dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter', '--since', '50');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '50');
       info('Initial Flutter dev logs:');
       console.log(devLogs);
+
+      // Check if Flutter is waiting for device selection
+      if (devLogs.includes('Please choose one') || devLogs.includes('Please choose')) {
+        info('Flutter is waiting for device selection, finding booted simulator...');
+
+        // Get list of booted simulators
+        const bootedSims = await runCommand('xcrun simctl list devices | grep "Booted"');
+        info(`Booted simulators: ${bootedSims}`);
+
+        // Extract the device UDID from the first booted simulator
+        const udidMatch = bootedSims.match(/([A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12})/);
+
+        if (udidMatch) {
+          const bootedUDID = udidMatch[1];
+          info(`Found booted simulator UDID: ${bootedUDID}`);
+
+          // Find which number corresponds to this UDID in the dev logs
+          const lines = devLogs.split('\n');
+          let deviceNumber = '1'; // Default to 1 if we can't find it
+
+          for (const line of lines) {
+            // Look for lines like: [1]: iPhone 16 Pro (1AAAA41C-E0AA-4460-889D-724CA5F75F5C)
+            const match = line.match(/\[(\d+)\]:.*\(([A-F0-9-]+)\)/);
+            if (match && match[2] === bootedUDID) {
+              deviceNumber = match[1];
+              info(`Found booted device at position ${deviceNumber}`);
+              break;
+            }
+          }
+
+          // Send the device selection
+          info(`Sending device selection: ${deviceNumber}`);
+          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', deviceNumber);
+          await sleep(2000); // Wait for Flutter to process the selection
+
+          // Check logs again to confirm Flutter started
+          const afterSelectionLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '20');
+          info('Logs after device selection:');
+          console.log(afterSelectionLogs);
+        } else {
+          info('Could not find booted simulator, defaulting to device 1');
+          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', '1');
+          await sleep(2000);
+        }
+      }
 
       // Check if Flutter is actually running
       if (!devLogs.includes('flutter run') && !devLogs.includes('Flutter run key commands') && !devLogs.includes('Flutter PTY')) {
@@ -314,7 +365,7 @@ async function main() {
           // Every 5 attempts, check dev logs for progress
           if (connectionAttempts % 5 === 0) {
             try {
-              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter', '--since', '10');
+              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '10');
               info(`Flutter dev logs (attempt ${connectionAttempts}):`);
               console.log(devLogs);
             } catch (logErr) {
@@ -329,7 +380,7 @@ async function main() {
       if (connectionAttempts >= maxAttempts) {
         // Get final dev logs before failing
         try {
-          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter', '--since', '100');
+          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '100');
           error('Final Flutter dev logs:');
           console.log(finalLogs);
         } catch (logErr) {
@@ -341,10 +392,6 @@ async function main() {
 
     // 13. Verify we have a valid hierarchy
     info('Verifying UI hierarchy...');
-
-    // Show full hierarchy for debugging
-    info('Full hierarchy:');
-    console.log(hierarchy);
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Flutter Demo', 'UI contains app title');
@@ -479,7 +526,7 @@ async function main() {
     // 24. Check dev logs
     info('Checking Flutter dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter', '--since', '30');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '30');
       info('Flutter dev logs:');
       console.log(devLogs);
     } catch (err) {

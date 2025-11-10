@@ -59,10 +59,46 @@ jobs:
       - name: Build packages
         run: pnpm run build
 
+      - name: Bump package versions for integration test
+        run: |
+          echo "Bumping package versions to avoid npm conflicts with registry proxy..."
+          VERSION_SUFFIX="-integration.$(date +%s)"
+
+          # Bump versions in all package.json files and replace workspace:* dependencies
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              node -e "
+                const fs=require('fs');
+                const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+                p.version=p.version+process.argv[2];
+                // Replace workspace:* dependencies with actual versions
+                ['dependencies','devDependencies','peerDependencies'].forEach(depType => {
+                  if (p[depType]) {
+                    Object.keys(p[depType]).forEach(dep => {
+                      if (p[depType][dep] === 'workspace:*') {
+                        p[depType][dep] = '*';
+                      }
+                    });
+                  }
+                });
+                fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+'\n');
+              " "$pkg" "$VERSION_SUFFIX"
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "Bumped $PKG_NAME to $PKG_VER"
+            fi
+          done
+          
+          echo "VERSION_SUFFIX=$VERSION_SUFFIX" >> $GITHUB_ENV
+
       - name: Configure npm registry for Verdaccio
         run: |
           npm config set registry http://localhost:4873/
           pnpm config set registry http://localhost:4873/
+          # Clear npm cache to avoid using cached versions
+          npm cache clean --force
+          # Configure to only use Verdaccio, no upstream fallback for @agenteract scope
+          npm config set @agenteract:registry http://localhost:4873/
 
       - name: Authenticate with Verdaccio
         run: npx tsx scripts/verdaccio-auth.ts
@@ -79,23 +115,54 @@ jobs:
 
       - name: Publish packages to Verdaccio
         run: |
+          echo "📤 Publishing packages with bumped versions..."
+          # Show what versions we're about to publish
+          echo "Versions to publish:"
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "  $PKG_NAME@$PKG_VER"
+            fi
+          done
+          echo ""
+
           # Use pnpm publish which properly resolves workspace dependencies
-          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
-            echo "Publishing failed"
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks --force 2>&1 | tee publish.log || {
+            echo "❌ Publishing failed"
+            cat publish.log
             exit 1
           }
+          echo ""
+          echo "✅ Published packages"
 
       - name: Wait for packages to be available
-        run: sleep 2
-
-      - name: Verify packages are published
         run: |
-          # List all packages to verify they're available
-          npm view @agenteract/core --registry http://localhost:4873
-          npm view @agenteract/react --registry http://localhost:4873
+          echo "Waiting for packages to be indexed by Verdaccio..."
+          sleep 5
 
-      - name: Run integration tests
+          echo "Verifying packages are available..."
+          for pkg in @agenteract/core @agenteract/react @agenteract/agents @agenteract/cli @agenteract/server @agenteract/pty; do
+            echo ""
+            echo "📦 Checking $pkg..."
+            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
+              echo "✓ $pkg is available in registry"
+              # Show latest version
+              LATEST=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(j['dist-tags']?.latest || 'unknown')")
+              echo "  Latest version: $LATEST"
+            else
+              echo "✗ $pkg not found in registry"
+              echo "Attempting to view with npm..."
+              npm view $pkg --registry http://localhost:4873 || echo "  Failed to view package"
+              exit 1
+            fi
+          done
+          echo ""
+          echo "✅ All packages verified"
+
+      - name: Run basic integration tests
         run: |
+          echo "🧪 Running basic integration tests..."
           # Create a temporary directory for testing
           mkdir -p /tmp/integration-test
           cd /tmp/integration-test
@@ -104,19 +171,33 @@ jobs:
           npm init -y
           
           # Install packages from Verdaccio
+          echo "Installing @agenteract packages..."
           npm install @agenteract/core @agenteract/react --registry http://localhost:4873
           
           # Verify installation
+          echo "Verifying @agenteract/core..."
           node -e "require('@agenteract/core'); console.log('✓ @agenteract/core imported successfully')"
           
           # Test import resolution
+          echo "Testing ESM imports..."
           echo "import '@agenteract/core';" > test.mjs
           node test.mjs
-          echo "✓ Integration tests passed!"
+          echo "✓ Basic integration tests passed!"
+
+      - name: Install tsx for custom integration tests
+        run: npm install -g tsx
 
       - name: Run custom integration tests
         if: hashFiles('tests/integration/**') != ''
         env:
           REGISTRY: http://localhost:4873
-        run: pnpm run test:integration
+        run: |
+          echo "🧪 Running custom integration tests with mock server..."
+          pnpm run test:integration || {
+            echo "❌ Integration tests failed"
+            echo "Checking for running processes..."
+            ps aux | grep -E "(node|npm|tsx)" | grep -v grep || true
+            exit 1
+          }
+          echo "✅ Custom integration tests passed!"
 

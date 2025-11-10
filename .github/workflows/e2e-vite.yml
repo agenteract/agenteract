@@ -25,27 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    services:
-      verdaccio:
-        image: verdaccio/verdaccio:5
-        ports:
-          - 4873:4873
-
     steps:
-      - name: Wait for Verdaccio to start
-        run: |
-          echo "Waiting for Verdaccio to be ready..."
-          for i in {1..30}; do
-            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
-              echo "✓ Verdaccio is ready!"
-              exit 0
-            fi
-            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
-            sleep 2
-          done
-          echo "✗ Verdaccio failed to start"
-          exit 1
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -66,6 +46,129 @@ jobs:
       - name: Build packages
         run: pnpm run build
 
+      - name: Start Verdaccio with custom config
+        run: |
+          # Install Verdaccio
+          npm install -g verdaccio
+          
+          # Create storage directories
+          mkdir -p /tmp/verdaccio/storage/data
+          mkdir -p /tmp/verdaccio/storage
+          
+          # Create custom config with writable paths
+          cat > /tmp/verdaccio-config.yaml << 'EOF'
+          storage: /tmp/verdaccio/storage/data
+          auth:
+            htpasswd:
+              file: /tmp/verdaccio/storage/htpasswd
+              max_users: 1000
+          
+          uplinks:
+            npmjs:
+              url: https://registry.npmjs.org/
+          
+          packages:
+            '@agenteract/*':
+              # Don't use upstream for @agenteract packages - only serve locally published versions
+              access: $all
+              publish: $authenticated
+              unpublish: $authenticated
+              # No proxy field = don't fetch from upstream
+          
+            '@*/*':
+              access: $all
+              publish: $authenticated
+              unpublish: $authenticated
+              proxy: npmjs
+          
+            '**':
+              access: $all
+              publish: $authenticated
+              unpublish: $authenticated
+              proxy: npmjs
+          
+          server:
+            keepAliveTimeout: 60
+          
+          middlewares:
+            audit:
+              enabled: true
+          
+          logs: { type: stdout, format: pretty, level: http }
+          EOF
+          
+          # Start Verdaccio with custom config in background
+          verdaccio --config /tmp/verdaccio-config.yaml &
+          VERDACCIO_PID=$!
+          echo "VERDACCIO_PID=$VERDACCIO_PID" >> $GITHUB_ENV
+
+          echo "Waiting for Verdaccio to be ready..."
+          for i in {1..30}; do
+            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
+              echo "✓ Verdaccio is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "✗ Verdaccio failed to start"
+          exit 1
+
+      - name: Bump package versions for E2E test
+        run: |
+          echo "Bumping package versions to avoid npm conflicts with registry proxy..."
+          VERSION_SUFFIX="-e2e.$(date +%s)"
+
+          # First pass: bump all versions and collect them in a JSON file
+          echo "Building version map..."
+          node -e "
+            const fs=require('fs');
+            const versionMap={};
+            const packages=fs.readdirSync('packages');
+            packages.forEach(dir => {
+              const pkgPath='packages/'+dir+'/package.json';
+              if (fs.existsSync(pkgPath)) {
+                const p=JSON.parse(fs.readFileSync(pkgPath,'utf8'));
+                versionMap[p.name]=p.version+process.argv[1];
+                console.log('  '+p.name+': '+p.version+' -> '+versionMap[p.name]);
+              }
+            });
+            fs.writeFileSync('/tmp/version-map.json',JSON.stringify(versionMap,null,2));
+          " -- "$VERSION_SUFFIX"
+
+          # Second pass: bump versions and replace workspace:* with bumped versions
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              node -e "
+                const fs=require('fs');
+                const versionMap=JSON.parse(fs.readFileSync('/tmp/version-map.json','utf8'));
+                const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+                p.version=p.version+process.argv[2];
+                // Replace workspace:* dependencies with bumped versions
+                ['dependencies','devDependencies','peerDependencies'].forEach(depType => {
+                  if (p[depType]) {
+                    Object.keys(p[depType]).forEach(dep => {
+                      if (p[depType][dep] === 'workspace:*' && versionMap[dep]) {
+                        p[depType][dep] = versionMap[dep];
+                      }
+                    });
+                  }
+                });
+                fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+'\n');
+              " -- "$pkg" "$VERSION_SUFFIX"
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "Updated $PKG_NAME to $PKG_VER"
+              
+              # Export version for specific packages needed by E2E tests
+              if [ "$PKG_NAME" = "@agenteract/cli" ]; then
+                echo "E2E_CLI_VERSION=$PKG_VER" >> $GITHUB_ENV
+              fi
+            fi
+          done
+          
+          echo "VERSION_SUFFIX=$VERSION_SUFFIX" >> $GITHUB_ENV
+
       - name: Install Puppeteer Chrome
         run: npx puppeteer browsers install chrome
 
@@ -81,6 +184,10 @@ jobs:
         run: |
           npm config set registry http://localhost:4873/
           pnpm config set registry http://localhost:4873/
+          # Clear npm cache to avoid using cached versions
+          npm cache clean --force
+          # Configure to only use Verdaccio, no upstream fallback for @agenteract scope
+          npm config set @agenteract:registry http://localhost:4873/
 
       - name: Authenticate with Verdaccio
         run: npx tsx scripts/verdaccio-auth.ts
@@ -92,10 +199,25 @@ jobs:
 
       - name: Publish packages to Verdaccio
         run: |
-          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
-            echo "Publishing failed"
+          echo "📤 Publishing packages with bumped versions..."
+          # Show what versions we're about to publish
+          echo "Versions to publish:"
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "  $PKG_NAME@$PKG_VER"
+            fi
+          done
+          echo ""
+
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks --force 2>&1 | tee publish.log || {
+            echo "❌ Publishing failed"
+            cat publish.log
             exit 1
           }
+          echo ""
+          echo "✅ Published packages"
 
       - name: Wait for packages to be available
         run: |
@@ -103,18 +225,30 @@ jobs:
           sleep 5
 
           echo "Verifying packages are available..."
-          for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite; do
-            echo "Checking $pkg..."
+          for pkg in @agenteract/core @agenteract/react @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite @agenteract/pty @agenteract/expo; do
+            echo ""
+            echo "📦 Checking $pkg..."
             if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
-              echo "✓ $pkg is available"
+              echo "✓ $pkg is available in registry"
+              # Show all versions available
+              VERSIONS=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(Object.keys(j.versions || {}).join(', '))")
+              LATEST=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(j['dist-tags']?.latest || 'unknown')")
+              echo "  Latest version: $LATEST"
+              echo "  All versions: $VERSIONS"
             else
               echo "✗ $pkg not found in registry"
+              echo "Debug: Listing all @agenteract packages in registry..."
+              curl -s "http://localhost:4873/-/all" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);Object.keys(j).filter(k=>k.startsWith('@agenteract')).forEach(k=>console.log('  -',k))"
               exit 1
             fi
           done
 
       - name: Run Vite E2E tests
-        run: pnpm test:e2e:vite
+        env:
+          E2E_VERSION_SUFFIX: ${{ env.VERSION_SUFFIX }}
+        run: |
+          echo "Running E2E tests with version suffix: $E2E_VERSION_SUFFIX"
+          pnpm test:e2e:vite
 
       - name: Upload test artifacts on failure
         if: failure()
@@ -125,3 +259,12 @@ jobs:
             .e2e-test-vite/
             tests/e2e/vite/*.log
           retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          # Stop Verdaccio
+          if [ ! -z "$VERDACCIO_PID" ]; then
+            kill $VERDACCIO_PID || true
+          fi
+          pkill -f "verdaccio" || true

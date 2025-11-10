@@ -58,6 +58,38 @@ jobs:
       - name: Build packages
         run: pnpm run build
 
+      - name: Bump package versions for E2E test
+        run: |
+          echo "Bumping package versions to avoid npm conflicts with registry proxy..."
+          VERSION_SUFFIX="-e2e.$(date +%s)"
+
+          # Bump versions in all package.json files and replace workspace:* dependencies
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              node -e "
+                const fs=require('fs');
+                const p=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+                p.version=p.version+process.argv[2];
+                // Replace workspace:* dependencies with actual versions
+                ['dependencies','devDependencies','peerDependencies'].forEach(depType => {
+                  if (p[depType]) {
+                    Object.keys(p[depType]).forEach(dep => {
+                      if (p[depType][dep] === 'workspace:*') {
+                        p[depType][dep] = '*';
+                      }
+                    });
+                  }
+                });
+                fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+'\n');
+              " "$pkg" "$VERSION_SUFFIX"
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "Bumped $PKG_NAME to $PKG_VER"
+            fi
+          done
+          
+          echo "VERSION_SUFFIX=$VERSION_SUFFIX" >> $GITHUB_ENV
+
       - name: Install Verdaccio
         run: npm install -g verdaccio
 
@@ -84,6 +116,10 @@ jobs:
         run: |
           npm config set registry http://localhost:4873/
           pnpm config set registry http://localhost:4873/
+          # Clear npm cache to avoid using cached versions
+          npm cache clean --force
+          # Configure to only use Verdaccio, no upstream fallback for @agenteract scope
+          npm config set @agenteract:registry http://localhost:4873/
 
       - name: Authenticate with Verdaccio
         run: npx tsx scripts/verdaccio-auth.ts
@@ -95,10 +131,25 @@ jobs:
 
       - name: Publish packages to Verdaccio
         run: |
-          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
-            echo "Publishing failed"
+          echo "📤 Publishing packages with bumped versions..."
+          # Show what versions we're about to publish
+          echo "Versions to publish:"
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              PKG_NAME=$(node -p "require('./$pkg').name")
+              PKG_VER=$(node -p "require('./$pkg').version")
+              echo "  $PKG_NAME@$PKG_VER"
+            fi
+          done
+          echo ""
+
+          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks --force 2>&1 | tee publish.log || {
+            echo "❌ Publishing failed"
+            cat publish.log
             exit 1
           }
+          echo ""
+          echo "✅ Published packages"
 
       - name: Wait for packages to be available
         run: |
@@ -107,14 +158,22 @@ jobs:
 
           echo "Verifying packages are available..."
           for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/flutter-cli; do
-            echo "Checking $pkg..."
+            echo ""
+            echo "📦 Checking $pkg..."
             if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
-              echo "✓ $pkg is available"
+              echo "✓ $pkg is available in registry"
+              # Show latest version
+              LATEST=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(j['dist-tags']?.latest || 'unknown')")
+              echo "  Latest version: $LATEST"
             else
               echo "✗ $pkg not found in registry"
+              echo "Attempting to view with npm..."
+              npm view $pkg --registry http://localhost:4873 || echo "  Failed to view package"
               exit 1
             fi
           done
+          echo ""
+          echo "✅ All packages verified"
 
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep iPhone

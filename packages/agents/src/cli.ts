@@ -12,6 +12,7 @@ import {
   getAgentServerUrl,
   getDevServerUrlByType,
   MissingConfigError,
+  normalizeProjectConfig,
   type AgenteractConfig
 } from './config.js';
 
@@ -60,6 +61,57 @@ async function getServerUrls() {
       viteServerUrl: 'http://localhost:8791',
       flutterServerUrl: 'http://localhost:8792',
     };
+  }
+}
+
+/**
+ * Get list of projects that have dev servers (PTY)
+ * Returns array of project names with dev servers configured
+ */
+async function getDevServerProjects(): Promise<string[]> {
+  try {
+    const config = await getConfig();
+    const configRoot = await findConfigRoot();
+    if (!configRoot) return [];
+
+    const devServerProjects = config.projects
+      .map(p => normalizeProjectConfig(p, configRoot))
+      .filter(p => p.devServer || (p.type && p.type !== 'native'))
+      .map(p => p.name);
+
+    return devServerProjects;
+  } catch (error) {
+    return [];
+  }
+}
+
+/**
+ * Get dev server URL for a specific project name
+ */
+async function getDevServerUrlByProject(projectName: string): Promise<string | null> {
+  try {
+    const config = await getConfig();
+    const configRoot = await findConfigRoot();
+    if (!configRoot) return null;
+
+    const project = config.projects.find(p => p.name === projectName);
+    if (!project) return null;
+
+    const normalized = normalizeProjectConfig(project, configRoot);
+
+    // New format: devServer.port
+    if (normalized.devServer) {
+      return `http://localhost:${normalized.devServer.port}`;
+    }
+
+    // Legacy format: ptyPort
+    if (normalized.ptyPort) {
+      return `http://localhost:${normalized.ptyPort}`;
+    }
+
+    return null;
+  } catch (error) {
+    return null;
   }
 }
 
@@ -165,15 +217,14 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'dev-logs <type>',
-    'Get logs from a dev server',
+    'dev-logs <project>',
+    'Get logs from a dev server (PTY logs, not app runtime logs)',
     (yargs) => {
       return yargs
-        .positional('type', {
-          describe: 'Dev server type (expo, vite, flutter)',
+        .positional('project', {
+          describe: 'Project name (from agenteract.config.js)',
           type: 'string',
           demandOption: true,
-          choices: ['expo', 'vite', 'flutter'],
         })
         .option('since', {
           alias: 's',
@@ -184,8 +235,16 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        const { expoServerUrl, viteServerUrl, flutterServerUrl } = await getServerUrls();
-        const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
+        const url = await getDevServerUrlByProject(argv.project);
+
+        if (!url) {
+          console.error(`Project '${argv.project}' not found or has no dev server configured.`);
+          console.error('Available projects with dev servers:');
+          const projects = await getDevServerProjects();
+          projects.forEach(p => console.error(`  - ${p}`));
+          process.exit(1);
+        }
+
         const response = await axios.get(`${url}/logs?since=${argv.since}`);
         console.log(response.data);
       } catch (error) {
@@ -194,27 +253,35 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'cmd <type> <command>',
-    'Send a command to a dev server',
+    'cmd <project> <command>',
+    'Send a command (keystroke) to a dev server PTY',
     (yargs) => {
       return yargs
-        .positional('type', {
-          describe: 'Dev server type (expo, vite, flutter)',
+        .positional('project', {
+          describe: 'Project name (from agenteract.config.js)',
           type: 'string',
           demandOption: true,
-          choices: ['expo', 'vite', 'flutter'],
         })
         .positional('command', {
-          describe: 'Command to send',
+          describe: 'Command to send (e.g., "r" for reload)',
           type: 'string',
           demandOption: true,
         });
     },
     async (argv) => {
       try {
-        const { expoServerUrl, viteServerUrl, flutterServerUrl } = await getServerUrls();
-        const url = argv.type === 'expo' ? expoServerUrl : argv.type === 'vite' ? viteServerUrl : flutterServerUrl;
+        const url = await getDevServerUrlByProject(argv.project);
+
+        if (!url) {
+          console.error(`Project '${argv.project}' not found or has no dev server configured.`);
+          console.error('Available projects with dev servers:');
+          const projects = await getDevServerProjects();
+          projects.forEach(p => console.error(`  - ${p}`));
+          process.exit(1);
+        }
+
         await axios.post(`${url}/cmd`, { cmd: argv.command });
+        console.log(`✓ Sent command '${argv.command}' to ${argv.project}`);
       } catch (error) {
         handleRequestError(error);
       }

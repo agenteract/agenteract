@@ -179,6 +179,8 @@ Project Name as supplied to `AgentDebugBridge`
 - `flutter` - Flutter apps (hybrid: PTY + WebSocket logs)
 - `native` - Pure native apps like Swift (WebSocket logs only)
 
+**Note:** Agenteract now supports **any** dev server through generic PTY configuration. You can manually configure custom dev servers (Next.js, Astro, Django, etc.) in `agenteract.config.js` using the `devServer` field. See `docs/GENERIC_PTY.md` for details. The `add-config` command uses the legacy type-based format for backward compatibility.
+
 
 ### *Step 2: Start Dev Server and apps*
 
@@ -211,26 +213,31 @@ There are two types of logs available: **Dev Server Logs** and **In-App Console 
 
 These logs come from the development server process (like Vite, Expo Metro, or Flutter). They are essential for debugging **build-time errors**, such as transpilation failures, device connection issues, or server crashes. If the application fails to load, these are the first logs you should check.
 
-**Expo Command**
+**Command**
 ```bash
-pnpm agenteract-agents dev-logs expo --since 20
+pnpm agenteract-agents dev-logs <project-name> --since 20
 ```
 
-**Vite Command**
+**Examples:**
 ```bash
-pnpm agenteract-agents dev-logs vite --since 20
+# Expo project
+pnpm agenteract-agents dev-logs expo-app --since 20
+
+# Vite/React project
+pnpm agenteract-agents dev-logs react-app --since 20
+
+# Flutter project
+pnpm agenteract-agents dev-logs flutter-app --since 20
+
+# Next.js or any custom dev server
+pnpm agenteract-agents dev-logs next-app --since 20
 ```
 
-**Flutter Command**
-```bash
-pnpm agenteract-agents dev-logs flutter --since 20
-```
-
-Note: Flutter dev logs show `flutter run` output including:
+Note: Dev logs show the output from your dev server command (e.g., `npm run dev`, `flutter run`), including:
 - Build progress and errors
-- Device connection status
+- Device connection status (for mobile)
 - Hot reload/restart confirmations
-- Framework messages
+- Server startup messages
 
 ### 2. In-App Console Logs
 
@@ -246,9 +253,9 @@ These logs are captured from the running application's console/print calls. Use 
 pnpm agenteract-agents logs <project-name> --since 20
 ```
 
-**Important for Flutter**: Use both `dev-logs flutter` and `logs flutter-app` together:
-- `dev-logs` shows build and device issues from `flutter run`
-- `logs` shows runtime app behavior from your `debugPrint` statements
+**Important for Flutter**: Use both `dev-logs` and `logs` together:
+- `dev-logs flutter-app` shows build and device issues from `flutter run`
+- `logs flutter-app` shows runtime app behavior from your `debugPrint` statements
 
 `since` identifies how many log lines you want to tail.
 
@@ -256,40 +263,53 @@ pnpm agenteract-agents logs <project-name> --since 20
 
 ## Dev Server Commands
 
-Similarly, you can send keystrokes (`cmd` in the json payment) to the dev server console:
-
-**Expo Commands**
-
-`i`: start the ios app
-`a`: start the android app
-`r`: reload the app
+You can send keystrokes to the dev server console using the `cmd` command:
 
 **Command**
 ```bash
-pnpm agenteract-agents cmd expo r
+pnpm agenteract-agents cmd <project-name> <keystroke>
 ```
 
-**Vite Commands**
+**Examples:**
 
-`r`: reload the app
-`q`: quit
-
-**Command**
+**Expo project commands:**
 ```bash
-pnpm agenteract-agents cmd vite r
+# Start iOS app
+pnpm agenteract-agents cmd expo-app i
+
+# Start Android app
+pnpm agenteract-agents cmd expo-app a
+
+# Reload the app
+pnpm agenteract-agents cmd expo-app r
 ```
 
-**Flutter Commands**
-
-`r`: hot reload the app
-`R`: hot restart the app
-`q`: quit
-`h`: show help
-
-**Command**
+**Vite project commands:**
 ```bash
-pnpm agenteract-agents cmd flutter r
+# Reload the app
+pnpm agenteract-agents cmd react-app r
+
+# Quit
+pnpm agenteract-agents cmd react-app q
 ```
+
+**Flutter project commands:**
+```bash
+# Hot reload
+pnpm agenteract-agents cmd flutter-app r
+
+# Hot restart
+pnpm agenteract-agents cmd flutter-app R
+
+# Quit
+pnpm agenteract-agents cmd flutter-app q
+
+# Show help
+pnpm agenteract-agents cmd flutter-app h
+```
+
+**Custom dev server commands:**
+Commands depend on what your dev server supports. Common ones include `r` (reload), `q` (quit).
 
 If commands don't work, instruct the user to start the CLI wrapper:
 

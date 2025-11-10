@@ -45,7 +45,7 @@ async function cleanup() {
   if (testConfigDir && agentServer && agentServer.pid) {
     try {
       info('Sending quit command to Expo via agenteract CLI...');
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo', 'q');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'q');
       await sleep(2000); // Wait for Expo to quit
       success('Expo quit command sent');
     } catch (err) {
@@ -145,29 +145,21 @@ async function main() {
       // Ignore cleanup errors
     }
 
-    // 2. Start Verdaccio
-    await startVerdaccio();
-
-    // 3. Bump package versions to avoid npm conflicts (only in CI)
-    if (process.env.CI) {
-      info('Bumping package versions to avoid npm conflicts (CI only)...');
-      const versionSuffix = `-e2e.${Date.now()}`;
-      const packagesDir = 'packages';
-
-      const packageJsonFiles = (await runCommand(`find ${packagesDir} -name "package.json" -type f`))
-        .trim().split('\n');
-
-      for (const pkgJsonPath of packageJsonFiles) {
-        if (!pkgJsonPath) continue;
-        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-        pkgJson.version = pkgJson.version + versionSuffix;
-        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-      }
-      success('Package versions bumped');
+    // 2. Start Verdaccio (only in local development, CI has it as a service)
+    if (!process.env.CI) {
+      await startVerdaccio();
+    } else {
+      info('Skipping Verdaccio start (already running in CI)');
     }
 
-    // 4. Publish packages
-    await publishPackages();
+    // 3. Publish packages (only in local development, CI publishes in workflow)
+    // Note: In CI, package versions are bumped BEFORE build/publish in the workflow
+    // This ensures Verdaccio serves the bumped versions instead of proxying to npm
+    if (!process.env.CI) {
+      await publishPackages();
+    } else {
+      info('Skipping package publish (already done in CI workflow)');
+    }
 
     // 5. Copy expo-example to .e2e-test-expo within the repo
     // Note: Watchman needs access and will prompt for permissions outside the repo
@@ -250,7 +242,7 @@ async function main() {
     // Check dev logs to see if Expo is starting
     info('Checking Expo dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo', '--since', '50');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '50');
       info('Initial Expo dev logs:');
       console.log(devLogs);
 
@@ -266,7 +258,7 @@ async function main() {
     // 9. Launch iOS app via agenteract CLI command
     info('Launching iOS app via Expo CLI...');
     try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo', 'i');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'i');
       success('iOS launch command sent');
     } catch (err) {
       error(`Failed to send iOS launch command: ${err}`);
@@ -275,7 +267,7 @@ async function main() {
     await sleep(1000);
 
     try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo', 'y');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'y');
       success('Responding y to install expo prompt, just in case.');
     } catch (err) {
       error(`Failed to send y command: ${err}`);
@@ -344,7 +336,7 @@ async function main() {
           // Every 5 attempts, check dev logs for progress
           if (connectionAttempts % 5 === 0) {
             try {
-              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo', '--since', '10');
+              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '10');
               info(`Expo dev logs (attempt ${connectionAttempts}):`);
               console.log(devLogs);
             } catch (logErr) {
@@ -366,7 +358,7 @@ async function main() {
 
         // Get final dev logs before failing
         try {
-          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo', '--since', '100');
+          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
           error('Final Expo dev logs:');
           console.log(finalLogs);
         } catch (logErr) {
@@ -507,7 +499,7 @@ async function main() {
     // 20. Check dev logs
     info('Checking Expo dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo', '--since', '30');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '30');
       info('Expo dev logs:');
       console.log(devLogs);
     } catch (err) {

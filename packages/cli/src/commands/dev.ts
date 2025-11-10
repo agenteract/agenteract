@@ -1,6 +1,6 @@
 // packages/cli/src/commands/dev.ts
 import fs from 'node:fs';
-import { loadConfig, MissingConfigError } from '../config.js';
+import { loadConfig, MissingConfigError, normalizeProjectConfig } from '../config.js';
 import { detectInvoker } from '@agenteract/core';
 const { pkgManager, isNpx } = detectInvoker();
 import path from 'path';
@@ -16,6 +16,10 @@ const agenterServePackage = pkgManager === 'pnpm' ? 'agenterserve' : '@agenterac
 const nearestPackageJson = findNearestPackageJson(process.cwd());
 const isAgenteractPackage = nearestPackageJson?.name?.startsWith('@agenteract/') || nearestPackageJson?.name === 'agenteract';
 
+// Generic PTY package name (used for all dev servers now)
+const ptyPackageName = isAgenteractPackage ? 'agenterpty' : '@agenteract/pty';
+
+// Legacy type-to-command map - deprecated but kept for backward compatibility
 const typeToCommandMap: { [key: string]: string } = {
   expo: isAgenteractPackage ? 'agenterexpo' : '@agenteract/expo',
   vite: isAgenteractPackage ? 'agentervite' : '@agenteract/vite',
@@ -93,14 +97,34 @@ export async function runDevCommand(args: { config: string }) {
   }
 
   commands.push(...config.projects.map((project: any) => {
-    const projectPath = path.resolve(rootDir, project.path);
+    const normalizedProject = normalizeProjectConfig(project, rootDir);
+    const projectPath = path.resolve(rootDir, normalizedProject.path);
     let command = '';
 
-    if (project.type !== 'native') {
-      const baseCommand = `${spawnBin} ${typeToCommandMap[project.type]} --port ${project.ptyPort}`;
+    // If project has a devServer config, use generic PTY
+    if (normalizedProject.devServer) {
+      const { devServer } = normalizedProject;
+      const finalCwd = devServer.cwd ? path.resolve(projectPath, devServer.cwd) : projectPath;
+
+      // Build command for generic PTY package
+      command = `${spawnBin} ${ptyPackageName} --command "${devServer.command}" --port ${devServer.port} --cwd "${finalCwd}"`;
+
+      // Add validation if specified
+      if (devServer.validation) {
+        command += ` --validate '${JSON.stringify(devServer.validation)}'`;
+      }
+
+      // Add environment variables if specified
+      if (devServer.env) {
+        command += ` --env '${JSON.stringify(devServer.env)}'`;
+      }
+    }
+    // Legacy: old type-based format (backward compatibility)
+    else if (normalizedProject.type && normalizedProject.type !== 'native') {
+      const baseCommand = `${spawnBin} ${typeToCommandMap[normalizedProject.type]} --port ${normalizedProject.ptyPort}`;
 
       // Flutter needs explicit --cwd because process.cwd() isn't reliable when spawned via shell
-      if (project.type === 'flutter') {
+      if (normalizedProject.type === 'flutter') {
         command = `${baseCommand} --cwd "${projectPath}"`;
       } else {
         command = baseCommand;
@@ -109,11 +133,11 @@ export async function runDevCommand(args: { config: string }) {
 
     return {
       command,
-      name: project.name,
+      name: normalizedProject.name,
       cwd: projectPath,
-      type: project.type,
-      // Flutter is hybrid: has PTY but also uses WebSocket logs
-      isHybrid: project.type === 'flutter',
+      type: normalizedProject.type || 'generic',
+      // Flutter and any project with both PTY and WebSocket logs is hybrid
+      isHybrid: normalizedProject.type === 'flutter' || (normalizedProject.devServer && normalizedProject.type),
     };
   }));
 

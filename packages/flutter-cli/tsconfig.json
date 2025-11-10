@@ -1,8 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
+  "exclude": ["node_modules", "dist"],
+  "include": ["src"],
   "compilerOptions": {
-    "outDir": "./dist",
-    "rootDir": "./src"
+    "outDir": "dist",
+    "declaration": true,
+    "composite": true,
+    "tsBuildInfoFile": ".tsbuildinfo"
   },
-  "include": ["src/**/*"]
+  "references": [
+    { "path": "../pty" }
+  ]
 }
