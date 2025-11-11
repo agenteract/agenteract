@@ -116,7 +116,13 @@ export function getDevServerUrlByType(config: AgenteractConfig, type: 'expo' | '
   return `http://localhost:${project.ptyPort}`;
 }
 
-export async function addConfig(rootDir: string, projectPath: string, name: string, type: string) {
+export async function addConfig(
+  rootDir: string,
+  projectPath: string,
+  name: string,
+  typeOrCommand: string,
+  port?: number
+) {
   const configPath = path.join(rootDir, 'agenteract.config.js');
   let config: any;
 
@@ -144,20 +150,75 @@ export async function addConfig(rootDir: string, projectPath: string, name: stri
 
   let update = nameExists || pathExists;
 
-  // if the project already exists, update it
-  if (update) {
-    update.path = projectPath;
-    update.name = name;
-    update.type = type;
-  } else {
-    let ptyPort = 8790;
-  
-    while (config.projects.some((p: any) => p.ptyPort === ptyPort)) {
+  // Determine if this is legacy format (type) or new format (command)
+  const LEGACY_TYPES = ['expo', 'vite', 'flutter', 'native'];
+  const isLegacyFormat = LEGACY_TYPES.includes(typeOrCommand);
+
+  // Allocate a port if not provided
+  let ptyPort = port || 8790;
+  if (!port) {
+    while (config.projects.some((p: any) =>
+      (p.ptyPort === ptyPort) || (p.devServer?.port === ptyPort)
+    )) {
       ptyPort++;
     }
-    config.projects.push({ name, path: projectPath, type, ptyPort });
   }
+
+  let newProjectConfig: any;
+
+  if (isLegacyFormat) {
+    // Legacy format: use old 'type' field for backwards compatibility
+    // Native apps don't have dev servers
+    if (typeOrCommand === 'native') {
+      newProjectConfig = {
+        name,
+        path: projectPath,
+        type: 'native'
+      };
+    } else {
+      // For non-native legacy types, create with new devServer format
+      const preset = TYPE_PRESETS[typeOrCommand];
+      if (!preset) {
+        console.error(`Unknown type '${typeOrCommand}'`);
+        return;
+      }
+
+      newProjectConfig = {
+        name,
+        path: projectPath,
+        devServer: {
+          ...preset,
+          port: ptyPort
+        }
+      };
+
+      console.log(`ℹ️  Creating config with new devServer format (migrated from legacy type '${typeOrCommand}')`);
+    }
+  } else {
+    // New format: generic dev server command
+    newProjectConfig = {
+      name,
+      path: projectPath,
+      devServer: {
+        command: typeOrCommand,
+        port: ptyPort
+      }
+    };
+  }
+
+  // If the project already exists, update it
+  if (update) {
+    Object.assign(update, newProjectConfig);
+  } else {
+    config.projects.push(newProjectConfig);
+  }
+
   await fs.writeFile(configPath, `export default ${JSON.stringify(config, null, 2)};`);
+
+  console.log(`✅ Config updated: ${name} at ${projectPath}`);
+  if (newProjectConfig.devServer) {
+    console.log(`   Dev server: ${newProjectConfig.devServer.command} (port: ${newProjectConfig.devServer.port})`);
+  }
 }
 
 /**
