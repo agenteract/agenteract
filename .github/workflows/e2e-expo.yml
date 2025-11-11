@@ -47,12 +47,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm run build
-
-      - name: Start Verdaccio
-        run: pnpm verdaccio:start
-
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep iPhone
 

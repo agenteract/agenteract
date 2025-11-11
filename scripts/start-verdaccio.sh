@@ -43,7 +43,7 @@ fi
 
 # Start Verdaccio in the background
 echo "   Starting Verdaccio on port ${VERDACCIO_PORT}..."
-npx verdaccio --listen ${VERDACCIO_PORT} $CONFIG_ARG > "$LOG_FILE" 2>&1 &
+pnpm dlx verdaccio --listen ${VERDACCIO_PORT} $CONFIG_ARG > "$LOG_FILE" 2>&1 &
 VERDACCIO_PID=$!
 
 # Save PID to file

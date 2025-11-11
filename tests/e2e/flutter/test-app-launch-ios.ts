@@ -226,16 +226,6 @@ async function main() {
     );
     success('Config created');
 
-    // Debug: Check what @agenteract/pty package.json looks like
-    info('🔍 DEBUG: Checking installed @agenteract/pty package.json...');
-    try {
-      const ptyPkgJson = await runCommand(`cat ${testConfigDir}/node_modules/@agenteract/pty/package.json`);
-      info('📦 Installed @agenteract/pty package.json:');
-      console.log(ptyPkgJson);
-    } catch (err) {
-      error(`Failed to read @agenteract/pty package.json: ${err}`);
-    }
-
     // 11. Start agenteract dev from test directory
     info('Starting agenteract dev...');
     info('This will start the Flutter dev server and AgentDebugBridge');
@@ -526,7 +516,7 @@ async function main() {
     success('✅ All tests passed!');
 
   } catch (err) {
-    error(`Test failed: ${err}`);
+    error(`Test failed: ${err}\n${err instanceof Error ? err.stack : 'No stack trace available'}`);
     await cleanup(); // Ensure cleanup runs even on failure
     process.exit(1);
   } finally {
