@@ -155,8 +155,16 @@ export async function addConfig(
   const isLegacyFormat = LEGACY_TYPES.includes(typeOrCommand);
 
   // Allocate a port if not provided
-  let ptyPort = port || 8790;
-  if (!port) {
+  let ptyPort: number;
+  if (port) {
+    // Explicit port provided
+    ptyPort = port;
+  } else if (update) {
+    // Reuse existing port when updating
+    ptyPort = (update as any).ptyPort || (update as any).devServer?.port || 8790;
+  } else {
+    // Find next available port for new project
+    ptyPort = 8790;
     while (config.projects.some((p: any) =>
       (p.ptyPort === ptyPort) || (p.devServer?.port === ptyPort)
     )) {
@@ -206,9 +214,11 @@ export async function addConfig(
     };
   }
 
-  // If the project already exists, update it
+  // If the project already exists, replace it completely
   if (update) {
-    Object.assign(update, newProjectConfig);
+    // Find the index and replace the entire object to avoid keeping old fields
+    const index = config.projects.indexOf(update);
+    config.projects[index] = newProjectConfig;
   } else {
     config.projects.push(newProjectConfig);
   }
