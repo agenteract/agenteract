@@ -60,23 +60,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-puppeteer-
 
-      - name: Publish packages to Verdaccio
-        run: |
-          echo "📤 Publishing packages with bumped versions..."
-          # Show what versions we're about to publish
-          echo "Versions to publish:"
-          for pkg in packages/*/package.json; do
-            if [ -f "$pkg" ]; then
-              PKG_NAME=$(node -p "require('./$pkg').name")
-              PKG_VER=$(node -p "require('./$pkg').version")
-              echo "  $PKG_NAME@$PKG_VER"
-            fi
-          done
-          echo ""
-
-          # Use verdaccio:publish script which handles config, auth, and publishing
-          pnpm verdaccio:publish
-
       - name: Run Vite E2E tests
         env:
           E2E_VERSION_SUFFIX: ${{ env.VERSION_SUFFIX }}

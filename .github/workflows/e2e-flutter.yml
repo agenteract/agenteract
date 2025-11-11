@@ -61,47 +61,6 @@ jobs:
       - name: Start Verdaccio
         run: pnpm verdaccio:start
 
-      - name: Publish packages to Verdaccio
-        run: |
-          echo "📤 Publishing packages..."
-          # Show what versions we're about to publish
-          echo "Versions to publish:"
-          for pkg in packages/*/package.json; do
-            if [ -f "$pkg" ]; then
-              PKG_NAME=$(node -p "require('./$pkg').name")
-              PKG_VER=$(node -p "require('./$pkg').version")
-              echo "  $PKG_NAME@$PKG_VER"
-            fi
-          done
-          echo ""
-
-          # Use verdaccio:publish script which handles config, auth, and publishing
-          pnpm verdaccio:publish
-
-      - name: Wait for packages to be available
-        run: |
-          echo "Waiting for packages to be indexed by Verdaccio..."
-          sleep 5
-
-          echo "Verifying packages are available..."
-          for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/flutter-cli; do
-            echo ""
-            echo "📦 Checking $pkg..."
-            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
-              echo "✓ $pkg is available in registry"
-              # Show latest version
-              LATEST=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(j['dist-tags']?.latest || 'unknown')")
-              echo "  Latest version: $LATEST"
-            else
-              echo "✗ $pkg not found in registry"
-              echo "Attempting to view with npm..."
-              npm view $pkg --registry http://localhost:4873 || echo "  Failed to view package"
-              exit 1
-            fi
-          done
-          echo ""
-          echo "✅ All packages verified"
-
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep iPhone
 
