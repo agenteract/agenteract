@@ -145,21 +145,11 @@ async function main() {
       // Ignore cleanup errors
     }
 
-    // 2. Start Verdaccio (only in local development, CI has it as a service)
-    if (!process.env.CI) {
-      await startVerdaccio();
-    } else {
-      info('Skipping Verdaccio start (already running in CI)');
-    }
+    // 2. Start Verdaccio
+    await startVerdaccio();
 
-    // 3. Publish packages (only in local development, CI publishes in workflow)
-    // Note: In CI, package versions are bumped BEFORE build/publish in the workflow
-    // This ensures Verdaccio serves the bumped versions instead of proxying to npm
-    if (!process.env.CI) {
-      await publishPackages();
-    } else {
-      info('Skipping package publish (already done in CI workflow)');
-    }
+    // 3. Publish packages
+    await publishPackages();
 
     // 5. Copy expo-example to .e2e-test-expo within the repo
     // Note: Watchman needs access and will prompt for permissions outside the repo
