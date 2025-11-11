@@ -90,14 +90,10 @@ async function main() {
       // Ignore cleanup errors
     }
 
-    // 2. Start Verdaccio (only in local development, CI has it as a service)
-    if (!process.env.CI) {
-      await startVerdaccio();
-    } else {
-      info('Skipping Verdaccio start (already running in CI)');
-    }
+    // 2. Start Verdaccio
+    await startVerdaccio();
 
-    // 3. Publish packages (only in local development, CI publishes in workflow)
+    // 3. Publish packages
     await publishPackages();
 
     // 3. Copy react-example to /tmp and replace workspace:* dependencies
@@ -161,16 +157,6 @@ export default defineConfig({
       `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app vite`
     );
     success('Config created');
-
-    // Debug: Check what @agenteract/pty package.json looks like
-    info('🔍 DEBUG: Checking installed @agenteract/pty package.json...');
-    try {
-      const ptyPkgJson = await runCommand(`cat ${testConfigDir}/node_modules/@agenteract/pty/package.json`);
-      info('📦 Installed @agenteract/pty package.json:');
-      console.log(ptyPkgJson);
-    } catch (err) {
-      error(`Failed to read @agenteract/pty package.json: ${err}`);
-    }
 
     // 5. Start agenteract dev from test directory (starts dev servers and agent bridge)
     info('Starting agenteract dev...');
