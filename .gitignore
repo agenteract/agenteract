@@ -9,6 +9,9 @@ dist
 # Verdaccio storage (local testing)
 .verdaccio/storage/
 .verdaccio/htpasswd
+.verdaccio/verdaccio.pid
+.verdaccio/verdaccio.log
+.verdaccio/plugins/
 
 # E2E test temp directories
 .e2e-test-*
