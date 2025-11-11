@@ -98,13 +98,7 @@ async function main() {
     }
 
     // 3. Publish packages (only in local development, CI publishes in workflow)
-    // Note: In CI, package versions are bumped BEFORE build/publish in the workflow
-    // This ensures Verdaccio serves the bumped versions instead of proxying to npm
-    if (!process.env.CI) {
-      await publishPackages();
-    } else {
-      info('Skipping package publish (already done in CI workflow)');
-    }
+    await publishPackages();
 
     // 3. Copy react-example to /tmp and replace workspace:* dependencies
     info('Copying react-example to /tmp and preparing for Verdaccio...');
