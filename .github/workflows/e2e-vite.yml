@@ -132,30 +132,6 @@ jobs:
           # Use verdaccio:publish script which handles config, auth, and publishing
           pnpm verdaccio:publish
 
-      - name: Wait for packages to be available
-        run: |
-          echo "Waiting for packages to be indexed by Verdaccio..."
-          sleep 5
-
-          echo "Verifying packages are available..."
-          for pkg in @agenteract/core @agenteract/react @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite @agenteract/pty @agenteract/expo; do
-            echo ""
-            echo "📦 Checking $pkg..."
-            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
-              echo "✓ $pkg is available in registry"
-              # Show all versions available
-              VERSIONS=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(Object.keys(j.versions || {}).join(', '))")
-              LATEST=$(curl -s "http://localhost:4873/$pkg" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);console.log(j['dist-tags']?.latest || 'unknown')")
-              echo "  Latest version: $LATEST"
-              echo "  All versions: $VERSIONS"
-            else
-              echo "✗ $pkg not found in registry"
-              echo "Debug: Listing all @agenteract packages in registry..."
-              curl -s "http://localhost:4873/-/all" | node -e "const d=require('fs').readFileSync(0,'utf8');const j=JSON.parse(d);Object.keys(j).filter(k=>k.startsWith('@agenteract')).forEach(k=>console.log('  -',k))"
-              exit 1
-            fi
-          done
-
       - name: Run Vite E2E tests
         env:
           E2E_VERSION_SUFFIX: ${{ env.VERSION_SUFFIX }}
