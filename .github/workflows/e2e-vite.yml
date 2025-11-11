@@ -46,73 +46,8 @@ jobs:
       - name: Build packages
         run: pnpm run build
 
-      - name: Start Verdaccio with custom config
-        run: |
-          # Install Verdaccio
-          npm install -g verdaccio
-          
-          # Create storage directories
-          mkdir -p /tmp/verdaccio/storage/data
-          mkdir -p /tmp/verdaccio/storage
-          
-          # Create custom config with writable paths
-          cat > /tmp/verdaccio-config.yaml << 'EOF'
-          storage: /tmp/verdaccio/storage/data
-          auth:
-            htpasswd:
-              file: /tmp/verdaccio/storage/htpasswd
-              max_users: 1000
-          
-          uplinks:
-            npmjs:
-              url: https://registry.npmjs.org/
-          
-          packages:
-            '@agenteract/*':
-              # Don't use upstream for @agenteract packages - only serve locally published versions
-              access: $all
-              publish: $authenticated
-              unpublish: $authenticated
-              # No proxy field = don't fetch from upstream
-          
-            '@*/*':
-              access: $all
-              publish: $authenticated
-              unpublish: $authenticated
-              proxy: npmjs
-          
-            '**':
-              access: $all
-              publish: $authenticated
-              unpublish: $authenticated
-              proxy: npmjs
-          
-          server:
-            keepAliveTimeout: 60
-          
-          middlewares:
-            audit:
-              enabled: true
-          
-          logs: { type: stdout, format: pretty, level: http }
-          EOF
-          
-          # Start Verdaccio with custom config in background
-          verdaccio --config /tmp/verdaccio-config.yaml &
-          VERDACCIO_PID=$!
-          echo "VERDACCIO_PID=$VERDACCIO_PID" >> $GITHUB_ENV
-
-          echo "Waiting for Verdaccio to be ready..."
-          for i in {1..30}; do
-            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
-              echo "✓ Verdaccio is ready!"
-              exit 0
-            fi
-            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
-            sleep 2
-          done
-          echo "✗ Verdaccio failed to start"
-          exit 1
+      - name: Start Verdaccio
+        run: pnpm verdaccio:start
 
       - name: Bump package versions for E2E test
         run: |
@@ -180,23 +115,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-puppeteer-
 
-      - name: Configure npm registry for Verdaccio
-        run: |
-          npm config set registry http://localhost:4873/
-          pnpm config set registry http://localhost:4873/
-          # Clear npm cache to avoid using cached versions
-          npm cache clean --force
-          # Configure to only use Verdaccio, no upstream fallback for @agenteract scope
-          npm config set @agenteract:registry http://localhost:4873/
-
-      - name: Authenticate with Verdaccio
-        run: npx tsx scripts/verdaccio-auth.ts
-        env:
-          VERDACCIO_URL: http://localhost:4873
-          VERDACCIO_USER: test
-          VERDACCIO_PASS: test
-          VERDACCIO_EMAIL: test@test.com
-
       - name: Publish packages to Verdaccio
         run: |
           echo "📤 Publishing packages with bumped versions..."
@@ -211,13 +129,8 @@ jobs:
           done
           echo ""
 
-          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks --force 2>&1 | tee publish.log || {
-            echo "❌ Publishing failed"
-            cat publish.log
-            exit 1
-          }
-          echo ""
-          echo "✅ Published packages"
+          # Use verdaccio:publish script which handles config, auth, and publishing
+          pnpm verdaccio:publish
 
       - name: Wait for packages to be available
         run: |
@@ -262,9 +175,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: |
-          # Stop Verdaccio
-          if [ ! -z "$VERDACCIO_PID" ]; then
-            kill $VERDACCIO_PID || true
-          fi
-          pkill -f "verdaccio" || true
+        run: pnpm verdaccio:stop
