@@ -158,28 +158,44 @@ For this to work, we need to configure the dev server. This can be done at a wor
 
 The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
 
+**New Format (Generic Dev Server - Recommended):**
+```bash
+pnpm agenteract add-config <path> <projectName> <command> [port]
+```
+
+**Parameters:**
+- `path`: Path to the project directory
+- `projectName`: Project name as supplied to `AgentDebugBridge`
+- `command`: Dev server command (e.g., `"npm run dev"`, `"remix dev"`)
+- `port` (optional): PTY bridge port (auto-assigned if omitted)
+
+**Examples:**
+```bash
+# Next.js app
+pnpm agenteract add-config ./apps/web next-app "npm run dev" 3000
+
+# Remix app (auto-assigned port)
+pnpm agenteract add-config ./apps/remix remix-app "remix dev"
+
+# Django app
+pnpm agenteract add-config ./backend django-app "python manage.py runserver"
+```
+
+**Legacy Format (Still Supported):**
 ```bash
 pnpm agenteract add-config <path> <projectName> <type>
 ```
 
-`Path`:
+Where `type` is: `expo` | `vite` | `flutter` | `native`
 
-Path to a project containing a package.json (Only required for NodeJS based projects)
+**Examples:**
+```bash
+pnpm agenteract add-config ./my-vite-app vite-app vite
+pnpm agenteract add-config ./my-expo-app expo-app expo
+pnpm agenteract add-config ./my-swift-app swift-app native
+```
 
-`Project Name`:
-
-Project Name as supplied to `AgentDebugBridge`
-
-`Type`:
-
-`expo`|`vite`|`flutter`|`native`
-
-- `expo` - Expo React Native apps
-- `vite` - Vite-based React/Vue apps
-- `flutter` - Flutter apps (hybrid: PTY + WebSocket logs)
-- `native` - Pure native apps like Swift (WebSocket logs only)
-
-**Note:** Agenteract now supports **any** dev server through generic PTY configuration. You can manually configure custom dev servers (Next.js, Astro, Django, etc.) in `agenteract.config.js` using the `devServer` field. See `docs/GENERIC_PTY.md` for details. The `add-config` command uses the legacy type-based format for backward compatibility.
+**Note:** The new generic format supports any dev server command, making Agenteract framework-agnostic. Legacy types (expo/vite/flutter) are automatically migrated to the new `devServer` format with preset configurations.
 
 
 ### *Step 2: Start Dev Server and apps*

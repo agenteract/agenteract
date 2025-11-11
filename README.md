@@ -118,8 +118,35 @@ At this point you can ask your agent to start setting up Agenteract.
 
 The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
 
+**New Format (Generic Dev Server):**
 ```bash
+npx @agenteract/cli add-config <path> <projectName> <command> [port]
+```
+
+Examples:
+```bash
+# Next.js app with explicit port
+npx @agenteract/cli add-config ./apps/web next-app "npm run dev" 3000
+
+# Remix app with auto-assigned port
+npx @agenteract/cli add-config ./apps/remix remix-app "remix dev"
+
+# Custom dev server
+npx @agenteract/cli add-config ./apps/custom my-app "pnpm start:dev"
+```
+
+**Legacy Format (Still Supported):**
+```bash
+# For Expo, Vite, or Flutter projects
 npx @agenteract/cli add-config <path> <projectName> <type>
+# where type is: expo | vite | flutter | native
+```
+
+Examples:
+```bash
+npx @agenteract/cli add-config ./my-vite-app vite-app vite
+npx @agenteract/cli add-config ./my-expo-app expo-app expo
+npx @agenteract/cli add-config ./my-swift-app swift-app native
 ```
 
 Here is an example configuration for a monorepo containing multiple projects:
