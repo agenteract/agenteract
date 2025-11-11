@@ -1,8 +1,9 @@
 # Verdaccio Configuration for Local Testing (npm-based)
 # This config uses local paths for storage instead of Docker volumes
+# Paths are relative to the config file location (.verdaccio/)
 
-storage: ./.verdaccio/storage
-plugins: ./.verdaccio/plugins
+storage: ./storage
+plugins: ./plugins
 
 # Web UI settings
 web:
@@ -12,7 +13,7 @@ web:
 # Authentication
 auth:
   htpasswd:
-    file: ./.verdaccio/storage/htpasswd
+    file: ./storage/htpasswd
     # Maximum amount of users allowed to register, defaults to "+inf".
     # You can set this to -1 to disable registration.
     max_users: 1000
