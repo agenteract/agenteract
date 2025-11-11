@@ -293,7 +293,9 @@ pnpm agenteract-agents cmd react-app r
 pnpm agenteract-agents cmd react-app q
 ```
 
-**Flutter project commands:**
+***Important: Don't forget to hot restart and check for errors after running `flutter pub get` or adding any new modules ***
+
+**Command**
 ```bash
 # Hot reload
 pnpm agenteract-agents cmd flutter-app r
@@ -325,9 +327,7 @@ This is your primary tool for "seeing" the application's current user interface.
 1.  First, use this tool to understand the current state of the app.
 2.  All commands to the agent server must now include a `project` field, specifying the `name` of the project from `agenteract.config.js` that you want to target.
 
-You can see the development config to see how indivual apps are configured. Note that the example shows a monorepo setup. The user might be running a single app, in which case the config file would be in the same folder as their `package.json`
-
-https://github.com/agenteract/agenteract/blob/main/agenteract.config.js
+See `add-config` for more information on creating configuration files.
 
 **Command:**
 ```bash
