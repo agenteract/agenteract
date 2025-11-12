@@ -54,7 +54,8 @@ echo "⏳ Waiting for Verdaccio to be ready..."
 sleep 3
 
 # Health check with retries
-MAX_RETRIES=15
+# Allow up to 2 minutes for npx to download verdaccio and start
+MAX_RETRIES=60
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
   if curl -s "http://localhost:${VERDACCIO_PORT}/-/ping" > /dev/null 2>&1; then
