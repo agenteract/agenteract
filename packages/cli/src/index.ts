@@ -21,7 +21,7 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'add-config <path> <name> <type>',
+    'add-config <path> <name> <typeOrCommand> [port]',
     'Add a config file to the current project',
     (yargs) => {
       return yargs.positional('path', {
@@ -30,13 +30,16 @@ yargs(hideBin(process.argv))
       }).positional('name', {
         describe: 'project name: used as AgentDebugBridge projectName prop/param.',
         type: 'string',
-      }).positional('type', {
-        describe: 'project type',
+      }).positional('typeOrCommand', {
+        describe: 'Legacy: project type (expo/vite/flutter/native) OR New: dev server command (e.g., "npm run dev")',
         type: 'string',
+      }).positional('port', {
+        describe: 'PTY bridge port (optional, defaults to 8790+)',
+        type: 'number',
       });
     },
     (argv) => {
-      addConfig(process.cwd(), argv.path!, argv.name!, argv.type!).catch((error) => {
+      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port).catch((error) => {
         console.error(error);
       });
     }
