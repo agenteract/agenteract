@@ -87,7 +87,15 @@ export async function startVerdaccio(): Promise<void> {
   }
 
   info('Starting Verdaccio...');
-  await execAsync('pnpm verdaccio:start');
+  try {
+    let output = await execAsync('pnpm verdaccio:start');
+    console.log(`output`);
+    info(output.stdout);
+  } catch (err) {
+    console.log(`error: ${err} ${err instanceof Error ? err.stack : 'No stack trace available'}`);
+    error(`Failed to start Verdaccio: ${err}`);
+    throw err;
+  }
 
   // Wait for Verdaccio to be ready
   await waitFor(

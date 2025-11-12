@@ -516,7 +516,7 @@ async function main() {
     success('✅ All tests passed!');
 
   } catch (err) {
-    error(`Test failed: ${err}`);
+    error(`Test failed: ${err}\n${err instanceof Error ? err.stack : 'No stack trace available'}`);
     await cleanup(); // Ensure cleanup runs even on failure
     process.exit(1);
   } finally {
