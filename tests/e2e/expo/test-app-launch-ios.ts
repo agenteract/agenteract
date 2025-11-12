@@ -211,7 +211,7 @@ async function main() {
     // 7. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for expo-app in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app expo`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start'`
     );
     success('Config created');
 

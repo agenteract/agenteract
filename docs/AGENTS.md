@@ -163,6 +163,9 @@ The command below will create an initial `agenteract.config.js`, or add entries 
 pnpm agenteract add-config <path> <projectName> <command> [port]
 ```
 
+`port` is auto assigned if not provided. This is the port that Agenteract uses to communicate internally, it's not where the dev server hosts files.
+
+
 **Parameters:**
 - `path`: Path to the project directory
 - `projectName`: Project name as supplied to `AgentDebugBridge`
@@ -172,7 +175,7 @@ pnpm agenteract add-config <path> <projectName> <command> [port]
 **Examples:**
 ```bash
 # Next.js app
-pnpm agenteract add-config ./apps/web next-app "npm run dev" 3000
+pnpm agenteract add-config ./apps/web next-app "npm run dev"
 
 # Remix app (auto-assigned port)
 pnpm agenteract add-config ./apps/remix remix-app "remix dev"

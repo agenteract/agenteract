@@ -222,7 +222,7 @@ async function main() {
     // 10. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for flutter-app in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-app flutter`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-app 'flutter run'`
     );
     success('Config created');
 

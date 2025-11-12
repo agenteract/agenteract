@@ -27,6 +27,11 @@ if [ -f "$PID_FILE" ]; then
   fi
 fi
 
+if [ -d "$STORAGE_PATH" ]; then
+  echo "   Removing existing $STORAGE_PATH"
+  rm -rf "$STORAGE_PATH"
+fi
+
 # Create storage directory if it doesn't exist
 mkdir -p "$STORAGE_PATH"
 mkdir -p "$(dirname "$LOG_FILE")"

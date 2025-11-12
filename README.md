@@ -123,10 +123,12 @@ The command below will create an initial `agenteract.config.js`, or add entries 
 npx @agenteract/cli add-config <path> <projectName> <command> [port]
 ```
 
+`port` is auto assigned if not provided. This is the port that Agenteract uses to communicate internally, it's not where the dev server hosts files.
+
 Examples:
 ```bash
 # Next.js app with explicit port
-npx @agenteract/cli add-config ./apps/web next-app "npm run dev" 3000
+npx @agenteract/cli add-config ./apps/web next-app "npm run dev"
 
 # Remix app with auto-assigned port
 npx @agenteract/cli add-config ./apps/remix remix-app "remix dev"

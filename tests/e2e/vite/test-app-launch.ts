@@ -154,7 +154,7 @@ export default defineConfig({
     // 5. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for react-app in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app vite`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app 'npm run dev'`
     );
     success('Config created');
 
@@ -245,7 +245,7 @@ export default defineConfig({
     error(`Test failed: ${err}`);
     process.exit(1);
   } finally {
-    await cleanup();
+    // await cleanup();
     process.exit(0);
   }
 }
