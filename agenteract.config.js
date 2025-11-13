@@ -1,41 +1,36 @@
-// agenteract.config.js
 export default {
-  /**
-   * The port for the central Agenteract server.
-   * The agent connects to this port.
-   */
-  port: 8766,
-
-  /**
-   * An array of projects to manage.
-   */
-  projects: [
+  "port": 8766,
+  "projects": [
     {
-      // A unique identifier for this app. Used for targeting commands.
-      name: 'expo-app',
-      // The path to the app's root directory, relative to this config file.
-      path: './examples/expo-example',
-      // The type of project. Can be 'expo', 'vite', or 'auto'.
-      type: 'expo',
-      // The port for this app's dev server PTY bridge.
-      ptyPort: 8790,
+      "name": "expo-app",
+      "path": "./examples/expo-example",
+      "type": "expo",
+      "ptyPort": 8790
     },
     {
-      name: 'react-app',
-      path: './examples/react-example',
-      type: 'vite',
-      ptyPort: 8791,
+      "name": "react-app",
+      "path": "./examples/react-example",
+      "type": "vite",
+      "ptyPort": 8791
     },
     {
-      name: 'swift-app',
-      path: './examples/swift-app',
-      type: 'native'
+      "name": "swift-app",
+      "path": "./examples/swift-app",
+      "type": "native"
     },
     {
-      name: 'flutter-app',
-      path: './examples/flutter_example',
-      type: 'flutter',
-      ptyPort: 8792,
+      "name": "flutter-app",
+      "path": "./examples/flutter_example",
+      "type": "flutter",
+      "ptyPort": 8792
+    },
+    {
+      "name": "fastapi-app",
+      "path": "/tmp/agenteract-e2e-fastapi-app-1763027709259",
+      "devServer": {
+        "command": "npm run dev",
+        "port": 8793
+      }
     }
-  ],
+  ]
 };

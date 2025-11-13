@@ -1,61 +1,73 @@
-# Agenteract FastAPI Example
+# React + TypeScript + Vite
 
-This example demonstrates how to use Agenteract with a Python FastAPI application.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Setup
+Currently, two official plugins are available:
 
-1. Install Python dependencies:
-```bash
-pip install -r requirements.txt
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-2. Install Agenteract packages (at monorepo root):
-```bash
-pnpm install
-```
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-3. Add Agenteract configuration:
-```bash
-pnpm agenteract add-config ./examples/fastapi-example fastapi-app "uvicorn main:app --reload --port 8000"
-```
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
-## Running the App
-
-Start the dev server with Agenteract:
-```bash
-pnpm agenteract dev
-```
-
-Then open http://localhost:8000 in your browser.
-
-## Features
-
-- Simple task management API
-- HTML frontend with AgentDebugBridge integration
-- Demonstrates Agenteract's ability to interact with Python backend apps
-
-## API Endpoints
-
-- `GET /api/tasks` - Get all tasks
-- `POST /api/tasks` - Create a new task
-- `PUT /api/tasks/{id}` - Update a task
-- `DELETE /api/tasks/{id}` - Delete a task
-- `GET /health` - Health check
-
-## Testing with Agenteract
-
-You can use the `@agenteract/agents` CLI to interact with the frontend:
-
-```bash
-# Get UI hierarchy
-pnpm agenteract-agents hierarchy fastapi-app
-
-# Tap a button
-pnpm agenteract-agents tap fastapi-app add-task-button
-
-# Input text
-pnpm agenteract-agents input fastapi-app task-input "New task"
-
-# Check logs
-pnpm agenteract-agents logs fastapi-app --since 20
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```

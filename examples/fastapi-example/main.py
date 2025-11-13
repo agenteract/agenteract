@@ -1,21 +1,14 @@
 #!/usr/bin/env python3
 """
 Simple FastAPI example for Agenteract E2E testing
-
-This demonstrates how Agenteract can work with Python FastAPI projects.
-The app serves a simple API and a static HTML frontend with AgentDebugBridge.
 """
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import List
 
 app = FastAPI(title="Agenteract FastAPI Demo")
-
-# Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 class Task(BaseModel):
@@ -29,13 +22,6 @@ tasks: List[Task] = [
     Task(id=1, title="Learn Agenteract", completed=False),
     Task(id=2, title="Build FastAPI app", completed=True),
 ]
-
-
-@app.get("/")
-async def root():
-    """Serve the main HTML page"""
-    with open("static/index.html") as f:
-        return HTMLResponse(content=f.read())
 
 
 @app.get("/api/tasks")
