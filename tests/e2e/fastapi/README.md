@@ -4,27 +4,33 @@ This test demonstrates Agenteract working with a Python FastAPI backend.
 
 ## Architecture
 
-The test sets up a complete stack:
+The test sets up a complete stack where **both** the FastAPI backend and Vite frontend are managed by `@agenteract/server`:
 
 ```
-┌─────────────────────────────────────────┐
-│  Puppeteer (Headless Browser)          │
-│  ↓                                      │
-│  Vite Dev Server (React Frontend)      │
-│  - Includes AgentDebugBridge            │
-│  - Proxies API calls to FastAPI         │
-│  ↓                                      │
-│  FastAPI Backend (Python)               │
-│  - uvicorn server on port 8000          │
-│  - REST API endpoints                   │
-└─────────────────────────────────────────┘
-           ↕
-    Agenteract CLI
-    - hierarchy
-    - tap
-    - input
-    - logs
+┌────────────────────────────────────────────────────┐
+│  @agenteract/server (Manages both apps)            │
+│  ├─ fastapi-backend (PTY port 8790)                │
+│  │  └─ python3 -m uvicorn main:app --port 8000     │
+│  │     - REST API endpoints                        │
+│  │     - Agent can access dev-logs                 │
+│  │                                                  │
+│  └─ fastapi-frontend (PTY port 8791)               │
+│     └─ npm run dev (Vite on port 5174)             │
+│        - Includes AgentDebugBridge                 │
+│        - Proxies API calls to FastAPI              │
+│        - Agent can access dev-logs                 │
+└────────────────────────────────────────────────────┘
+              ↕                        ↕
+    Puppeteer Browser          Agenteract CLI
+    (Opens frontend)           - hierarchy fastapi-frontend
+                               - tap fastapi-frontend
+                               - input fastapi-frontend
+                               - logs fastapi-frontend
+                               - dev-logs fastapi-backend
+                               - dev-logs fastapi-frontend
 ```
+
+**Key Point**: Both apps are managed by Agenteract, so the agent has full access to both backend and frontend logs!
 
 ## Prerequisites
 
@@ -35,15 +41,16 @@ The test sets up a complete stack:
 
 ## What This Test Validates
 
-1. ✅ FastAPI backend starts and serves API
-2. ✅ Vite frontend builds and connects to FastAPI
-3. ✅ AgentDebugBridge establishes WebSocket connection
-4. ✅ UI hierarchy can be fetched via agenteract-agents
-5. ✅ Can input text via agenteract-agents
-6. ✅ Can tap buttons via agenteract-agents
-7. ✅ Frontend makes successful API calls to FastAPI
-8. ✅ Data flows: UI → FastAPI → Response → UI
-9. ✅ Console logs are captured
+1. ✅ **Backend management**: FastAPI backend managed by `@agenteract/server`
+2. ✅ **Frontend management**: Vite frontend managed by `@agenteract/server`
+3. ✅ **Agent access to backend**: Can fetch FastAPI dev-logs via CLI
+4. ✅ **Agent access to frontend**: Can fetch Vite dev-logs via CLI
+5. ✅ **AgentDebugBridge connection**: WebSocket connection established
+6. ✅ **UI hierarchy**: Can be fetched via `hierarchy fastapi-frontend`
+7. ✅ **UI interaction**: Can input text and tap buttons
+8. ✅ **Backend integration**: Frontend makes successful API calls to FastAPI
+9. ✅ **Data flow**: UI → FastAPI → Response → UI
+10. ✅ **Console logs**: Captured from React frontend
 
 ## Running the Test
 
@@ -81,31 +88,38 @@ The test runs automatically in GitHub Actions via `.github/workflows/e2e-fastapi
    - Publish @agenteract packages to Verdaccio
    - Copy fastapi-example to /tmp
    - Install Node.js dependencies from Verdaccio
+   - Set up Python virtual environment (non-CI only)
    - Install Python dependencies via pip
 
-2. **Backend Phase**
-   - Start FastAPI backend with uvicorn
-   - Wait for health check endpoint to respond
+2. **Configuration Phase**
+   - Install CLI packages in isolated test directory
+   - Create `agenteract.config.js` with **both** apps:
+     - `fastapi-backend`: Runs `python3 -m uvicorn main:app --reload --port 8000`
+     - `fastapi-frontend`: Runs `npm run dev` (Vite on port 5174)
 
-3. **Frontend Phase**
-   - Create agenteract config for the app
-   - Start agenteract dev (which starts Vite)
-   - Launch Puppeteer to open the frontend
+3. **Server Phase**
+   - Start `npx @agenteract/cli dev` (manages both apps via `@agenteract/server`)
+   - FastAPI backend starts on port 8000 (PTY port 8790)
+   - Vite frontend starts on port 5174 (PTY port 8791)
+   - Verify agent can access dev-logs for both apps
+
+4. **Browser Phase**
+   - Launch Puppeteer headless browser
+   - Navigate to http://localhost:5174
    - Wait for AgentDebugBridge to connect
 
-4. **Testing Phase**
-   - Fetch UI hierarchy
-   - Verify API health status
-   - Input text into task field
-   - Tap "Add Task" button
-   - Verify task creation in logs
-   - Verify task appears in UI
-   - Verify task exists in backend API
+5. **Testing Phase**
+   - Fetch UI hierarchy via `hierarchy fastapi-frontend`
+   - Verify API health status in UI
+   - Input text via `input fastapi-frontend task-input`
+   - Click button via `tap fastapi-frontend add-task-button`
+   - Verify task creation in console logs
+   - Verify task appears in updated UI hierarchy
+   - Verify task exists in FastAPI backend (direct API call)
 
-5. **Cleanup Phase**
+6. **Cleanup Phase**
    - Close browser
-   - Stop FastAPI backend
-   - Stop agenteract dev
+   - Stop agenteract dev (stops both FastAPI and Vite)
    - Remove temp directories
 
 ## Key Insights
@@ -122,27 +136,46 @@ As long as you have a frontend with AgentDebugBridge, you can use Agenteract to 
 
 ## Configuration Example
 
-In this test, we configure Agenteract with:
+In this test, we configure Agenteract with **both** apps in `agenteract.config.js`:
 
-```bash
-pnpm agenteract add-config ./examples/fastapi-example fastapi-app 'npm run dev'
+```javascript
+export default {
+  "port": 8766,
+  "projects": [
+    {
+      "name": "fastapi-backend",
+      "path": "/path/to/fastapi-example",
+      "devServer": {
+        "command": "python3 -m uvicorn main:app --reload --port 8000",
+        "port": 8790  // PTY port for backend
+      }
+    },
+    {
+      "name": "fastapi-frontend",
+      "path": "/path/to/fastapi-example",
+      "devServer": {
+        "command": "npm run dev",
+        "port": 8791  // PTY port for frontend
+      }
+    }
+  ]
+};
 ```
 
-This creates an entry in `agenteract.config.js` that tells Agenteract to:
-1. Run `npm run dev` (which starts Vite)
-2. Name this project "fastapi-app"
-3. Allow agents to interact with it via the CLI
+When you run `npx @agenteract/cli dev`, both apps start and are managed by `@agenteract/server`.
 
-You could also run the FastAPI backend through Agenteract:
+You can then interact with both:
 
 ```bash
-pnpm agenteract add-config ./examples/fastapi-example fastapi-backend 'uvicorn main:app --reload'
-```
+# Monitor FastAPI backend logs
+npx @agenteract/agents dev-logs fastapi-backend --since 20
 
-This would let you monitor FastAPI logs via:
+# Monitor Vite frontend logs
+npx @agenteract/agents dev-logs fastapi-frontend --since 20
 
-```bash
-pnpm agenteract-agents dev-logs fastapi-backend --since 20
+# Interact with the UI
+npx @agenteract/agents hierarchy fastapi-frontend
+npx @agenteract/agents tap fastapi-frontend add-task-button
 ```
 
 ## Troubleshooting
