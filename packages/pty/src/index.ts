@@ -63,12 +63,73 @@ function validateEnvironment(validation: PtyValidation | undefined, workingDir: 
 
 /**
  * Parse command string into executable and arguments
- * Handles quoted arguments properly
+ * Handles quoted arguments properly (single quotes, double quotes, escaped characters)
  */
 function parseCommand(commandStr: string): { bin: string; args: string[] } {
-    // Simple split on spaces (doesn't handle quotes yet, but sufficient for most cases)
-    // TODO: Add proper shell parsing for quoted arguments
-    const parts = commandStr.trim().split(/\s+/);
+    const trimmed = commandStr.trim();
+    if (!trimmed) {
+        throw new Error('Command string cannot be empty');
+    }
+
+    const parts: string[] = [];
+    let current = '';
+    let inSingleQuotes = false;
+    let inDoubleQuotes = false;
+    let i = 0;
+
+    while (i < trimmed.length) {
+        const char = trimmed[i];
+        const nextChar = i + 1 < trimmed.length ? trimmed[i + 1] : null;
+
+        if (char === '\\' && nextChar !== null) {
+            // Escaped character - add the next character literally
+            current += nextChar;
+            i += 2;
+            continue;
+        }
+
+        if (char === "'" && !inDoubleQuotes) {
+            // Toggle single quotes
+            inSingleQuotes = !inSingleQuotes;
+            i++;
+            continue;
+        }
+
+        if (char === '"' && !inSingleQuotes) {
+            // Toggle double quotes
+            inDoubleQuotes = !inDoubleQuotes;
+            i++;
+            continue;
+        }
+
+        if (char === ' ' && !inSingleQuotes && !inDoubleQuotes) {
+            // Space outside quotes - end of argument
+            if (current) {
+                parts.push(current);
+                current = '';
+            }
+            i++;
+            continue;
+        }
+
+        // Regular character
+        current += char;
+        i++;
+    }
+
+    // Add the last part
+    if (current || parts.length === 0) {
+        parts.push(current);
+    }
+
+    if (inSingleQuotes || inDoubleQuotes) {
+        throw new Error('Unclosed quote in command string');
+    }
+
+    if (parts.length === 0) {
+        throw new Error('Command string resulted in no parts');
+    }
+
     return {
         bin: parts[0],
         args: parts.slice(1)

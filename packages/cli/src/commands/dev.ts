@@ -106,17 +106,29 @@ export async function runDevCommand(args: { config: string }) {
       const { devServer } = normalizedProject;
       const finalCwd = devServer.cwd ? path.resolve(projectPath, devServer.cwd) : projectPath;
 
+      // Escape double quotes in command string for shell safety
+      const escapedCommand = devServer.command.replace(/"/g, '\\"');
+      const escapedCwd = finalCwd.replace(/"/g, '\\"');
+
       // Build command for generic PTY package
-      command = `${spawnBin} ${ptyPackageName} --command "${devServer.command}" --port ${devServer.port} --cwd "${finalCwd}"`;
+      command = `${spawnBin} ${ptyPackageName} --command "${escapedCommand}" --port ${devServer.port} --cwd "${escapedCwd}"`;
 
       // Add validation if specified
       if (devServer.validation) {
-        command += ` --validate '${JSON.stringify(devServer.validation)}'`;
+        const validationJson = JSON.stringify(devServer.validation);
+        // Escape single quotes in JSON for shell safety (JSON.stringify uses double quotes,
+        // but escaping is defensive in case of edge cases)
+        const escapedValidation = validationJson.replace(/'/g, "'\\''");
+        command += ` --validate '${escapedValidation}'`;
       }
 
       // Add environment variables if specified
       if (devServer.env) {
-        command += ` --env '${JSON.stringify(devServer.env)}'`;
+        const envJson = JSON.stringify(devServer.env);
+        // Escape single quotes in JSON for shell safety (JSON.stringify uses double quotes,
+        // but escaping is defensive in case of edge cases)
+        const escapedEnv = envJson.replace(/'/g, "'\\''");
+        command += ` --env '${escapedEnv}'`;
       }
     }
     // Legacy: old type-based format (backward compatibility)
