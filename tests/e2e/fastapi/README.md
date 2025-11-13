@@ -47,22 +47,32 @@ The test sets up a complete stack:
 
 ## Running the Test
 
+### Prerequisites
+
+- Python 3.11+ with pip
+- Chrome/Chromium for Puppeteer (auto-installed in CI)
+
+### Local Development
+
 From the monorepo root:
 
 ```bash
+# Install Chrome for Puppeteer (if not already installed)
+npx puppeteer browsers install chrome
+
 # Install dependencies
 pnpm install
 
 # Run the FastAPI e2e test
-cd tests/e2e/fastapi
-node test-app-launch.ts
-```
-
-Or use the npm script (if added):
-
-```bash
 pnpm test:e2e:fastapi
 ```
+
+### CI Environment
+
+The test runs automatically in GitHub Actions via `.github/workflows/e2e-fastapi.yml` on:
+- Pull requests to `main`
+- Pushes to `main` or `release/**` branches
+- Manual workflow dispatch
 
 ## Test Flow
 
@@ -133,4 +143,51 @@ This would let you monitor FastAPI logs via:
 
 ```bash
 pnpm agenteract-agents dev-logs fastapi-backend --since 20
+```
+
+## Troubleshooting
+
+### Puppeteer 403 Error
+
+If you see `Error: Got status code 403` when installing Chrome:
+
+```bash
+# This is a network/environment issue
+# The test will work in CI where Chrome can be downloaded
+# For local testing, ensure you have internet access and try:
+npx puppeteer browsers install chrome
+```
+
+### Port Already in Use
+
+If ports are already in use:
+
+```bash
+# Kill existing processes
+lsof -ti:8765,8766,8790,8791,8792,5174,8000 | xargs kill -9
+
+# Or use the cleanup in the test (runs automatically)
+```
+
+### Verdaccio Not Starting
+
+```bash
+# Stop existing instance
+pnpm verdaccio:stop
+
+# Start fresh
+pnpm verdaccio:start
+```
+
+### Python Dependencies
+
+If Python dependencies fail to install:
+
+```bash
+# Ensure pip is up to date
+pip3 install --upgrade pip
+
+# Install dependencies manually
+cd examples/fastapi-example
+pip3 install -r requirements.txt
 ```

@@ -47,8 +47,9 @@ else
 fi
 
 # Start Verdaccio in the background
+# Use public npm registry to download verdaccio to avoid circular dependency
 echo "   Starting Verdaccio on port ${VERDACCIO_PORT}..."
-pnpm dlx verdaccio --listen ${VERDACCIO_PORT} $CONFIG_ARG > "$LOG_FILE" 2>&1 &
+npm_config_registry=https://registry.npmjs.org pnpm dlx verdaccio --listen ${VERDACCIO_PORT} $CONFIG_ARG > "$LOG_FILE" 2>&1 &
 VERDACCIO_PID=$!
 
 # Save PID to file

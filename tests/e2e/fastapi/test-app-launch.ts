@@ -63,20 +63,20 @@ async function cleanup() {
   if (!process.env.CI) {
     await stopVerdaccio();
 
-    // Clean up the temp example app directory
+    if (testConfigDir) {
+      try {
+        await runCommand(`rm -rf ${testConfigDir}`);
+      } catch (err) {
+        // Ignore cleanup errors
+      }
+    }
+
     if (exampleAppDir) {
       try {
         await runCommand(`rm -rf ${exampleAppDir}`);
       } catch (err) {
         // Ignore cleanup errors
       }
-    }
-
-    // Clean up the agenteract config we created
-    try {
-      await runCommand(`rm -f agenteract.config.js`);
-    } catch (err) {
-      // Ignore cleanup errors
     }
   }
 }
@@ -201,15 +201,25 @@ export default defineConfig({
     );
     success('FastAPI backend is running');
 
-    // 6. Create agenteract config pointing to the /tmp app (from monorepo root)
-    testConfigDir = process.cwd(); // Use monorepo root
+    // 6. Install CLI packages in separate config directory
+    info('Installing CLI packages from Verdaccio...');
+    testConfigDir = `/tmp/agenteract-e2e-test-fastapi-${Date.now()}`;
+    await runCommand(`rm -rf ${testConfigDir}`);
+    await runCommand(`mkdir -p ${testConfigDir}`);
+    await runCommand(`cd ${testConfigDir} && npm init -y`);
+    await runCommand(
+      `cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`
+    );
+    success('CLI packages installed from Verdaccio');
+
+    // 7. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for fastapi-app in /tmp...');
     await runCommand(
-      `npx @agenteract/cli add-config ${exampleAppDir} fastapi-app 'npm run dev'`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} fastapi-app 'npm run dev'`
     );
     success('Config created');
 
-    // 7. Start agenteract dev from monorepo root (starts Vite dev server and agent bridge)
+    // 8. Start agenteract dev from test directory (starts Vite dev server and agent bridge)
     info('Starting agenteract dev...');
     info('This will start the Vite dev server and AgentDebugBridge');
     agentServer = spawnBackground(
@@ -251,7 +261,7 @@ export default defineConfig({
     await waitFor(
       async () => {
         try {
-          await runAgentCommand('hierarchy', 'fastapi-app');
+          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
           return true;
         } catch {
           return false;
@@ -264,7 +274,7 @@ export default defineConfig({
 
     // 11. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    const hierarchy = await runAgentCommand('hierarchy', 'fastapi-app');
+    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract FastAPI Demo', 'UI contains app title');
@@ -280,19 +290,19 @@ export default defineConfig({
 
     // 13. Test adding a task via UI
     info('Testing task creation via UI...');
-    await runAgentCommand('input', 'fastapi-app', 'task-input', 'Test Task from E2E');
+    await runAgentCommand(`cwd:${testConfigDir}`, 'input', 'fastapi-app', 'task-input', 'Test Task from E2E');
     await sleep(500);
-    await runAgentCommand('tap', 'fastapi-app', 'add-task-button');
+    await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'fastapi-app', 'add-task-button');
     await sleep(1000); // Wait for API call to complete
 
     // 14. Verify task was created
     info('Verifying task was created...');
-    const logs = await runAgentCommand('logs', 'fastapi-app', '--since', '10');
+    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'fastapi-app', '--since', '10');
     assertContains(logs, 'Task created', 'Task creation was logged');
     success('Task created successfully through FastAPI backend');
 
     // 15. Fetch hierarchy again to verify task appears
-    const updatedHierarchy = await runAgentCommand('hierarchy', 'fastapi-app');
+    const updatedHierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
     assertContains(updatedHierarchy, 'Test Task from E2E', 'New task appears in UI');
     success('Task verified in UI');
 

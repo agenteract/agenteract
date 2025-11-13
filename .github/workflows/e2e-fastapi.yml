@@ -1,0 +1,82 @@
+name: E2E Tests - FastAPI
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'examples/fastapi-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-fastapi.yml'
+  # Run on pushes to main (post-merge validation)
+  push:
+    branches: [ main, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/fastapi-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-fastapi.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-fastapi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Puppeteer Chrome
+        run: npx puppeteer browsers install chrome
+
+      - name: Cache Puppeteer Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-puppeteer-
+
+      - name: Run FastAPI E2E tests
+        env:
+          E2E_VERSION_SUFFIX: ${{ env.VERSION_SUFFIX }}
+        run: |
+          echo "Running FastAPI E2E tests with version suffix: $E2E_VERSION_SUFFIX"
+          pnpm test:e2e:fastapi
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-fastapi-failure-logs
+          path: |
+            /tmp/agenteract-e2e-test-fastapi-*/
+            /tmp/agenteract-e2e-fastapi-app-*/
+            tests/e2e/fastapi/*.log
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: pnpm verdaccio:stop
