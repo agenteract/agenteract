@@ -34,7 +34,6 @@ import {
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
-let fastapiBackend: ChildProcess | null = null;
 let browser: Browser | null = null;
 let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
@@ -51,12 +50,8 @@ async function cleanup() {
     }
   }
 
-  if (fastapiBackend) {
-    await killProcess(fastapiBackend, 'FastAPI backend');
-  }
-
   if (agentServer) {
-    await killProcess(agentServer, 'Agenteract dev');
+    await killProcess(agentServer, 'Agenteract dev (manages both FastAPI backend and Vite frontend)');
   }
 
   // Clean up temp directories (skip in CI to preserve artifacts)
@@ -187,32 +182,7 @@ export default defineConfig({
     await runCommand(`cd ${exampleAppDir} && pip3 install -r requirements.txt --quiet`);
     success('Python dependencies installed');
 
-    // 5. Start FastAPI backend
-    info('Starting FastAPI backend on port 8000...');
-    fastapiBackend = spawnBackground(
-      'python3',
-      ['-m', 'uvicorn', 'main:app', '--reload', '--port', '8000'],
-      'fastapi-backend',
-      { cwd: exampleAppDir }
-    );
-
-    // Wait for FastAPI to be ready
-    await waitFor(
-      async () => {
-        try {
-          await runCommand('curl -s http://localhost:8000/health');
-          return true;
-        } catch {
-          return false;
-        }
-      },
-      'FastAPI backend to start',
-      30000,
-      1000
-    );
-    success('FastAPI backend is running');
-
-    // 6. Install CLI packages in separate config directory
+    // 5. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `/tmp/agenteract-e2e-test-fastapi-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
@@ -223,16 +193,36 @@ export default defineConfig({
     );
     success('CLI packages installed from Verdaccio');
 
-    // 7. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for fastapi-app in /tmp...');
-    await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} fastapi-app 'npm run dev'`
-    );
-    success('Config created');
+    // 6. Create agenteract config with both backend and frontend
+    info('Creating agenteract config for both FastAPI backend and Vite frontend...');
+    const configContent = `export default {
+  "port": 8766,
+  "projects": [
+    {
+      "name": "fastapi-backend",
+      "path": "${exampleAppDir}",
+      "devServer": {
+        "command": "python3 -m uvicorn main:app --reload --port 8000",
+        "port": 8790
+      }
+    },
+    {
+      "name": "fastapi-frontend",
+      "path": "${exampleAppDir}",
+      "devServer": {
+        "command": "npm run dev",
+        "port": 8791
+      }
+    }
+  ]
+};
+`;
+    writeFileSync(`${testConfigDir}/agenteract.config.js`, configContent);
+    success('Agenteract config created with both apps');
 
-    // 8. Start agenteract dev from test directory (starts Vite dev server and agent bridge)
+    // 7. Start agenteract dev from test directory (manages both FastAPI backend and Vite frontend)
     info('Starting agenteract dev...');
-    info('This will start the Vite dev server and AgentDebugBridge');
+    info('This will start both FastAPI backend and Vite frontend, managed by @agenteract/server');
     agentServer = spawnBackground(
       'npx',
       ['@agenteract/cli', 'dev'],
@@ -241,16 +231,25 @@ export default defineConfig({
     );
 
     // Give servers time to start
-    await sleep(5000);
+    await sleep(8000);
 
-    // Check dev logs
-    info('Checking Vite dev server logs...');
+    // Check dev logs for both apps
+    info('Checking FastAPI backend logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'fastapi-app', '--since', '50');
-      info('Vite dev logs:');
-      console.log(devLogs);
+      const backendLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'fastapi-backend', '--since', '50');
+      info('FastAPI backend logs:');
+      console.log(backendLogs);
     } catch (err) {
-      error(`Failed to get dev logs: ${err}`);
+      error(`Failed to get backend logs: ${err}`);
+    }
+
+    info('Checking Vite frontend logs...');
+    try {
+      const frontendLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'fastapi-frontend', '--since', '50');
+      info('Vite frontend logs:');
+      console.log(frontendLogs);
+    } catch (err) {
+      error(`Failed to get frontend logs: ${err}`);
     }
 
     // 9. Launch headless browser with Puppeteer
@@ -268,11 +267,11 @@ export default defineConfig({
     // Give AgentDebugBridge time to connect
     await sleep(3000);
 
-    // 10. Wait for AgentDebugBridge connection
+    // 8. Wait for AgentDebugBridge connection
     await waitFor(
       async () => {
         try {
-          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
+          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-frontend');
           return true;
         } catch {
           return false;
@@ -283,9 +282,9 @@ export default defineConfig({
       2000
     );
 
-    // 11. Get hierarchy and verify UI loaded
+    // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
+    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-frontend');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract FastAPI Demo', 'UI contains app title');
@@ -294,30 +293,30 @@ export default defineConfig({
     assertContains(hierarchy, 'api-status', 'UI contains API status indicator');
     success('UI hierarchy fetched successfully');
 
-    // 12. Test that API is healthy
+    // 10. Test that API is healthy
     info('Verifying API health status in UI...');
     assertContains(hierarchy, 'healthy', 'API reports healthy status');
     success('FastAPI backend is healthy');
 
-    // 13. Test adding a task via UI
+    // 11. Test adding a task via UI
     info('Testing task creation via UI...');
-    await runAgentCommand(`cwd:${testConfigDir}`, 'input', 'fastapi-app', 'task-input', 'Test Task from E2E');
+    await runAgentCommand(`cwd:${testConfigDir}`, 'input', 'fastapi-frontend', 'task-input', 'Test Task from E2E');
     await sleep(500);
-    await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'fastapi-app', 'add-task-button');
+    await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'fastapi-frontend', 'add-task-button');
     await sleep(1000); // Wait for API call to complete
 
-    // 14. Verify task was created
+    // 12. Verify task was created
     info('Verifying task was created...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'fastapi-app', '--since', '10');
+    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'fastapi-frontend', '--since', '10');
     assertContains(logs, 'Task created', 'Task creation was logged');
     success('Task created successfully through FastAPI backend');
 
-    // 15. Fetch hierarchy again to verify task appears
-    const updatedHierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-app');
+    // 13. Fetch hierarchy again to verify task appears
+    const updatedHierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'fastapi-frontend');
     assertContains(updatedHierarchy, 'Test Task from E2E', 'New task appears in UI');
     success('Task verified in UI');
 
-    // 16. Verify we can see the task in the API directly
+    // 14. Verify we can see the task in the API directly
     info('Verifying task in FastAPI backend...');
     const apiResponse = await runCommand('curl -s http://localhost:8000/api/tasks');
     assertContains(apiResponse, 'Test Task from E2E', 'Task exists in FastAPI backend');

@@ -7,7 +7,7 @@ import { AgentDebugBridge } from '@agenteract/react'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <>
-      <AgentDebugBridge projectName="fastapi-app" />
+      <AgentDebugBridge projectName="fastapi-frontend" />
       <App />
     </>
   </StrictMode>,
