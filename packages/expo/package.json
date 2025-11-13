@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/expo",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Expo bridge utilities for Agenteract",
   "deprecated": "Use @agenteract/pty with generic devServer config instead. See docs/MIGRATION_V2.md",
   "type": "module",
