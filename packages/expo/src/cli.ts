@@ -3,15 +3,29 @@ import { startPty } from '@agenteract/pty';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
+// DEPRECATION WARNING
+console.warn('\n⚠️  DEPRECATION WARNING ⚠️');
+console.warn('@agenteract/expo is deprecated and will be removed in a future version.');
+console.warn('Please migrate to the generic PTY configuration in agenteract.config.js:');
+console.warn('');
+console.warn('  devServer: {');
+console.warn('    command: "npx expo start",');
+console.warn('    port: 8790');
+console.warn('  }');
+console.warn('');
+console.warn('See docs/MIGRATION_V2.md for details.');
+console.warn('');
+
 const argv = yargs(hideBin(process.argv)).option('port', {
   alias: 'p',
   type: 'number',
   description: 'Port to run the PTY bridge on',
   default: 8790,
-}).argv;
+}).parseSync();
 
-// Let startPty handle the invoker detection
-// Just pass the actual command to run
-// Pass process.cwd() explicitly to ensure it runs in the correct directory
-// @ts-ignore - yargs argv is not strictly a number, but we know it is.
-startPty('expo', ['start'], argv.port, process.cwd());
+// Use new PTY API
+startPty({
+  command: 'npx expo start',
+  port: argv.port,
+  cwd: process.cwd()
+});

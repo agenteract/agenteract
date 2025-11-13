@@ -55,67 +55,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm run build
-
-      - name: Install Verdaccio
-        run: npm install -g verdaccio
-
-      - name: Start Verdaccio
-        run: |
-          # Start Verdaccio in background
-          verdaccio &
-          VERDACCIO_PID=$!
-          echo "VERDACCIO_PID=$VERDACCIO_PID" >> $GITHUB_ENV
-
-          echo "Waiting for Verdaccio to be ready..."
-          for i in {1..30}; do
-            if curl -f http://localhost:4873/ > /dev/null 2>&1; then
-              echo "✓ Verdaccio is ready!"
-              exit 0
-            fi
-            echo "Attempt $i/30: Verdaccio not ready yet, waiting 2 seconds..."
-            sleep 2
-          done
-          echo "✗ Verdaccio failed to start"
-          exit 1
-
-      - name: Configure npm registry for Verdaccio
-        run: |
-          npm config set registry http://localhost:4873/
-          pnpm config set registry http://localhost:4873/
-
-      - name: Authenticate with Verdaccio
-        run: npx tsx scripts/verdaccio-auth.ts
-        env:
-          VERDACCIO_URL: http://localhost:4873
-          VERDACCIO_USER: test
-          VERDACCIO_PASS: test
-          VERDACCIO_EMAIL: test@test.com
-
-      - name: Publish packages to Verdaccio
-        run: |
-          pnpm -r --filter "!./examples/**" publish --registry http://localhost:4873 --no-git-checks || {
-            echo "Publishing failed"
-            exit 1
-          }
-
-      - name: Wait for packages to be available
-        run: |
-          echo "Waiting for packages to be indexed by Verdaccio..."
-          sleep 5
-
-          echo "Verifying packages are available..."
-          for pkg in @agenteract/cli @agenteract/agents @agenteract/server @agenteract/flutter-cli; do
-            echo "Checking $pkg..."
-            if curl -f "http://localhost:4873/$pkg" > /dev/null 2>&1; then
-              echo "✓ $pkg is available"
-            else
-              echo "✗ $pkg not found in registry"
-              exit 1
-            fi
-          done
-
       - name: List available iOS simulators
         run: xcrun simctl list devices available | grep iPhone
 
@@ -157,10 +96,7 @@ jobs:
         if: always()
         run: |
           # Stop Verdaccio
-          if [ ! -z "$VERDACCIO_PID" ]; then
-            kill $VERDACCIO_PID || true
-          fi
-          pkill -f "verdaccio" || true
+          pnpm verdaccio:stop
 
           # Kill any remaining Flutter/agenteract processes
           pkill -f "flutter run" || true

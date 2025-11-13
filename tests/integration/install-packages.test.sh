@@ -74,6 +74,36 @@ node -e "
 # Test 5: @agenteract/agents CLI
 echo "Test 5: Verifying @agenteract/agents CLI..."
 
+# Create mock agenteract.config.js for the CLI to find
+cat > agenteract.config.js << 'EOF'
+export default {
+  port: 8766,
+  projects: [
+    {
+      name: 'my-project',
+      path: './app',
+      type: 'native'
+    },
+    {
+      name: 'expo-app',
+      path: './expo',
+      devServer: {
+        command: 'npx expo start',
+        port: 8790
+      }
+    },
+    {
+      name: 'vite-app',
+      path: './vite',
+      devServer: {
+        command: 'npx vite',
+        port: 8791
+      }
+    }
+  ]
+};
+EOF
+
 # Start mock server
 pwd
 npx tsx "$START_DIR/tests/integration/mock-server.ts" &
@@ -95,14 +125,14 @@ echo "Running @agenteract/agents CLI tests..."
 npx @agenteract/agents logs my-project | grep "agent log line 1" > /dev/null || { echo "❌ agents: logs command failed"; exit 1; }
 echo "✓ agents: logs command works"
 
-npx @agenteract/agents dev-logs expo | grep "expo log line 1" > /dev/null || { echo "❌ agents: dev-logs expo command failed"; exit 1; }
-echo "✓ agents: dev-logs expo command works"
+npx @agenteract/agents dev-logs expo-app | grep "expo log line 1" > /dev/null || { echo "❌ agents: dev-logs expo-app command failed"; exit 1; }
+echo "✓ agents: dev-logs expo-app command works"
 
-npx @agenteract/agents dev-logs vite | grep "vite log line 1" > /dev/null || { echo "❌ agents: dev-logs vite command failed"; exit 1; }
-echo "✓ agents: dev-logs vite command works"
+npx @agenteract/agents dev-logs vite-app | grep "vite log line 1" > /dev/null || { echo "❌ agents: dev-logs vite-app command failed"; exit 1; }
+echo "✓ agents: dev-logs vite-app command works"
 
-npx @agenteract/agents cmd expo r || { echo "❌ agents: cmd expo command failed"; exit 1; }
-echo "✓ agents: cmd expo command works"
+npx @agenteract/agents cmd expo-app r || { echo "❌ agents: cmd expo-app command failed"; exit 1; }
+echo "✓ agents: cmd expo-app command works"
 
 npx @agenteract/agents hierarchy my-project > /tmp/hierarchy.txt
 

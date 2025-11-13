@@ -1,0 +1,38 @@
+storage: /verdaccio/storage/data
+auth:
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  '@agenteract/*':
+    # Don't use upstream for @agenteract packages - only serve locally published versions
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    # No proxy field = don't fetch from upstream
+
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+  '**':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+server:
+  keepAliveTimeout: 60
+
+middlewares:
+  audit:
+    enabled: true
+
+logs: { type: stdout, format: pretty, level: http }
+

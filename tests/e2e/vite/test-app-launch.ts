@@ -93,28 +93,6 @@ async function main() {
     // 2. Start Verdaccio
     await startVerdaccio();
 
-    // 2. Bump package versions to avoid npm conflicts (only in CI)
-    // In CI, Verdaccio proxies to npm for packages with existing versions,
-    // causing integrity mismatches. We add a unique suffix to versions.
-    // Locally, Verdaccio has cached packages so this isn't needed.
-    if (process.env.CI) {
-      info('Bumping package versions to avoid npm conflicts (CI only)...');
-      const versionSuffix = `-e2e.${Date.now()}`;
-      const packagesDir = 'packages';
-
-      // Bump versions in all package.json files (in-place, no backup)
-      const packageJsonFiles = (await runCommand(`find ${packagesDir} -name "package.json" -type f`))
-        .trim().split('\n');
-
-      for (const pkgJsonPath of packageJsonFiles) {
-        if (!pkgJsonPath) continue;
-        const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-        pkgJson.version = pkgJson.version + versionSuffix;
-        writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-      }
-      success('Package versions bumped');
-    }
-
     // 3. Publish packages
     await publishPackages();
 
@@ -176,7 +154,7 @@ export default defineConfig({
     // 5. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for react-app in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app vite`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app 'npm run dev'`
     );
     success('Config created');
 
@@ -196,7 +174,7 @@ export default defineConfig({
     // Check dev logs to see what port Vite is running on
     info('Checking Vite dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'vite', '--since', '50');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
       info('Vite dev logs:');
       console.log(devLogs);
     } catch (err) {
@@ -267,7 +245,7 @@ export default defineConfig({
     error(`Test failed: ${err}`);
     process.exit(1);
   } finally {
-    await cleanup();
+    // await cleanup();
     process.exit(0);
   }
 }

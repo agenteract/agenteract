@@ -39,11 +39,19 @@ describe('addConfig', () => {
     await addConfig(tempDir, './new-project', 'new-project', 'expo');
     const config = await loadConfig(tempDir);
     expect(config.projects).toHaveLength(1);
+    // Legacy types are migrated to new devServer format
     expect(config.projects[0]).toEqual({
       name: 'new-project',
       path: './new-project',
-      type: 'expo',
-      ptyPort: 8790,
+      devServer: {
+        command: 'npx expo start',
+        keyCommands: {
+          reload: 'r',
+          ios: 'i',
+          android: 'a',
+        },
+        port: 8790,
+      },
     });
   });
 
@@ -61,11 +69,19 @@ describe('addConfig', () => {
     await addConfig(tempDir, './new-project', 'new-project', 'expo');
     const config = await loadConfig(tempDir);
     expect(config.projects).toHaveLength(2);
+    // New project uses devServer format (migrated from legacy type)
     expect(config.projects[1]).toEqual({
       name: 'new-project',
       path: './new-project',
-      type: 'expo',
-      ptyPort: 8791,
+      devServer: {
+        command: 'npx expo start',
+        keyCommands: {
+          reload: 'r',
+          ios: 'i',
+          android: 'a',
+        },
+        port: 8791,
+      },
     });
   });
 
@@ -83,15 +99,23 @@ describe('addConfig', () => {
     await addConfig(tempDir, './path', 'my-app', 'expo');
     const config = await loadConfig(tempDir);
     expect(config.projects).toHaveLength(1);
+    // Updated project uses new devServer format
     expect(config.projects[0]).toEqual({
       name: 'my-app',
       path: './path',
-      type: 'expo',
-      ptyPort: 8790,
+      devServer: {
+        command: 'npx expo start',
+        keyCommands: {
+          reload: 'r',
+          ios: 'i',
+          android: 'a',
+        },
+        port: 8790,
+      },
     });
   });
 
-  it('should assign a unique ptyPort', async () => {
+  it('should assign a unique port in devServer', async () => {
     const initialConfig = {
       projects: [
         { name: 'app1', path: './app1', type: 'vite', ptyPort: 8790 },
@@ -105,7 +129,8 @@ describe('addConfig', () => {
 
     await addConfig(tempDir, './app3', 'app3', 'vite');
     const config = await loadConfig(tempDir);
-    expect(config.projects[2].ptyPort).toBe(8792);
+    // New format uses devServer.port instead of ptyPort
+    expect(config.projects[2].devServer?.port).toBe(8792);
   });
 
   it('new config file should include the agent server port in the config', async () => {

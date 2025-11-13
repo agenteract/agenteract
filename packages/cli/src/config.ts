@@ -10,11 +10,28 @@ export class MissingConfigError extends Error {
   }
 }
 
+export interface DevServerConfig {
+  command: string;        // e.g., 'npm run dev', 'flutter run', 'pnpm expo start'
+  port: number;           // PTY bridge port
+  cwd?: string;           // Override working directory (absolute or relative to project path)
+  env?: Record<string, string>;  // Additional environment variables
+  validation?: {
+    fileExists?: string[];      // Pre-flight check: require files like ['pubspec.yaml']
+    commandInPath?: string;     // Pre-flight check: require command in PATH like 'flutter'
+    errorHints?: Record<string, string>;  // Custom error messages for common issues
+  };
+  keyCommands?: Record<string, string>;  // Interactive commands, e.g., { reload: 'r', restart: 'R' }
+}
+
 export interface ProjectConfig {
   name: string;
   path: string;
-  type: 'expo' | 'vite' | 'flutter' | 'native' | 'auto';
-  ptyPort: number;
+  // Deprecated: use devServer instead. Kept for backward compatibility.
+  type?: 'expo' | 'vite' | 'flutter' | 'native' | 'auto';
+  // Deprecated: use devServer.port instead. Kept for backward compatibility.
+  ptyPort?: number;
+  // New generic dev server configuration
+  devServer?: DevServerConfig;
 }
 
 export interface AgenteractConfig {
@@ -99,7 +116,13 @@ export function getDevServerUrlByType(config: AgenteractConfig, type: 'expo' | '
   return `http://localhost:${project.ptyPort}`;
 }
 
-export async function addConfig(rootDir: string, projectPath: string, name: string, type: string) {
+export async function addConfig(
+  rootDir: string,
+  projectPath: string,
+  name: string,
+  typeOrCommand: string,
+  port?: number
+) {
   const configPath = path.join(rootDir, 'agenteract.config.js');
   let config: any;
 
@@ -127,18 +150,162 @@ export async function addConfig(rootDir: string, projectPath: string, name: stri
 
   let update = nameExists || pathExists;
 
-  // if the project already exists, update it
-  if (update) {
-    update.path = projectPath;
-    update.name = name;
-    update.type = type;
+  // Determine if this is legacy format (type) or new format (command)
+  const LEGACY_TYPES = ['expo', 'vite', 'flutter', 'native'];
+  const isLegacyFormat = LEGACY_TYPES.includes(typeOrCommand);
+
+  // Allocate a port if not provided
+  let ptyPort: number;
+  if (port) {
+    // Explicit port provided
+    ptyPort = port;
+  } else if (update) {
+    // Reuse existing port when updating
+    ptyPort = (update as any).ptyPort || (update as any).devServer?.port || 8790;
   } else {
-    let ptyPort = 8790;
-  
-    while (config.projects.some((p: any) => p.ptyPort === ptyPort)) {
+    // Find next available port for new project
+    ptyPort = 8790;
+    while (config.projects.some((p: any) =>
+      (p.ptyPort === ptyPort) || (p.devServer?.port === ptyPort)
+    )) {
       ptyPort++;
     }
-    config.projects.push({ name, path: projectPath, type, ptyPort });
   }
+
+  let newProjectConfig: any;
+
+  if (isLegacyFormat) {
+    // Legacy format: use old 'type' field for backwards compatibility
+    // Native apps don't have dev servers
+    if (typeOrCommand === 'native') {
+      newProjectConfig = {
+        name,
+        path: projectPath,
+        type: 'native'
+      };
+    } else {
+      // For non-native legacy types, create with new devServer format
+      const preset = TYPE_PRESETS[typeOrCommand];
+      if (!preset) {
+        console.error(`Unknown type '${typeOrCommand}'`);
+        return;
+      }
+
+      newProjectConfig = {
+        name,
+        path: projectPath,
+        devServer: {
+          ...preset,
+          port: ptyPort
+        }
+      };
+
+      console.log(`ℹ️  Creating config with new devServer format (migrated from legacy type '${typeOrCommand}')`);
+    }
+  } else {
+    // New format: generic dev server command
+    newProjectConfig = {
+      name,
+      path: projectPath,
+      devServer: {
+        command: typeOrCommand,
+        port: ptyPort
+      }
+    };
+  }
+
+  // If the project already exists, replace it completely
+  if (update) {
+    // Find the index and replace the entire object to avoid keeping old fields
+    const index = config.projects.indexOf(update);
+    config.projects[index] = newProjectConfig;
+  } else {
+    config.projects.push(newProjectConfig);
+  }
+
   await fs.writeFile(configPath, `export default ${JSON.stringify(config, null, 2)};`);
+
+  console.log(`✅ Config updated: ${name} at ${projectPath}`);
+  if (newProjectConfig.devServer) {
+    console.log(`   Dev server: ${newProjectConfig.devServer.command} (port: ${newProjectConfig.devServer.port})`);
+  }
+}
+
+/**
+ * Type presets for backward compatibility
+ * Maps old 'type' field to new devServer configuration
+ */
+export const TYPE_PRESETS: Record<string, Omit<DevServerConfig, 'port'>> = {
+  expo: {
+    command: 'npx expo start',
+    keyCommands: { reload: 'r', ios: 'i', android: 'a' }
+  },
+  vite: {
+    command: 'npx vite',
+    keyCommands: { reload: 'r', quit: 'q' }
+  },
+  flutter: {
+    command: 'flutter run',
+    validation: {
+      fileExists: ['pubspec.yaml'],
+      commandInPath: 'flutter',
+      errorHints: {
+        'command not found': 'Install Flutter: https://flutter.dev/docs/get-started/install',
+        'No pubspec.yaml': 'Flutter projects require a pubspec.yaml file in the project directory'
+      }
+    },
+    keyCommands: { reload: 'r', restart: 'R', quit: 'q', help: 'h' }
+  }
+};
+
+/**
+ * Get default PTY port for a given type
+ */
+function getDefaultPortForType(type: string): number {
+  const defaults: Record<string, number> = {
+    expo: 8790,
+    vite: 8791,
+    flutter: 8792
+  };
+  return defaults[type] || 8790;
+}
+
+/**
+ * Normalize project config: migrate old format to new format
+ * Logs deprecation warnings when using old 'type' field
+ */
+export function normalizeProjectConfig(project: ProjectConfig, rootDir: string): ProjectConfig {
+  // Already using new format
+  if (project.devServer) {
+    return project;
+  }
+
+  // Native type has no dev server
+  if (project.type === 'native') {
+    return project;
+  }
+
+  // Auto-migrate from old type-based format
+  if (project.type && project.type !== 'auto') {
+    console.warn(
+      `⚠️  [${project.name}] Using deprecated 'type' field. ` +
+      `Migrate to 'devServer' config. See docs/MIGRATION_V2.md`
+    );
+
+    const preset = TYPE_PRESETS[project.type];
+    if (!preset) {
+      console.error(`Unknown type '${project.type}' for project '${project.name}'`);
+      return project;
+    }
+
+    return {
+      ...project,
+      devServer: {
+        ...preset,
+        port: project.ptyPort || getDefaultPortForType(project.type)
+      }
+    };
+  }
+
+  return project;
 }

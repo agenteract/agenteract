@@ -1,6 +1,6 @@
 // packages/cli/src/commands/dev.ts
 import fs from 'node:fs';
-import { loadConfig, MissingConfigError } from '../config.js';
+import { loadConfig, MissingConfigError, normalizeProjectConfig } from '../config.js';
 import { detectInvoker } from '@agenteract/core';
 const { pkgManager, isNpx } = detectInvoker();
 import path from 'path';
@@ -16,6 +16,10 @@ const agenterServePackage = pkgManager === 'pnpm' ? 'agenterserve' : '@agenterac
 const nearestPackageJson = findNearestPackageJson(process.cwd());
 const isAgenteractPackage = nearestPackageJson?.name?.startsWith('@agenteract/') || nearestPackageJson?.name === 'agenteract';
 
+// Generic PTY package name (used for all dev servers now)
+const ptyPackageName = isAgenteractPackage ? 'agenterpty' : '@agenteract/pty';
+
+// Legacy type-to-command map - deprecated but kept for backward compatibility
 const typeToCommandMap: { [key: string]: string } = {
   expo: isAgenteractPackage ? 'agenterexpo' : '@agenteract/expo',
   vite: isAgenteractPackage ? 'agentervite' : '@agenteract/vite',
@@ -35,14 +39,14 @@ interface Terminal {
 
 function findNearestPackageJson(startDir: string): any | null {
   let currentDir = startDir;
-  
+
   while (true) {
     const packageJsonPath = path.join(currentDir, 'package.json');
-    
+
     if (fs.existsSync(packageJsonPath)) {
       return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     }
-    
+
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
       return null; // reached root
@@ -93,14 +97,46 @@ export async function runDevCommand(args: { config: string }) {
   }
 
   commands.push(...config.projects.map((project: any) => {
-    const projectPath = path.resolve(rootDir, project.path);
+    const normalizedProject = normalizeProjectConfig(project, rootDir);
+    const projectPath = path.resolve(rootDir, normalizedProject.path);
     let command = '';
 
-    if (project.type !== 'native') {
-      const baseCommand = `${spawnBin} ${typeToCommandMap[project.type]} --port ${project.ptyPort}`;
+    // If project has a devServer config, use generic PTY
+    if (normalizedProject.devServer) {
+      const { devServer } = normalizedProject;
+      const finalCwd = devServer.cwd ? path.resolve(projectPath, devServer.cwd) : projectPath;
+
+      // Escape double quotes in command string for shell safety
+      const escapedCommand = devServer.command.replace(/"/g, '\\"');
+      const escapedCwd = finalCwd.replace(/"/g, '\\"');
+
+      // Build command for generic PTY package
+      command = `${spawnBin} ${ptyPackageName} --command "${escapedCommand}" --port ${devServer.port} --cwd "${escapedCwd}"`;
+
+      // Add validation if specified
+      if (devServer.validation) {
+        const validationJson = JSON.stringify(devServer.validation);
+        // Escape single quotes in JSON for shell safety (JSON.stringify uses double quotes,
+        // but escaping is defensive in case of edge cases)
+        const escapedValidation = validationJson.replace(/'/g, "'\\''");
+        command += ` --validate '${escapedValidation}'`;
+      }
+
+      // Add environment variables if specified
+      if (devServer.env) {
+        const envJson = JSON.stringify(devServer.env);
+        // Escape single quotes in JSON for shell safety (JSON.stringify uses double quotes,
+        // but escaping is defensive in case of edge cases)
+        const escapedEnv = envJson.replace(/'/g, "'\\''");
+        command += ` --env '${escapedEnv}'`;
+      }
+    }
+    // Legacy: old type-based format (backward compatibility)
+    else if (normalizedProject.type && normalizedProject.type !== 'native') {
+      const baseCommand = `${spawnBin} ${typeToCommandMap[normalizedProject.type]} --port ${normalizedProject.ptyPort}`;
 
       // Flutter needs explicit --cwd because process.cwd() isn't reliable when spawned via shell
-      if (project.type === 'flutter') {
+      if (normalizedProject.type === 'flutter') {
         command = `${baseCommand} --cwd "${projectPath}"`;
       } else {
         command = baseCommand;
@@ -109,11 +145,9 @@ export async function runDevCommand(args: { config: string }) {
 
     return {
       command,
-      name: project.name,
+      name: normalizedProject.name,
       cwd: projectPath,
-      type: project.type,
-      // Flutter is hybrid: has PTY but also uses WebSocket logs
-      isHybrid: project.type === 'flutter',
+      type: normalizedProject.type || 'generic'
     };
   }));
 
@@ -199,9 +233,9 @@ export async function runDevCommand(args: { config: string }) {
           // Capture potential error lines
           const lowerLine = line.toLowerCase();
           if (lowerLine.includes('error') ||
-              lowerLine.includes('failed') ||
-              lowerLine.includes('not found') ||
-              lowerLine.includes('command not found')) {
+            lowerLine.includes('failed') ||
+            lowerLine.includes('not found') ||
+            lowerLine.includes('command not found')) {
             errorOutput.push(line);
             if (errorOutput.length > 20) errorOutput.shift(); // Keep last 20 error lines
           }
@@ -253,7 +287,7 @@ export async function runDevCommand(args: { config: string }) {
           // For buffering: skip lines that are likely spinner/progress bar updates
           // These contain ANSI escape codes for cursor movement or carriage returns
           const hasSpinnerCodes = line.includes('\r') ||
-                                  (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+            (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
 
           if (!hasSpinnerCodes) {
             // Only buffer stable lines (not spinner updates)
@@ -265,8 +299,8 @@ export async function runDevCommand(args: { config: string }) {
         }
       });
     } else if (cmdInfo.type === 'native') {
-        buffer.push(`--- Logs for ${cmdInfo.name} ---\n\n`);
-        buffer.push('Waiting for application to connect and send logs...\n');
+      buffer.push(`--- Logs for ${cmdInfo.name} ---\n\n`);
+      buffer.push('Waiting for application to connect and send logs...\n');
     }
 
     terminals.push({
@@ -384,15 +418,15 @@ export async function runDevCommand(args: { config: string }) {
 
         const lowerLine = line.toLowerCase();
         if (lowerLine.includes('error') ||
-            lowerLine.includes('failed') ||
-            lowerLine.includes('not found') ||
-            lowerLine.includes('command not found')) {
+          lowerLine.includes('failed') ||
+          lowerLine.includes('not found') ||
+          lowerLine.includes('command not found')) {
           errorOutput.push(line);
           if (errorOutput.length > 20) errorOutput.shift();
         }
 
         const hasSpinnerCodes = line.includes('\r') ||
-                                (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+          (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
 
         if (!hasSpinnerCodes) {
           terminal.buffer.push(line + '\n');
@@ -416,7 +450,7 @@ export async function runDevCommand(args: { config: string }) {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
   }
-  
+
   process.stdin.on('data', (key: string) => {
     if (key === '\t') {
       switchTo((activeIndex + 1) % terminals.length);
@@ -462,7 +496,7 @@ export async function runDevCommand(args: { config: string }) {
     process.stdout.write('\n--- Shutting down all processes... ---\n');
     terminals.forEach(t => t.ptyProcess?.kill());
   };
-  
+
   process.on('exit', cleanup);
   process.on('SIGINT', () => {
     cleanup();

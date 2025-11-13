@@ -2,6 +2,7 @@
   "name": "@agenteract/vite",
   "version": "0.0.2",
   "description": "Vite bridge utilities for Agenteract",
+  "deprecated": "Use @agenteract/pty with generic devServer config instead. See docs/MIGRATION_V2.md",
   "type": "module",
   "main": "dist/cli.js",
   "types": "dist/index.d.ts",

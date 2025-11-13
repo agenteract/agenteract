@@ -118,11 +118,40 @@ At this point you can ask your agent to start setting up Agenteract.
 
 The command below will create an initial `agenteract.config.js`, or add entries to an existing configuration.
 
+**New Format (Generic Dev Server):**
 ```bash
-npx @agenteract/cli add-config <path> <projectName> <type>
+npx @agenteract/cli add-config <path> <projectName> <command> [port]
 ```
 
-Here is an example configuration for a monorepo containing an Expo and a Vite project:
+`port` is auto assigned if not provided. This is the port that Agenteract uses to communicate internally, it's not where the dev server hosts files.
+
+Examples:
+```bash
+# Next.js app with explicit port
+npx @agenteract/cli add-config ./apps/web next-app "npm run dev"
+
+# Remix app with auto-assigned port
+npx @agenteract/cli add-config ./apps/remix remix-app "remix dev"
+
+# Custom dev server
+npx @agenteract/cli add-config ./apps/custom my-app "pnpm start:dev"
+```
+
+**Legacy Format (Still Supported):**
+```bash
+# For Expo, Vite, or Flutter projects
+npx @agenteract/cli add-config <path> <projectName> <type>
+# where type is: expo | vite | flutter | native
+```
+
+Examples:
+```bash
+npx @agenteract/cli add-config ./my-vite-app vite-app vite
+npx @agenteract/cli add-config ./my-expo-app expo-app expo
+npx @agenteract/cli add-config ./my-swift-app swift-app native
+```
+
+Here is an example configuration for a monorepo containing multiple projects:
 
 ```javascript
 // agenteract.config.js
@@ -142,27 +171,44 @@ export default {
       name: 'expo-app',
       // The path to the app's root directory, relative to this config file.
       path: './examples/expo-example',
-      // The type of project. Can be 'expo' or 'vite'.
-      type: 'expo',
-      // The port for this app's dev server PTY bridge.
-      ptyPort: 8790,
+      // Generic dev server configuration
+      devServer: {
+        command: 'npx expo start',
+        port: 8790,
+      }
     },
     {
       name: 'react-app',
       path: './examples/react-example',
-      type: 'vite',
-      ptyPort: 8791,
+      devServer: {
+        command: 'npx vite',
+        port: 8791,
+      }
     },
     {
       name: 'flutter-app',
       path: './examples/flutter_example',
-      type: 'flutter',
-      ptyPort: 8792,
+      devServer: {
+        command: 'flutter run',
+        port: 8792,
+        validation: {
+          fileExists: ['pubspec.yaml'],
+          commandInPath: 'flutter',
+        }
+      }
+    },
+    {
+      name: 'next-app',
+      path: './apps/web',
+      devServer: {
+        command: 'npm run dev',
+        port: 8793,
+      }
     },
     {
       name: 'swift-app',
       path: './examples/swift-app',
-      type: 'native'
+      type: 'native'  // Native apps don't have dev servers
     }
   ],
 };
@@ -172,10 +218,20 @@ export default {
 
 -   `port`: The main port for the Agenteract server.
 -   `projects`: An array of project objects.
-    -   `name`: A unique name for your app.
+    -   `name`: A unique name for your app (used in agent commands).
     -   `path`: The relative path to your app's root directory.
-    -   `type`: The project type. Supported types are `expo`, `vite`, `flutter` and `native`.
-    -   `ptyPort`: A unique port for the PTY (pseudo-terminal) bridge that allows Agenteract to interact with your app's dev server.
+    -   `devServer`: Dev server configuration (optional for native apps).
+        -   `command`: The shell command to start the dev server (e.g., `'npm run dev'`, `'flutter run'`).
+        -   `port`: A unique port for the PTY (pseudo-terminal) bridge.
+        -   `cwd`: (Optional) Override working directory.
+        -   `env`: (Optional) Additional environment variables.
+        -   `validation`: (Optional) Pre-flight checks.
+            -   `fileExists`: Files that must exist (e.g., `['package.json']`).
+            -   `commandInPath`: Commands that must be in PATH (e.g., `'node'`, `'flutter'`).
+            -   `errorHints`: Custom error messages for common issues.
+    -   `type`: (Deprecated) Legacy type field. Use `devServer` instead.
+
+**Note:** The old `type` and `ptyPort` fields are deprecated but still supported for backward compatibility. See `docs/MIGRATION_V2.md` for migration instructions.
 
 ## **4. Instrumenting Your Application**
 

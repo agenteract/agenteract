@@ -87,7 +87,26 @@ export async function startVerdaccio(): Promise<void> {
   }
 
   info('Starting Verdaccio...');
-  await execAsync('pnpm verdaccio:start');
+
+  // Use spawn with inherited stdio to stream output in real-time
+  const result = await new Promise<void>((resolve, reject) => {
+    const proc = spawn('pnpm', ['verdaccio:start'], {
+      stdio: 'inherit', // Stream output directly to console
+      shell: true,
+    });
+
+    proc.on('exit', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`verdaccio:start exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
+    });
+  });
 
   // Wait for Verdaccio to be ready
   await waitFor(
