@@ -171,6 +171,17 @@ export default defineConfig({
       throw err;
     }
 
+    // set up virtual env if not in CI
+    if (!process.env.CI) {
+      info('Setting up virtual environment...');
+      await runCommand(`cd ${exampleAppDir} && python3 -m venv .venv`);
+      await runCommand(`cd ${exampleAppDir} source .venv/bin/activate`);
+      // Add .venv/bin to PATH for the rest of the commands
+      process.env.PATH = `${exampleAppDir}/.venv/bin:${process.env.PATH}`;
+      console.log(`which python: ${await runCommand('which python')}`);
+      success('Virtual environment set up');
+    }
+
     // Install Python dependencies
     info('Installing Python dependencies...');
     await runCommand(`cd ${exampleAppDir} && pip3 install -r requirements.txt --quiet`);
