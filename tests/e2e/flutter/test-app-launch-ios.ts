@@ -25,7 +25,7 @@ import {
   spawnBackground,
   sleep,
   setupCleanup,
-} from '../common/helpers.js';
+} from '../common/helpers.js';import { assert } from 'node:console';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
@@ -513,7 +513,11 @@ async function main() {
       error(`Failed to get dev logs: ${err}`);
     }
 
-    success('✅ All tests passed!');
+    // ensure app logs are sent to the server
+    info('Checking if app logs are sent to the server...');
+    const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '30');
+    assertContains(appLogs, 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
+    success('App config working in hybrid mode (logging from dev server and app)');
 
   } catch (err) {
     error(`Test failed: ${err}\n${err instanceof Error ? err.stack : 'No stack trace available'}`);

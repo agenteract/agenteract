@@ -39,14 +39,14 @@ interface Terminal {
 
 function findNearestPackageJson(startDir: string): any | null {
   let currentDir = startDir;
-  
+
   while (true) {
     const packageJsonPath = path.join(currentDir, 'package.json');
-    
+
     if (fs.existsSync(packageJsonPath)) {
       return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     }
-    
+
     const parentDir = path.dirname(currentDir);
     if (parentDir === currentDir) {
       return null; // reached root
@@ -135,9 +135,7 @@ export async function runDevCommand(args: { config: string }) {
       command,
       name: normalizedProject.name,
       cwd: projectPath,
-      type: normalizedProject.type || 'generic',
-      // Flutter and any project with both PTY and WebSocket logs is hybrid
-      isHybrid: normalizedProject.type === 'flutter' || (normalizedProject.devServer && normalizedProject.type),
+      type: normalizedProject.type || 'generic'
     };
   }));
 
@@ -223,9 +221,9 @@ export async function runDevCommand(args: { config: string }) {
           // Capture potential error lines
           const lowerLine = line.toLowerCase();
           if (lowerLine.includes('error') ||
-              lowerLine.includes('failed') ||
-              lowerLine.includes('not found') ||
-              lowerLine.includes('command not found')) {
+            lowerLine.includes('failed') ||
+            lowerLine.includes('not found') ||
+            lowerLine.includes('command not found')) {
             errorOutput.push(line);
             if (errorOutput.length > 20) errorOutput.shift(); // Keep last 20 error lines
           }
@@ -277,7 +275,7 @@ export async function runDevCommand(args: { config: string }) {
           // For buffering: skip lines that are likely spinner/progress bar updates
           // These contain ANSI escape codes for cursor movement or carriage returns
           const hasSpinnerCodes = line.includes('\r') ||
-                                  (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+            (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
 
           if (!hasSpinnerCodes) {
             // Only buffer stable lines (not spinner updates)
@@ -289,8 +287,8 @@ export async function runDevCommand(args: { config: string }) {
         }
       });
     } else if (cmdInfo.type === 'native') {
-        buffer.push(`--- Logs for ${cmdInfo.name} ---\n\n`);
-        buffer.push('Waiting for application to connect and send logs...\n');
+      buffer.push(`--- Logs for ${cmdInfo.name} ---\n\n`);
+      buffer.push('Waiting for application to connect and send logs...\n');
     }
 
     terminals.push({
@@ -408,15 +406,15 @@ export async function runDevCommand(args: { config: string }) {
 
         const lowerLine = line.toLowerCase();
         if (lowerLine.includes('error') ||
-            lowerLine.includes('failed') ||
-            lowerLine.includes('not found') ||
-            lowerLine.includes('command not found')) {
+          lowerLine.includes('failed') ||
+          lowerLine.includes('not found') ||
+          lowerLine.includes('command not found')) {
           errorOutput.push(line);
           if (errorOutput.length > 20) errorOutput.shift();
         }
 
         const hasSpinnerCodes = line.includes('\r') ||
-                                (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
+          (line.includes('\x1b[') && (line.includes('A') || line.includes('K') || line.includes('J')));
 
         if (!hasSpinnerCodes) {
           terminal.buffer.push(line + '\n');
@@ -440,7 +438,7 @@ export async function runDevCommand(args: { config: string }) {
     process.stdin.resume();
     process.stdin.setEncoding('utf8');
   }
-  
+
   process.stdin.on('data', (key: string) => {
     if (key === '\t') {
       switchTo((activeIndex + 1) % terminals.length);
@@ -486,7 +484,7 @@ export async function runDevCommand(args: { config: string }) {
     process.stdout.write('\n--- Shutting down all processes... ---\n');
     terminals.forEach(t => t.ptyProcess?.kill());
   };
-  
+
   process.on('exit', cleanup);
   process.on('SIGINT', () => {
     cleanup();
