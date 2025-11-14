@@ -91,20 +91,18 @@ function App() {
           <input
             {...createAgentBinding({
               testID: 'task-input',
-              onChangeText: (text) => setNewTaskTitle(text),
+              onChange: (e) => setNewTaskTitle(e.target.value),
             })}
             type="text"
             value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
             placeholder="Enter task title..."
             onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
           />
           <button
             {...createAgentBinding({
               testID: 'add-task-button',
-              onPress: handleAddTask,
+              onClick: handleAddTask,
             })}
-            onClick={handleAddTask}
           >
             Add Task
           </button>
