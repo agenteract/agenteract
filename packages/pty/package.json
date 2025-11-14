@@ -33,7 +33,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist .tsbuildinfo*"
+    "clean": "shx rm -rf dist .tsbuildinfo*"
   },
   "exports": {
     ".": {

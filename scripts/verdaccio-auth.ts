@@ -15,10 +15,24 @@ const VERDACCIO_EMAIL = process.env.VERDACCIO_EMAIL || 'test@test.com';
 const TIMEOUT_MS = 30000;
 
 async function authenticate(): Promise<void> {
+  // On Windows, we need to handle npm differently
+  // When running from Git Bash, we can't directly spawn npm.cmd without shell mode
+  // Use shell: true to let the system find npm correctly
+  const isWindows = process.platform === 'win32';
+  const npmBin = 'npm'; // Use 'npm' and let shell resolve it (works on both Windows and Unix)
+  const spawnOptions: any = {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  };
+  
+  // On Windows, use shell mode to properly handle .cmd files
+  // This works from both cmd.exe and Git Bash
+  if (isWindows) {
+    spawnOptions.shell = true;
+  }
+  
   return new Promise((resolve, reject) => {
-    const npmProcess = spawn('npm', ['adduser', '--registry', VERDACCIO_URL], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    console.log(`spawn ${npmBin}`, ['adduser', '--registry', VERDACCIO_URL]);
+    const npmProcess = spawn(npmBin, ['adduser', '--registry', VERDACCIO_URL], spawnOptions);
 
     let output = '';
     let timedOut = false;
@@ -84,6 +98,6 @@ authenticate()
     process.exit(0);
   })
   .catch((error) => {
-    console.error(error.message);
+    console.error(error.message + '\n' + error.stack);
     process.exit(1);
   });

@@ -7,7 +7,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
-    "clean": "pnpm -r exec rm -rf dist node_modules; pnpm -r clean",
+    "clean": "pnpm -r exec shx rm -rf dist node_modules; pnpm -r clean",
     "dev": "pnpm --parallel --filter \"@agenteract/*\" run dev",
     "test": "pnpm -r test && pnpm test:version && echo \"Ran without flutter because they run separately in CI.\"",
     "test:flutter": "cd packages/flutter && flutter test && cd ../../examples/flutter_example && flutter test",
@@ -44,12 +44,14 @@
   ],
   "packageManager": "pnpm@10.9.0",
   "devDependencies": {
+    "@agenteract/cli": "workspace:*",
     "@babel/preset-typescript": "^7.27.1",
     "@jest/globals": "^29.7.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.5",
     "jest": "^29.7.0",
     "puppeteer": "^24.29.1",
+    "shx": "^0.3.4",
     "ts-jest": "^29.2.5",
     "tsx": "^4.20.6",
     "typescript": "^5.6.0"

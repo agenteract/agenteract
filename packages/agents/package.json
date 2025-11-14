@@ -24,8 +24,8 @@
     "documentation"
   ],
   "scripts": {
-    "build": "rm -rf dist; tsc -p tsconfig.json && node build.js",
-    "clean": "rm -rf dist"
+    "build": "tsc -p tsconfig.json && node build.js",
+    "clean": "shx rm -rf dist"
   },
   "bin": {
     "agenteract-agents": "dist/cli.js"
