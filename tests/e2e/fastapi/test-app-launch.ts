@@ -189,7 +189,7 @@ export default defineConfig({
     await runCommand(`mkdir -p ${testConfigDir}`);
     await runCommand(`cd ${testConfigDir} && npm init -y`);
     await runCommand(
-      `cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`
+      `cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`
     );
     success('CLI packages installed from Verdaccio');
 
