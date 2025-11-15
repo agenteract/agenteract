@@ -128,9 +128,30 @@ async function main() {
       error(`Copy failed: src/main.tsx not found at ${copiedSrcPath}`);
       // List what files ARE in the directory
       try {
-        const { readdirSync } = require('fs');
-        const files = readdirSync(exampleAppDir);
-        info(`Files in ${exampleAppDir}: ${files.join(', ')}`);
+        const { readdirSync, statSync } = require('fs');
+
+        // List root directory
+        const rootFiles = readdirSync(exampleAppDir);
+        info(`Files in ${exampleAppDir}:`);
+        rootFiles.forEach(file => {
+          const filePath = join(exampleAppDir, file);
+          const isDir = statSync(filePath).isDirectory();
+          info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
+        });
+
+        // List src directory if it exists
+        const srcDir = join(exampleAppDir, 'src');
+        if (existsSync(srcDir)) {
+          const srcFiles = readdirSync(srcDir);
+          info(`Files in ${srcDir}:`);
+          srcFiles.forEach(file => {
+            const filePath = join(srcDir, file);
+            const isDir = statSync(filePath).isDirectory();
+            info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
+          });
+        } else {
+          error(`src directory does not exist at ${srcDir}`);
+        }
       } catch (e) {
         error(`Could not list directory contents: ${e}`);
       }
@@ -268,26 +289,6 @@ export default defineConfig({
     });
 
     const page = await browser.newPage();
-
-    // Listen to console messages for debugging
-    page.on('console', msg => {
-      const text = msg.text();
-      if (text.includes('Failed') || text.includes('Error') || text.includes('error')) {
-        error(`[Browser Console] ${text}`);
-      } else {
-        info(`[Browser Console] ${text}`);
-      }
-    });
-
-    // Listen to page errors
-    page.on('pageerror', err => {
-      error(`[Browser Error] ${err.message}`);
-    });
-
-    // Listen to request failures
-    page.on('requestfailed', request => {
-      error(`[Request Failed] ${request.url()} - ${request.failure()?.errorText}`);
-    });
 
     info('Opening http://localhost:5173 in headless browser...');
     await page.goto('http://localhost:5173', {
