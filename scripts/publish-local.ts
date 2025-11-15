@@ -5,7 +5,7 @@
  */
 
 import { execSync, spawnSync } from 'child_process';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -182,43 +182,14 @@ function publishPackage(packageDir: string): PublishResult {
   const packageJsonPath = join(packageDir, 'package.json');
   let packageName = 'unknown';
   let packageJson: any = null;
-  let originalPackageJson: string | null = null;
 
   try {
-    originalPackageJson = readFileSync(packageJsonPath, 'utf-8');
-    packageJson = JSON.parse(originalPackageJson);
+    const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
+    packageJson = JSON.parse(packageJsonContent);
     packageName = packageJson.name;
   } catch (error) {
     console.error(`   ❌ Failed to read package.json at ${packageJsonPath}: ${error}`);
     return { name: packageName, status: 'failed' };
-  }
-
-  // Debug: Show what's in the package.json before any modifications
-  console.log(`\n   📝 Inspecting ${packageName}:`);
-  console.log(`      Package version: ${packageJson.version}`);
-
-  if (packageJson.dependencies) {
-    const depsWithWorkspace = Object.entries(packageJson.dependencies)
-      .filter(([_, version]) => (version as string).startsWith('workspace:'));
-    if (depsWithWorkspace.length > 0) {
-      console.log(`      Dependencies with workspace:`);
-      depsWithWorkspace.forEach(([name, version]) => {
-        console.log(`        - ${name}: ${version}`);
-      });
-    } else {
-      console.log(`      Dependencies: ${Object.keys(packageJson.dependencies).length} (none with workspace:)`);
-    }
-  }
-
-  if (packageJson.devDependencies) {
-    const devDepsWithWorkspace = Object.entries(packageJson.devDependencies)
-      .filter(([_, version]) => (version as string).startsWith('workspace:'));
-    if (devDepsWithWorkspace.length > 0) {
-      console.log(`      DevDependencies with workspace:`);
-      devDepsWithWorkspace.forEach(([name, version]) => {
-        console.log(`        - ${name}: ${version}`);
-      });
-    }
   }
 
   // Verify build files exist before publishing
@@ -227,57 +198,25 @@ function publishPackage(packageDir: string): PublishResult {
     return { name: packageName, status: 'failed' };
   }
 
-  // Replace workspace:* dependencies before publishing
-  let modified = false;
-  ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].forEach(depType => {
-    if (packageJson && packageJson[depType]) {
-      Object.keys(packageJson[depType]).forEach(key => {
-        if (packageJson[depType][key].startsWith('workspace:')) {
-          console.log(`      Replacing ${depType}.${key}: ${packageJson[depType][key]} -> *`);
-          // Replace workspace:* with * for Verdaccio compatibility
-          packageJson[depType][key] = '*';
-          modified = true;
-        }
-      });
+  // pnpm publish automatically replaces workspace:* with actual versions
+  const result = spawnSync(
+    'pnpm',
+    ['publish', '--registry', VERDACCIO_URL, '--no-git-checks'],
+    {
+      cwd: packageDir,
+      encoding: 'utf-8',
+      shell: process.platform === 'win32',
     }
-  });
+  );
 
-  // If modified, temporarily write the updated package.json
-  if (modified && originalPackageJson) {
-    writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf-8');
-  }
+  const output = (result.stdout || '') + (result.stderr || '');
 
-  try {
-    const result = spawnSync(
-      'pnpm',
-      ['publish', '--registry', VERDACCIO_URL, '--no-git-checks'],
-      {
-        cwd: packageDir,
-        encoding: 'utf-8',
-        shell: process.platform === 'win32',
-      }
-    );
-
-    const output = (result.stdout || '') + (result.stderr || '');
-
-    // Restore original package.json
-    if (modified && originalPackageJson) {
-      writeFileSync(packageJsonPath, originalPackageJson, 'utf-8');
-    }
-
-    if (output.includes('this package is already present')) {
-      return { name: packageName, status: 'already-exists' };
-    } else if (output.includes('Publishing') || result.status === 0) {
-      return { name: packageName, status: 'published' };
-    } else {
-      return { name: packageName, status: 'failed' };
-    }
-  } catch (error) {
-    // Restore original package.json on error
-    if (modified && originalPackageJson) {
-      writeFileSync(packageJsonPath, originalPackageJson, 'utf-8');
-    }
-    throw error;
+  if (output.includes('this package is already present')) {
+    return { name: packageName, status: 'already-exists' };
+  } else if (output.includes('Publishing') || result.status === 0) {
+    return { name: packageName, status: 'published' };
+  } else {
+    return { name: packageName, status: 'failed' };
   }
 }
 
