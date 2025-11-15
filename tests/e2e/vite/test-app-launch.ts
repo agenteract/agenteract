@@ -177,6 +177,8 @@ export default defineConfig({
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
     await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
+    // install packages so latest are used with npx
+    // await runCommand(`cd "${exampleAppDir}" && npm install @agenteract/cli @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
@@ -185,7 +187,8 @@ export default defineConfig({
     await runCommand(`npx shx rm -rf "${testConfigDir}"`);
     await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
-    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
     // 5. Create agenteract config pointing to the temp app
@@ -231,26 +234,57 @@ export default defineConfig({
     success('Browser loaded Vite app');
 
     // Give AgentDebugBridge time to connect
-    await sleep(3000);
+    // await sleep(3000);
 
-    // 8. Wait for AgentDebugBridge connection
+    // // 8. Wait for AgentDebugBridge connection
+    // await waitFor(
+    //   async () => {
+    //     try {
+    //       await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
+    //       return true;
+    //     } catch {
+    //       return false;
+    //     }
+    //   },
+    //   'AgentDebugBridge to connect',
+    //   30000,
+    //   2000
+    // );
+
+    let hierarchy: string | null = null;
+
     await waitFor(
       async () => {
         try {
-          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
-          return true;
-        } catch {
+          hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
+          info(`page content: ` + await page.content());
+          // print page console logs
+          info(`Hierarchy: ${hierarchy}`);
+
+          const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
+          info('Vite dev logs:');
+          console.log(devLogs);
+
+          return hierarchy?.includes('Agenteract Web Demo');
+        } catch (err) {
+          error(`Error getting hierarchy: ${err}`);
           return false;
         }
       },
-      'AgentDebugBridge to connect',
-      30000,
-      2000
+      'Vite dev server to start',
+      300000,
+      5000
     );
+
+    if (!hierarchy) {
+      // shouldn't be reached
+      error('Unexpected error: hierarchy not found');
+      throw new Error('Unexpected error: hierarchy not found');
+    }
 
     // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
+    // hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');

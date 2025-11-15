@@ -40,6 +40,17 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
 
+      - name: Cache node-gyp build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.LOCALAPPDATA }}\node-gyp
+            ${{ env.APPDATA }}\npm-cache\_cacache
+          key: ${{ runner.os }}-node-gyp-20-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-node-gyp-20-
+            ${{ runner.os }}-node-gyp-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

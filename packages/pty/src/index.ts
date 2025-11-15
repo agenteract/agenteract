@@ -123,7 +123,7 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
     }
 
     if (inSingleQuotes || inDoubleQuotes) {
-        throw new Error('Unclosed quote in command string');
+        throw new Error('Unclosed quote in command string: ' + commandStr);
     }
 
     if (parts.length === 0) {
@@ -159,11 +159,10 @@ export function startPty(options: PtyOptions): void {
     
     let { bin, args } = parseCommand(options.command);
     if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
-    console.log(`Parsed: ${bin} ${args.join(' ')}`);
-
-    // recombine space split arguments into single argument
+    console.log(`Parsed: 123 ${bin} ${args.join(' ')}`);
     if (process.platform === 'win32') { 
-        const args2: string[] = [];
+        // expand all args that are wrapped in quotes
+        let args2: string[] = [];
         args.forEach(arg => {
             if (arg.startsWith('"') && arg.endsWith('"')) {
                 args2.push(...arg.substring(1, arg.length - 1).split(' '));
@@ -177,6 +176,7 @@ export function startPty(options: PtyOptions): void {
     }
 
     const app = express();
+
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',

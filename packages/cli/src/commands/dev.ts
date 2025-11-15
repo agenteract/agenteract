@@ -108,7 +108,8 @@ export async function runDevCommand(args: { config: string }) {
 
       
       const escapedCommand = process.platform === 'win32' ? 
-        devServer.command :
+        // on windows, escape spaces with ^
+        devServer.command.replace(/ /g, '^ ') :
         // Escape double quotes in command string for shell safety
         devServer.command.replace(/"/g, '\\"');
       const escapedCwd = finalCwd.replace(/"/g, '\\"');
