@@ -188,12 +188,41 @@ function publishPackage(packageDir: string): PublishResult {
     originalPackageJson = readFileSync(packageJsonPath, 'utf-8');
     packageJson = JSON.parse(originalPackageJson);
     packageName = packageJson.name;
-  } catch {
-    // Unable to read package name
+  } catch (error) {
+    console.error(`   ❌ Failed to read package.json at ${packageJsonPath}: ${error}`);
+    return { name: packageName, status: 'failed' };
+  }
+
+  // Debug: Show what's in the package.json before any modifications
+  console.log(`\n   📝 Inspecting ${packageName}:`);
+  console.log(`      Package version: ${packageJson.version}`);
+
+  if (packageJson.dependencies) {
+    const depsWithWorkspace = Object.entries(packageJson.dependencies)
+      .filter(([_, version]) => (version as string).startsWith('workspace:'));
+    if (depsWithWorkspace.length > 0) {
+      console.log(`      Dependencies with workspace:`);
+      depsWithWorkspace.forEach(([name, version]) => {
+        console.log(`        - ${name}: ${version}`);
+      });
+    } else {
+      console.log(`      Dependencies: ${Object.keys(packageJson.dependencies).length} (none with workspace:)`);
+    }
+  }
+
+  if (packageJson.devDependencies) {
+    const devDepsWithWorkspace = Object.entries(packageJson.devDependencies)
+      .filter(([_, version]) => (version as string).startsWith('workspace:'));
+    if (devDepsWithWorkspace.length > 0) {
+      console.log(`      DevDependencies with workspace:`);
+      devDepsWithWorkspace.forEach(([name, version]) => {
+        console.log(`        - ${name}: ${version}`);
+      });
+    }
   }
 
   // Verify build files exist before publishing
-  if (packageJson && !verifyBuildFiles(packageDir, packageJson)) {
+  if (!verifyBuildFiles(packageDir, packageJson)) {
     console.error(`   ❌ ${packageName}: Build files missing, skipping publish`);
     return { name: packageName, status: 'failed' };
   }
@@ -201,9 +230,10 @@ function publishPackage(packageDir: string): PublishResult {
   // Replace workspace:* dependencies before publishing
   let modified = false;
   ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'].forEach(depType => {
-    if (packageJson[depType]) {
+    if (packageJson && packageJson[depType]) {
       Object.keys(packageJson[depType]).forEach(key => {
         if (packageJson[depType][key].startsWith('workspace:')) {
+          console.log(`      Replacing ${depType}.${key}: ${packageJson[depType][key]} -> *`);
           // Replace workspace:* with * for Verdaccio compatibility
           packageJson[depType][key] = '*';
           modified = true;
