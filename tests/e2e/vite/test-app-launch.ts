@@ -278,6 +278,24 @@ export default defineConfig({
 
     // 6. Launch headless browser with Puppeteer
     info('Launching headless browser...');
+
+    // Log Puppeteer version for debugging
+    try {
+      const puppeteerVersion = (puppeteer as any).version || 'unknown';
+      info(`Puppeteer version: ${puppeteerVersion}`);
+
+      // Also check the installed version from package.json
+      const { execAsync: exec } = await import('util').then(m => ({ execAsync: promisify(m.default.exec) }));
+      try {
+        const { stdout } = await exec('npm list puppeteer --depth=0');
+        info(`Installed Puppeteer: ${stdout.trim()}`);
+      } catch (e) {
+        // Ignore if npm list fails
+      }
+    } catch (e) {
+      info(`Could not detect Puppeteer version: ${e}`);
+    }
+
     browser = await puppeteer.launch({
       headless: true,
       args: [
