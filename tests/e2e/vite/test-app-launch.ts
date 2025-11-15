@@ -177,6 +177,8 @@ export default defineConfig({
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
     await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${exampleAppDir}" && npm install @agenteract/pty --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
@@ -185,7 +187,8 @@ export default defineConfig({
     await runCommand(`npx shx rm -rf "${testConfigDir}"`);
     await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
-    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
     // 5. Create agenteract config pointing to the temp app

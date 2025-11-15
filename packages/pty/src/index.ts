@@ -123,7 +123,7 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
     }
 
     if (inSingleQuotes || inDoubleQuotes) {
-        throw new Error('Unclosed quote in command string');
+        throw new Error('Unclosed quote in command string: ' + commandStr);
     }
 
     if (parts.length === 0) {
