@@ -6,8 +6,8 @@
   "author": "Michael Ribbons",
   "private": true,
   "scripts": {
-    "build": "pnpm -r build",
-    "clean": "pnpm -r exec shx rm -rf dist node_modules; pnpm -r clean",
+    "build": "pnpm --filter \"@agenteract/core\" build && pnpm --filter \"@agenteract/pty\" build && pnpm -r build",
+    "clean": "pnpm -r clean",
     "dev": "pnpm --parallel --filter \"@agenteract/*\" run dev",
     "test": "pnpm -r test && pnpm test:version && echo \"Ran without flutter because they run separately in CI.\"",
     "test:flutter": "cd packages/flutter && flutter test && cd ../../examples/flutter_example && flutter test",
@@ -29,7 +29,7 @@
     "version:alpha": "tsx scripts/version.ts alpha",
     "version:beta": "tsx scripts/version.ts beta",
     "version:rc": "tsx scripts/version.ts rc",
-    "test:full_integration": "pnpm verdaccio:start && pnpm verdaccio:publish && pnpm test:integration; pnpm verdaccio:stop"
+    "test:full_integration": "pnpm verdaccio:start && pnpm verdaccio:publish && pnpm test:integration && pnpm verdaccio:stop"
   },
   "keywords": [
     "agent",

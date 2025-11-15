@@ -30,7 +30,7 @@
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",
     "build:post": "shx mkdir -p dist/cjs dist/esm && node ../../scripts/write-package-json.js commonjs dist/cjs/package.json && node ../../scripts/write-package-json.js module dist/esm/package.json",
-    "clean": "shx rm -rf dist",
+    "clean": "shx rm -rf dist .tsbuildinfo*",
     "test": "jest --config jest.config.cjs"
   },
   "exports": {

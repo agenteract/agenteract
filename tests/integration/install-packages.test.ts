@@ -5,7 +5,7 @@
  */
 
 import { execSync, spawn, ChildProcess } from 'child_process';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, unlinkSync, readFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -18,6 +18,33 @@ function cleanupTestDir() {
     rmSync(TEST_DIR, { recursive: true, force: true });
   } catch {
     // Ignore errors
+  }
+}
+
+// Helper function to execute Node.js code reliably on Windows
+function execNodeCode(code: string, description: string): void {
+  const testFile = join(TEST_DIR, `test-${Date.now()}.js`);
+  try {
+    writeFileSync(testFile, code);
+    const execOptions: any = { 
+      stdio: 'pipe',
+      cwd: TEST_DIR
+    };
+    if (process.platform === 'win32') {
+      execOptions.shell = true;
+    }
+    execSync(`node "${testFile}"`, execOptions);
+    unlinkSync(testFile);
+  } catch (error: any) {
+    try {
+      unlinkSync(testFile);
+    } catch {
+      // Ignore cleanup errors
+    }
+    const errorMessage = error?.stderr?.toString() || error?.message || 'Unknown error';
+    console.error(`❌ ${description}`);
+    console.error(`Error details: ${errorMessage}`);
+    throw error;
   }
 }
 
@@ -43,15 +70,56 @@ async function main() {
     { stdio: 'inherit' }
   );
 
+  // Verify package structure after installation
+  console.log('Verifying installed package structure...');
+  const corePackagePath = join(TEST_DIR, 'node_modules', '@agenteract', 'core');
+  const corePackageJsonPath = join(corePackagePath, 'package.json');
+  const expectedCjsPath = join(corePackagePath, 'dist', 'cjs', 'src', 'index.js');
+  const expectedEsmPath = join(corePackagePath, 'dist', 'esm', 'src', 'index.js');
+
+  if (!existsSync(corePackageJsonPath)) {
+    console.error(`❌ Package not installed: ${corePackageJsonPath}`);
+    process.exit(1);
+  }
+
+  const corePackageJson = JSON.parse(readFileSync(corePackageJsonPath, 'utf-8'));
+  console.log(`✓ Package installed: ${corePackageJson.name}@${corePackageJson.version}`);
+
+  if (!existsSync(expectedCjsPath)) {
+    console.error(`❌ Missing CommonJS build file: ${expectedCjsPath}`);
+    console.error(`   This indicates the package was published without being built.`);
+    console.error(`   Please run: pnpm run build && pnpm verdaccio:publish`);
+    process.exit(1);
+  }
+
+  if (!existsSync(expectedEsmPath)) {
+    console.error(`❌ Missing ESM build file: ${expectedEsmPath}`);
+    console.error(`   This indicates the package was published without being built.`);
+    console.error(`   Please run: pnpm run build && pnpm verdaccio:publish`);
+    process.exit(1);
+  }
+
+  console.log('✓ Package structure verified');
+
   // Test 1: CommonJS require
   console.log('Test 1: CommonJS import...');
   try {
-    execSync(
-      `node -e "const core = require('@agenteract/core'); console.log('✓ @agenteract/core imported successfully');"`,
-      { stdio: 'pipe' }
+    execNodeCode(
+      `const core = require('@agenteract/core');\nconsole.log('✓ @agenteract/core imported successfully');`,
+      'Failed to import @agenteract/core via CommonJS'
     );
-  } catch {
-    console.error('❌ Failed to import @agenteract/core via CommonJS');
+  } catch (error: any) {
+    // Additional diagnostics if import fails despite file existing
+    if (existsSync(expectedCjsPath)) {
+      console.error(`   File exists but import failed. Checking file content...`);
+      try {
+        const fileContent = readFileSync(expectedCjsPath, 'utf-8');
+        console.error(`   File size: ${fileContent.length} bytes`);
+        console.error(`   First 200 chars: ${fileContent.substring(0, 200)}`);
+      } catch (e) {
+        console.error(`   Could not read file: ${e}`);
+      }
+    }
     process.exit(1);
   }
 
@@ -64,33 +132,40 @@ console.log('✓ @agenteract/core imported via ESM');
 `
   );
   try {
-    execSync('node test.mjs', { stdio: 'pipe' });
-  } catch {
+    const execOptions: any = { 
+      stdio: 'pipe',
+      cwd: TEST_DIR
+    };
+    if (process.platform === 'win32') {
+      execOptions.shell = true;
+    }
+    execSync('node test.mjs', execOptions);
+  } catch (error: any) {
+    const errorMessage = error?.stderr?.toString() || error?.message || 'Unknown error';
     console.error('❌ Failed to import @agenteract/core via ESM');
+    console.error(`Error details: ${errorMessage}`);
     process.exit(1);
   }
 
   // Test 3: Verify workspace dependencies are resolved
   console.log('Test 3: Checking workspace dependencies...');
   try {
-    execSync(
-      `node -e "const react = require('@agenteract/react'); console.log('✓ @agenteract/react and its dependencies imported successfully');"`,
-      { stdio: 'pipe' }
+    execNodeCode(
+      `const react = require('@agenteract/react');\nconsole.log('✓ @agenteract/react and its dependencies imported successfully');`,
+      'Failed to import @agenteract/react'
     );
   } catch {
-    console.error('❌ Failed to import @agenteract/react');
     process.exit(1);
   }
 
   // Test 4: Check package.json exports
   console.log('Test 4: Verifying package exports...');
   try {
-    execSync(
-      `node -e "const corePackage = require('@agenteract/core/package.json'); if (!corePackage.exports) { throw new Error('Package exports not found'); } console.log('✓ Package exports are properly configured');"`,
-      { stdio: 'pipe' }
+    execNodeCode(
+      `const corePackage = require('@agenteract/core/package.json');\nif (!corePackage.exports) { throw new Error('Package exports not found'); }\nconsole.log('✓ Package exports are properly configured');`,
+      'Package exports verification failed'
     );
   } catch {
-    console.error('❌ Package exports verification failed');
     process.exit(1);
   }
 
@@ -210,10 +285,12 @@ console.log('✓ @agenteract/core imported via ESM');
 
   try {
     const hierarchyPath = join(tmpdir(), 'hierarchy.txt');
-    execSync(`npx @agenteract/agents hierarchy my-project > "${hierarchyPath}"`, {
-      shell: true,
-    });
-    const hierarchy = execSync(`cat "${hierarchyPath}"`, { encoding: 'utf-8' });
+    const execOptions: any = {};
+    if (process.platform === 'win32') {
+      execOptions.shell = true;
+    }
+    execSync(`npx @agenteract/agents hierarchy my-project > "${hierarchyPath}"`, execOptions);
+    const hierarchy = readFileSync(hierarchyPath, 'utf-8');
     if (!hierarchy.includes('"hierarchy":"mock"')) {
       throw new Error('agents: hierarchy command failed');
     }

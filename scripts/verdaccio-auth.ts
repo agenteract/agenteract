@@ -31,7 +31,6 @@ async function authenticate(): Promise<void> {
   }
   
   return new Promise((resolve, reject) => {
-    console.log(`spawn ${npmBin}`, ['adduser', '--registry', VERDACCIO_URL]);
     const npmProcess = spawn(npmBin, ['adduser', '--registry', VERDACCIO_URL], spawnOptions);
 
     let output = '';

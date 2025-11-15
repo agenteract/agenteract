@@ -28,7 +28,7 @@
     "coding-agent"
   ],
   "scripts": {
-    "build": "npm run build:types && npm run build:cjs && npm run build:esm && npm run build:post",
+    "build": "pnpm run build:types && pnpm run build:cjs && pnpm run build:esm && pnpm run build:post",
     "build:types": "tsc -p tsconfig.json",
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",

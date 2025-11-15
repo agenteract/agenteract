@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "ES2022",
-    "outDir": "dist/esm",
+    "outDir": "dist/esm/src",
+    "rootDir": "src",
+    "composite": false,
     "tsBuildInfoFile": ".tsbuildinfo.esm"
   }
 }

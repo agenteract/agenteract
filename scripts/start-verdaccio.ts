@@ -4,7 +4,7 @@
  * Usage: tsx scripts/start-verdaccio.ts
  */
 
-import { spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -107,27 +107,139 @@ async function main(): Promise<void> {
   const { openSync, closeSync } = require('fs');
   const logFd = openSync(LOG_FILE, 'w');
 
-  const verdaccioProcess = spawn(
-    'pnpm',
-    ['dlx', 'verdaccio', '--listen', VERDACCIO_PORT, ...configArgs],
-    {
-      detached: true,
-      stdio: ['ignore', logFd, logFd],
-      shell: process.platform === 'win32', // Use shell on Windows
+  const isWindows = process.platform === 'win32';
+  let verdaccioPid: number | undefined;
+
+  if (isWindows) {
+    // On Windows, use 'start /B' to run in background without opening a window
+    // /B = Start application without creating a new window
+    // We'll redirect output to the log file and find the PID afterward
+    
+    // On Windows, use start /B to run in background without opening a window
+    const command = `pnpm dlx verdaccio --listen ${VERDACCIO_PORT} ${configArgs.join(' ')}`;
+    // Use start /B directly - with shell: true, execSync will use cmd automatically
+    const startCommand = `start /B "" ${command}`;
+    
+    try {
+      // Execute start command using execSync
+      // On Windows, execSync automatically uses cmd.exe for shell commands
+      const execOptions: any = {
+        cwd: PROJECT_ROOT,
+        stdio: 'ignore',
+      };
+      if (isWindows) {
+        execOptions.shell = true;
+      }
+      execSync(startCommand, execOptions);
+      
+      closeSync(logFd);
+      
+      // Wait a moment for the process to start
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Find the PID by checking what's listening on the port
+      // Or by finding the verdaccio process
+      try {
+        // Try to find the process using netstat and tasklist
+        const netstatOutput = execSync(
+          `netstat -ano | findstr :${VERDACCIO_PORT} | findstr LISTENING`,
+          { encoding: 'utf-8' }
+        );
+        
+        if (netstatOutput.trim()) {
+          // Extract PID from netstat output (last column)
+          const lines = netstatOutput.trim().split('\n');
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid)) {
+              // Verify it's actually a verdaccio process
+              try {
+                const tasklistOutput = execSync(
+                  `tasklist /FI "PID eq ${pid}" /FO CSV`,
+                  { encoding: 'utf-8' }
+                );
+                if (tasklistOutput.includes('node.exe') || tasklistOutput.includes('verdaccio')) {
+                  verdaccioPid = parseInt(pid);
+                  console.log(`   Process ID: ${verdaccioPid}`);
+                  writeFileSync(PID_FILE, verdaccioPid.toString());
+                  closeSync(logFd);
+                  break;
+                }
+              } catch {
+                // Continue searching
+              }
+            }
+          }
+        }
+        
+        if (verdaccioPid === undefined) {
+          // Fallback: try to find by process name
+          try {
+            const tasklistOutput = execSync(
+              `tasklist /FI "IMAGENAME eq node.exe" /FO CSV`,
+              { encoding: 'utf-8' }
+            );
+            // This is a fallback - we'll use the first node process as a guess
+            // But ideally we should have found it via netstat
+            console.log('⚠️  Could not determine exact PID, but process should be running');
+            console.log('   Check logs and verify Verdaccio is accessible');
+          } catch {
+            // Ignore
+          }
+        }
+      } catch (error: any) {
+        console.error('⚠️  Could not determine process PID');
+        console.error(`   Error: ${error.message}`);
+        console.error('   Verdaccio may still be running - check logs and port');
+      }
+      
+      if (verdaccioPid === undefined) {
+        // Don't exit - let health check determine if it's working
+        console.log('   Started Verdaccio (PID detection failed, but process should be running)');
+        // Set a placeholder so the rest of the code doesn't error
+        verdaccioPid = 0;
+      }
+    } catch (error: any) {
+      console.error('❌ Failed to start Verdaccio process');
+      console.error(`   Error: ${error.message}`);
+      closeSync(logFd);
+      process.exit(1);
     }
-  );
+  } else {
+    // On Unix, use regular spawn with detached mode
+    const logFd = openSync(LOG_FILE, 'w');
+    const spawnOptions: any = {
+      stdio: ['ignore', logFd, logFd],
+      detached: true,
+    };
 
-  // Close the file descriptor in the parent process
-  closeSync(logFd);
+    const verdaccioProcess = spawn(
+      'pnpm',
+      ['dlx', 'verdaccio', '--listen', VERDACCIO_PORT, ...configArgs],
+      spawnOptions
+    );
 
-  const verdaccioPid = verdaccioProcess.pid!;
-  console.log(`   Process ID: ${verdaccioPid}`);
+    verdaccioProcess.on('error', (error) => {
+      console.error('❌ Failed to spawn Verdaccio process');
+      console.error(`   Error: ${error.message}`);
+      closeSync(logFd);
+      process.exit(1);
+    });
 
-  // Save PID to file
-  writeFileSync(PID_FILE, verdaccioPid.toString());
+    closeSync(logFd);
 
-  // Unref so the parent process can exit
-  verdaccioProcess.unref();
+    if (!verdaccioProcess.pid) {
+      console.error('❌ Failed to spawn Verdaccio process');
+      console.error('   Process PID is undefined');
+      process.exit(1);
+    }
+
+    verdaccioPid = verdaccioProcess.pid;
+    console.log(`   Process ID: ${verdaccioPid}`);
+    writeFileSync(PID_FILE, verdaccioPid.toString());
+    verdaccioProcess.unref();
+  }
 
   // Wait a bit for initial startup
   await new Promise(resolve => setTimeout(resolve, 3000));
@@ -151,6 +263,8 @@ async function main(): Promise<void> {
     console.log('');
     console.log('To stop Verdaccio:');
     console.log('  pnpm verdaccio:stop');
+    // Exit so the next command in the chain can run
+    // Verdaccio will continue running in the background (detached process)
     process.exit(0);
   } else {
     console.log('❌ Failed to start Verdaccio - health check timeout');
@@ -163,7 +277,7 @@ async function main(): Promise<void> {
     }
     console.log('');
     console.log('Process status:');
-    if (isProcessRunning(verdaccioPid)) {
+    if (verdaccioPid && verdaccioPid > 0 && isProcessRunning(verdaccioPid)) {
       console.log(`Verdaccio process is still running (PID: ${verdaccioPid})`);
       try {
         process.kill(verdaccioPid);
@@ -171,7 +285,7 @@ async function main(): Promise<void> {
         // Ignore
       }
     } else {
-      console.log('Verdaccio process is not running');
+      console.log('Verdaccio process is not running or PID unknown');
     }
     rmSync(PID_FILE, { force: true });
     process.exit(1);

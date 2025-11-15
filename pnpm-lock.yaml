@@ -179,8 +179,6 @@ importers:
         specifier: ^7.1.7
         version: 7.1.10(@types/node@24.8.1)(lightningcss@1.30.2)(terser@5.44.0)(tsx@4.20.6)(yaml@2.8.1)
 
-  examples/windows: {}
-
   packages/agents:
     dependencies:
       axios:

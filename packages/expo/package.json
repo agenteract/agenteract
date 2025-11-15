@@ -28,7 +28,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "shx rm -rf dist",
+    "clean": "shx rm -rf dist .tsbuildinfo*",
     "dev": "tsc -p tsconfig.json --watch"
   },
   "bin": {

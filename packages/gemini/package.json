@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "shx mkdir -p dist && shx cp ../../docs/AGENTS.md dist/GEMINI.md",
-    "clean": "shx rm -rf dist"
+    "clean": "shx rm -rf dist .tsbuildinfo*"
   },
   "license": "MIT"
 }
