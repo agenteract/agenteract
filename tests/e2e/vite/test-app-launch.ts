@@ -12,7 +12,7 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -103,8 +103,17 @@ async function main() {
     // 3. Copy react-example to temp directory and replace workspace:* dependencies
     info('Copying react-example to temp directory and preparing for Verdaccio...');
     exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${Date.now()}`);
+    info(`Target directory: ${exampleAppDir}`);
+
     await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
     await runCommand(`npx shx cp -R examples/react-example "${exampleAppDir}"`);
+
+    // Verify the copy worked
+    const copiedPkgPath = join(exampleAppDir, 'package.json');
+    if (!existsSync(copiedPkgPath)) {
+      throw new Error(`Copy failed: package.json not found at ${copiedPkgPath}`);
+    }
+    info(`Verified copy: package.json exists at ${copiedPkgPath}`);
 
     // Remove node_modules to avoid workspace symlinks
     await runCommand(`npx shx rm -rf "${join(exampleAppDir, 'node_modules')}" "${join(exampleAppDir, 'package-lock.json')}"`);
@@ -112,20 +121,46 @@ async function main() {
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
     const pkgJsonPath = join(exampleAppDir, 'package.json');
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+    info(`Reading package.json from: ${pkgJsonPath}`);
 
+    const originalContent = readFileSync(pkgJsonPath, 'utf8');
+    const originalHasWorkspace = originalContent.includes('workspace:');
+    info(`Original package.json contains workspace: ${originalHasWorkspace}`);
+
+    const pkgJson = JSON.parse(originalContent);
+
+    let replacedCount = 0;
     ['dependencies', 'devDependencies'].forEach(depType => {
       if (pkgJson[depType]) {
         Object.keys(pkgJson[depType]).forEach(key => {
           if (pkgJson[depType][key] === 'workspace:*') {
+            info(`  Replacing ${depType}.${key}: workspace:* -> *`);
             pkgJson[depType][key] = '*';
+            replacedCount++;
           }
         });
       }
     });
 
-    writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-    success('Workspace dependencies replaced');
+    // Write the file with explicit encoding
+    const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
+    info(`Writing modified package.json (${newContent.length} bytes)`);
+    writeFileSync(pkgJsonPath, newContent, 'utf8');
+
+    // Verify the file was written correctly
+    await sleep(200); // Small delay to ensure file system sync on Windows
+    const verifyContent = readFileSync(pkgJsonPath, 'utf8');
+    const verifyHasWorkspace = verifyContent.includes('workspace:');
+    info(`Verified package.json contains workspace: ${verifyHasWorkspace} (expected: false)`);
+
+    if (verifyHasWorkspace) {
+      error(`Failed to replace workspace:* dependencies! File still contains "workspace:"`);
+      error(`Original length: ${originalContent.length}, New length: ${verifyContent.length}`);
+      error(`Showing first 500 chars of verified content:`);
+      error(verifyContent.substring(0, 500));
+      throw new Error('Failed to replace workspace dependencies');
+    }
+    success(`Workspace dependencies replaced (${replacedCount} replacements)`);
 
     // Fix vite.config.ts to remove monorepo-specific paths
     info('Fixing vite.config.ts...');
