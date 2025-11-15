@@ -225,13 +225,60 @@ export default defineConfig({
     info('Launching headless browser...');
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security', // Allow module loading in headless mode
+        '--disable-features=IsolateOrigins,site-per-process',
+      ],
     });
 
     const page = await browser.newPage();
+
+    // Listen to console messages for debugging
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('Failed') || text.includes('Error') || text.includes('error')) {
+        error(`[Browser Console] ${text}`);
+      } else {
+        info(`[Browser Console] ${text}`);
+      }
+    });
+
+    // Listen to page errors
+    page.on('pageerror', err => {
+      error(`[Browser Error] ${err.message}`);
+    });
+
+    // Listen to request failures
+    page.on('requestfailed', request => {
+      error(`[Request Failed] ${request.url()} - ${request.failure()?.errorText}`);
+    });
+
     info('Opening http://localhost:5173 in headless browser...');
-    await page.goto('http://localhost:5173', { waitUntil: 'networkidle0' });
-    success('Browser loaded Vite app');
+    await page.goto('http://localhost:5173', {
+      waitUntil: 'networkidle0',
+      timeout: 60000,
+    });
+    success('Browser navigation complete');
+
+    // Wait for React to actually render
+    info('Waiting for React app to render...');
+    try {
+      await page.waitForFunction(
+        () => {
+          const root = document.getElementById('root');
+          return root && root.children.length > 0;
+        },
+        { timeout: 30000 }
+      );
+      success('React app rendered');
+    } catch (err) {
+      error('React app did not render within 30 seconds');
+      const content = await page.content();
+      info(`Page HTML: ${content.substring(0, 1000)}`);
+      throw new Error('React app failed to render');
+    }
 
     // Give AgentDebugBridge time to connect
     // await sleep(3000);
