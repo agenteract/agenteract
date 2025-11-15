@@ -13,6 +13,8 @@ import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
 import { readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const exec = promisify(execCallback);
 import {
@@ -59,7 +61,7 @@ async function cleanup() {
 
     if (testConfigDir) {
       try {
-        await runCommand(`rm -rf ${testConfigDir}`);
+        await runCommand(`npx shx rm -rf "${testConfigDir}"`);
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -67,7 +69,7 @@ async function cleanup() {
 
     if (exampleAppDir) {
       try {
-        await runCommand(`rm -rf ${exampleAppDir}`);
+        await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -81,13 +83,15 @@ async function main() {
   try {
     info('Starting Vite E2E test: App Launch');
 
-    // 1. Clean up any existing processes on agenteract ports
-    info('Cleaning up any existing processes on agenteract ports...');
-    try {
-      await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
-      await sleep(2000); // Give processes time to die
-    } catch (err) {
-      // Ignore cleanup errors
+    // 1. Clean up any existing processes on agenteract ports (Unix only)
+    if (process.platform !== 'win32') {
+      info('Cleaning up any existing processes on agenteract ports...');
+      try {
+        await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
+        await sleep(2000); // Give processes time to die
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
 
     // 2. Start Verdaccio
@@ -96,18 +100,18 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
-    // 3. Copy react-example to /tmp and replace workspace:* dependencies
-    info('Copying react-example to /tmp and preparing for Verdaccio...');
-    exampleAppDir = `/tmp/agenteract-e2e-vite-app-${Date.now()}`;
-    await runCommand(`rm -rf ${exampleAppDir}`);
-    await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
+    // 3. Copy react-example to temp directory and replace workspace:* dependencies
+    info('Copying react-example to temp directory and preparing for Verdaccio...');
+    exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${Date.now()}`);
+    await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
+    await runCommand(`npx shx cp -R examples/react-example "${exampleAppDir}"`);
 
     // Remove node_modules to avoid workspace symlinks
-    await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
+    await runCommand(`npx shx rm -rf "${join(exampleAppDir, 'node_modules')}" "${join(exampleAppDir, 'package-lock.json')}"`);
 
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = `${exampleAppDir}/package.json`;
+    const pkgJsonPath = join(exampleAppDir, 'package.json');
     const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
 
     ['dependencies', 'devDependencies'].forEach(depType => {
@@ -125,7 +129,7 @@ async function main() {
 
     // Fix vite.config.ts to remove monorepo-specific paths
     info('Fixing vite.config.ts...');
-    const viteConfigPath = `${exampleAppDir}/vite.config.ts`;
+    const viteConfigPath = join(exampleAppDir, 'vite.config.ts');
     const newViteConfig = `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -139,22 +143,22 @@ export default defineConfig({
 
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
+    await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
-    testConfigDir = `/tmp/agenteract-e2e-test-vite-${Date.now()}`;
-    await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
+    testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${Date.now()}`);
+    await runCommand(`npx shx rm -rf "${testConfigDir}"`);
+    await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
+    await runCommand(`cd "${testConfigDir}" && npm init -y`);
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
-    // 5. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for react-app in /tmp...');
+    // 5. Create agenteract config pointing to the temp app
+    info('Creating agenteract config for react-app in temp directory...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app 'npm run dev'`
+      `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" react-app 'npm run dev'`
     );
     success('Config created');
 
