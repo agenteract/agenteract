@@ -159,38 +159,24 @@ export function startPty(options: PtyOptions): void {
     
     let { bin, args } = parseCommand(options.command);
     if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
-    console.log(`Parsed: 123 ${bin} ${args.join(' ')}`);
-    let log = "";
-    log += "process.platform: " + process.platform + "\n";
+    console.log(`Parsed: ${bin} ${args.join(' ')}`);
+
+    // recombine space split arguments into single argument
     if (process.platform === 'win32') { 
-        // args = args.map(arg => arg.replace(/\^/g, '')); 
-        log += "win32\n";
-        // expand all args that are wrapped in quotes
         const args2: string[] = [];
         args.forEach(arg => {
             if (arg.startsWith('"') && arg.endsWith('"')) {
                 args2.push(...arg.substring(1, arg.length - 1).split(' '));
-                log += "arg: " + arg + " is wrapped in quotes\n";
             } else if (arg.includes(' ')) {
-                log += "arg: " + arg + " contains space\n";
                 args2.push(...arg.split(' '));
             } else {
-                log += "arg: " + arg + " does not contain space\n";
                 args2.push(arg);
             }
         });
         args = args2;
-        log += "args: " + JSON.stringify(args) + "\n";
     }
 
-    log += "working dir: " + workingDir + "\n";
-    
-    log += "env: " + JSON.stringify(mergedEnv) + "\n";
-    // exec('pty_spawn_789.txt');
     const app = express();
-
-    fs.writeFileSync('pty_spawn_789.txt', new Date().toISOString() + ' ' + log + JSON.stringify({ bin, args }) + new Error().stack);
-
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',
