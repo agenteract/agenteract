@@ -2,7 +2,6 @@
 import { startPty, PtyOptions } from './index.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-
 interface CliArgs {
     command: string;
     port: number;

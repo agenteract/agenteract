@@ -12,7 +12,9 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const exec = promisify(execCallback);
 import {
@@ -59,7 +61,7 @@ async function cleanup() {
 
     if (testConfigDir) {
       try {
-        await runCommand(`rm -rf ${testConfigDir}`);
+        await runCommand(`npx shx rm -rf "${testConfigDir}"`);
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -67,7 +69,7 @@ async function cleanup() {
 
     if (exampleAppDir) {
       try {
-        await runCommand(`rm -rf ${exampleAppDir}`);
+        await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -81,13 +83,15 @@ async function main() {
   try {
     info('Starting Vite E2E test: App Launch');
 
-    // 1. Clean up any existing processes on agenteract ports
-    info('Cleaning up any existing processes on agenteract ports...');
-    try {
-      await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
-      await sleep(2000); // Give processes time to die
-    } catch (err) {
-      // Ignore cleanup errors
+    // 1. Clean up any existing processes on agenteract ports (Unix only)
+    if (process.platform !== 'win32') {
+      info('Cleaning up any existing processes on agenteract ports...');
+      try {
+        await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
+        await sleep(2000); // Give processes time to die
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
 
     // 2. Start Verdaccio
@@ -96,36 +100,69 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
-    // 3. Copy react-example to /tmp and replace workspace:* dependencies
-    info('Copying react-example to /tmp and preparing for Verdaccio...');
-    exampleAppDir = `/tmp/agenteract-e2e-vite-app-${Date.now()}`;
-    await runCommand(`rm -rf ${exampleAppDir}`);
-    await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
+    const timestamp = Date.now();
+
+    // 3. Copy react-example to temp directory and replace workspace:* dependencies
+    info('Copying react-example to temp directory and preparing for Verdaccio...');
+    exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${timestamp}`);
+    info(`Target directory: ${exampleAppDir}`);
+
+    await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
+    await runCommand(`npx shx cp -R examples/react-example "${exampleAppDir}"`);
+
+    // Verify the copy worked
+    const copiedPkgPath = join(exampleAppDir, 'package.json');
+    if (!existsSync(copiedPkgPath)) {
+      throw new Error(`Copy failed: package.json not found at ${copiedPkgPath}`);
+    }
+    info(`Verified copy: package.json exists at ${copiedPkgPath}`);
 
     // Remove node_modules to avoid workspace symlinks
-    await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
+    await runCommand(`npx shx rm -rf "${join(exampleAppDir, 'node_modules')}" "${join(exampleAppDir, 'package-lock.json')}"`);
 
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = `${exampleAppDir}/package.json`;
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+    const pkgJsonPath = join(exampleAppDir, 'package.json');
+    info(`Reading package.json from: ${pkgJsonPath}`);
 
+    const originalContent = readFileSync(pkgJsonPath, 'utf8');
+    const originalHasWorkspace = originalContent.includes('workspace:');
+
+    const pkgJson = JSON.parse(originalContent);
+
+    let replacedCount = 0;
     ['dependencies', 'devDependencies'].forEach(depType => {
       if (pkgJson[depType]) {
         Object.keys(pkgJson[depType]).forEach(key => {
           if (pkgJson[depType][key] === 'workspace:*') {
             pkgJson[depType][key] = '*';
+            replacedCount++;
           }
         });
       }
     });
 
-    writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-    success('Workspace dependencies replaced');
+    // Write the file with explicit encoding
+    const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
+    writeFileSync(pkgJsonPath, newContent, 'utf8');
+
+    // Verify the file was written correctly
+    await sleep(200); // Small delay to ensure file system sync on Windows
+    const verifyContent = readFileSync(pkgJsonPath, 'utf8');
+    const verifyHasWorkspace = verifyContent.includes('workspace:');
+
+    if (verifyHasWorkspace) {
+      error(`Failed to replace workspace:* dependencies! File still contains "workspace:"`);
+      error(`Original length: ${originalContent.length}, New length: ${verifyContent.length}`);
+      error(`Showing first 500 chars of verified content:`);
+      error(verifyContent.substring(0, 500));
+      throw new Error('Failed to replace workspace dependencies');
+    }
+    success(`Workspace dependencies replaced (${replacedCount} replacements)`);
 
     // Fix vite.config.ts to remove monorepo-specific paths
     info('Fixing vite.config.ts...');
-    const viteConfigPath = `${exampleAppDir}/vite.config.ts`;
+    const viteConfigPath = join(exampleAppDir, 'vite.config.ts');
     const newViteConfig = `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -139,22 +176,25 @@ export default defineConfig({
 
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
+    await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${exampleAppDir}" && npm install @agenteract/pty --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
-    testConfigDir = `/tmp/agenteract-e2e-test-vite-${Date.now()}`;
-    await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
+    testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${timestamp}`);
+    await runCommand(`npx shx rm -rf "${testConfigDir}"`);
+    await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
+    await runCommand(`cd "${testConfigDir}" && npm init -y`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
-    // 5. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for react-app in /tmp...');
+    // 5. Create agenteract config pointing to the temp app
+    info('Creating agenteract config for react-app in temp directory...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app 'npm run dev'`
+      `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" react-app "npm run dev"`
     );
     success('Config created');
 

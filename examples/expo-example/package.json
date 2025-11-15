@@ -11,10 +11,10 @@
     "lint": "expo lint"
   },
   "dependencies": {
-    "@agenteract/expo": "workspace:*",
-    "@agenteract/server": "workspace:*",
-    "@agenteract/react": "workspace:*",
     "@agenteract/agents": "workspace:*",
+    "@agenteract/expo": "workspace:*",
+    "@agenteract/react": "workspace:*",
+    "@agenteract/server": "workspace:*",
     "@expo/vector-icons": "^15.0.2",
     "expo": "~54.0.13",
     "expo-constants": "~18.0.9",
@@ -33,7 +33,7 @@
     "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
+    "@types/react": "~19.1.17",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

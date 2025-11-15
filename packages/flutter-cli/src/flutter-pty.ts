@@ -67,9 +67,9 @@ export function startFlutterPty(port: number, cwd?: string) {
         }
     }
 
-    shell.onData((data) => {
+    shell.onData((data: string) => {
         process.stdout.write(data);
-        data.split(/\r?\n/).forEach((l) => l && addLine(l));
+        data.split(/\r?\n/).forEach((l: string) => l && addLine(l));
     });
 
     shell.onExit((e: { exitCode: number; signal?: number }) => {

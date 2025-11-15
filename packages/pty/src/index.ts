@@ -123,11 +123,17 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
     }
 
     if (inSingleQuotes || inDoubleQuotes) {
-        throw new Error('Unclosed quote in command string');
+        throw new Error('Unclosed quote in command string: ' + commandStr);
     }
 
     if (parts.length === 0) {
         throw new Error('Command string resulted in no parts');
+    }
+
+    // Add Windows specific prefix for command execution, prevents issues with binary lacking extension
+    if (process.platform === 'win32') {
+        parts.unshift('/C');
+        parts.unshift('cmd.exe');
     }
 
     return {
@@ -150,18 +156,34 @@ export function startPty(options: PtyOptions): void {
 
     // Pre-flight validation
     validateEnvironment(options.validation, workingDir);
-
-    const { bin, args } = parseCommand(options.command);
+    
+    let { bin, args } = parseCommand(options.command);
+    if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
     console.log(`Parsed: ${bin} ${args.join(' ')}`);
 
-    const app = express();
+    // recombine space split arguments into single argument
+    if (process.platform === 'win32') { 
+        const args2: string[] = [];
+        args.forEach(arg => {
+            if (arg.startsWith('"') && arg.endsWith('"')) {
+                args2.push(...arg.substring(1, arg.length - 1).split(' '));
+            } else if (arg.includes(' ')) {
+                args2.push(...arg.split(' '));
+            } else {
+                args2.push(arg);
+            }
+        });
+        args = args2;
+    }
 
+    const app = express();
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        cwd: workingDir,
+        // setting cwd on windows causes path to duplicate, possible but in node-pty / windowsTerminal
+        cwd: process.platform === 'win32' ? undefined : process.cwd(),
         env: mergedEnv,
     });
 

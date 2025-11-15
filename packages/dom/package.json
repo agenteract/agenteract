@@ -32,8 +32,8 @@
     "build": "npm run build:cjs && npm run build:esm && npm run build:post",
     "build:cjs": "tsc -p tsconfig.cjs.json",
     "build:esm": "tsc -p tsconfig.esm.json",
-    "build:post": "mkdir -p dist/cjs dist/esm && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && echo '{\"type\":\"module\"}' > dist/esm/package.json",
-    "clean": "rm -rf dist .tsbuildinfo*"
+    "build:post": "shx mkdir -p dist/cjs dist/esm && node ../../scripts/write-package-json.js commonjs dist/cjs/package.json && node ../../scripts/write-package-json.js module dist/esm/package.json",
+    "clean": "shx rm -rf dist .tsbuildinfo*"
   },
   "exports": {
     ".": {

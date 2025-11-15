@@ -35,7 +35,7 @@
   ],
   "scripts": {
     "build": "tsc --build",
-    "clean": "rm -rf dist .tsbuildinfo*",
+    "clean": "shx rm -rf dist .tsbuildinfo*",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "jest --config jest.config.cjs"
   },

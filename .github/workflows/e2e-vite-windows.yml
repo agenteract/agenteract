@@ -1,0 +1,76 @@
+name: E2E Tests - Vite (Windows)
+
+on:
+  # Run on PRs to main and win32-dev branches
+  pull_request:
+    branches: [ main, win32-dev ]
+    paths:
+      - 'packages/**'
+      - 'examples/react-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-vite-windows.yml'
+  # Run on pushes to main and win32-dev
+  push:
+    branches: [ main, win32-dev, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/react-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-vite-windows.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-vite-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Puppeteer Chrome
+        run: npx puppeteer browsers install chrome
+
+      - name: Cache Puppeteer Chrome
+        uses: actions/cache@v4
+        with:
+          path: ~\.cache\puppeteer
+          key: ${{ runner.os }}-puppeteer-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-puppeteer-
+
+      - name: Run Vite E2E tests
+        env:
+          E2E_VERSION_SUFFIX: ${{ env.VERSION_SUFFIX }}
+        run: |
+          echo "Running E2E tests with version suffix: $env:E2E_VERSION_SUFFIX"
+          pnpm test:e2e:vite
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-vite-windows-failure-logs
+          path: |
+            .e2e-test-vite\
+            tests\e2e\vite\*.log
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: pnpm verdaccio:stop
