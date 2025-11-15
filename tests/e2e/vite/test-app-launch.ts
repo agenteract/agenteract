@@ -12,7 +12,7 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -61,7 +61,7 @@ async function cleanup() {
 
     if (testConfigDir) {
       try {
-        await runCommand(`npx shx rm -rf "${testConfigDir}"`);
+        rmSync(testConfigDir, { recursive: true, force: true });
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -69,7 +69,7 @@ async function cleanup() {
 
     if (exampleAppDir) {
       try {
-        await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
+        rmSync(exampleAppDir, { recursive: true, force: true });
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -107,18 +107,46 @@ async function main() {
     exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${timestamp}`);
     info(`Target directory: ${exampleAppDir}`);
 
-    await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
-    await runCommand(`npx shx cp -R examples/react-example "${exampleAppDir}"`);
+    // Clean up if exists
+    if (existsSync(exampleAppDir)) {
+      rmSync(exampleAppDir, { recursive: true, force: true });
+    }
 
-    // Verify the copy worked
+    // Use Node.js native cpSync for reliable cross-platform copying
+    const sourceDir = join(process.cwd(), 'examples', 'react-example');
+    info(`Copying from: ${sourceDir}`);
+    cpSync(sourceDir, exampleAppDir, { recursive: true });
+
+    // Verify the copy worked - check for critical files
     const copiedPkgPath = join(exampleAppDir, 'package.json');
+    const copiedSrcPath = join(exampleAppDir, 'src', 'main.tsx');
+
     if (!existsSync(copiedPkgPath)) {
       throw new Error(`Copy failed: package.json not found at ${copiedPkgPath}`);
     }
-    info(`Verified copy: package.json exists at ${copiedPkgPath}`);
+    if (!existsSync(copiedSrcPath)) {
+      error(`Copy failed: src/main.tsx not found at ${copiedSrcPath}`);
+      // List what files ARE in the directory
+      try {
+        const { readdirSync } = require('fs');
+        const files = readdirSync(exampleAppDir);
+        info(`Files in ${exampleAppDir}: ${files.join(', ')}`);
+      } catch (e) {
+        error(`Could not list directory contents: ${e}`);
+      }
+      throw new Error(`Copy failed: src/main.tsx not found`);
+    }
+    success(`Verified copy: package.json and src/main.tsx exist`);
 
     // Remove node_modules to avoid workspace symlinks
-    await runCommand(`npx shx rm -rf "${join(exampleAppDir, 'node_modules')}" "${join(exampleAppDir, 'package-lock.json')}"`);
+    const nodeModulesPath = join(exampleAppDir, 'node_modules');
+    const packageLockPath = join(exampleAppDir, 'package-lock.json');
+    if (existsSync(nodeModulesPath)) {
+      rmSync(nodeModulesPath, { recursive: true, force: true });
+    }
+    if (existsSync(packageLockPath)) {
+      rmSync(packageLockPath, { force: true });
+    }
 
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
@@ -184,8 +212,14 @@ export default defineConfig({
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${timestamp}`);
-    await runCommand(`npx shx rm -rf "${testConfigDir}"`);
-    await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
+
+    // Clean up if exists
+    if (existsSync(testConfigDir)) {
+      rmSync(testConfigDir, { recursive: true, force: true });
+    }
+
+    // Create directory
+    mkdirSync(testConfigDir, { recursive: true });
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
     // install packages so latest are used with npx
     await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
