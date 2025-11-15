@@ -130,6 +130,12 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
         throw new Error('Command string resulted in no parts');
     }
 
+    // Add Windows specific prefix for command execution, prevents issues with binary lacking extension
+    if (process.platform === 'win32') {
+        parts.unshift('/C');
+        parts.unshift('cmd.exe');
+    }
+
     return {
         bin: parts[0],
         args: parts.slice(1)
@@ -150,18 +156,48 @@ export function startPty(options: PtyOptions): void {
 
     // Pre-flight validation
     validateEnvironment(options.validation, workingDir);
+    
+    let { bin, args } = parseCommand(options.command);
+    if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
+    console.log(`Parsed: 123 ${bin} ${args.join(' ')}`);
+    let log = "";
+    log += "process.platform: " + process.platform + "\n";
+    if (process.platform === 'win32') { 
+        // args = args.map(arg => arg.replace(/\^/g, '')); 
+        log += "win32\n";
+        // expand all args that are wrapped in quotes
+        const args2: string[] = [];
+        args.forEach(arg => {
+            if (arg.startsWith('"') && arg.endsWith('"')) {
+                args2.push(...arg.substring(1, arg.length - 1).split(' '));
+                log += "arg: " + arg + " is wrapped in quotes\n";
+            } else if (arg.includes(' ')) {
+                log += "arg: " + arg + " contains space\n";
+                args2.push(...arg.split(' '));
+            } else {
+                log += "arg: " + arg + " does not contain space\n";
+                args2.push(arg);
+            }
+        });
+        args = args2;
+        log += "args: " + JSON.stringify(args) + "\n";
+    }
 
-    const { bin, args } = parseCommand(options.command);
-    console.log(`Parsed: ${bin} ${args.join(' ')}`);
-
+    log += "working dir: " + workingDir + "\n";
+    
+    log += "env: " + JSON.stringify(mergedEnv) + "\n";
+    // exec('pty_spawn_789.txt');
     const app = express();
+
+    fs.writeFileSync('pty_spawn_789.txt', new Date().toISOString() + ' ' + log + JSON.stringify({ bin, args }) + new Error().stack);
 
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        cwd: workingDir,
+        // setting cwd on windows causes path to duplicate, possible but in node-pty / windowsTerminal
+        cwd: process.platform === 'win32' ? undefined : process.cwd(),
         env: mergedEnv,
     });
 

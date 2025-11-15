@@ -106,8 +106,11 @@ export async function runDevCommand(args: { config: string }) {
       const { devServer } = normalizedProject;
       const finalCwd = devServer.cwd ? path.resolve(projectPath, devServer.cwd) : projectPath;
 
-      // Escape double quotes in command string for shell safety
-      const escapedCommand = devServer.command.replace(/"/g, '\\"');
+      
+      const escapedCommand = process.platform === 'win32' ? 
+        devServer.command :
+        // Escape double quotes in command string for shell safety
+        devServer.command.replace(/"/g, '\\"');
       const escapedCwd = finalCwd.replace(/"/g, '\\"');
 
       // Build command for generic PTY package
@@ -163,8 +166,9 @@ export async function runDevCommand(args: { config: string }) {
 
     if (cmdInfo.type !== 'native' && cmdInfo.command) {
       console.log(`Spawning command: ${cmdInfo.command}`);
-      const shell = process.env.SHELL || '/bin/bash';
-      ptyProcess = pty.spawn(shell, ['-c', cmdInfo.command], {
+      const shell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/bash';
+      const shellArg = process.platform === 'win32' ? '/C' : '-c';
+      ptyProcess = pty.spawn(shell, [shellArg, cmdInfo.command], {
         name: 'xterm-color',
         cols: process.stdout.columns,
         rows: process.stdout.rows,
@@ -356,8 +360,9 @@ export async function runDevCommand(args: { config: string }) {
     terminal.hasExited = false;
     terminal.exitCode = undefined;
 
-    const shell = process.env.SHELL || '/bin/bash';
-    const newPtyProcess = pty.spawn(shell, ['-c', terminal.restartCommand], {
+    const shell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/bash';
+    const shellArg = process.platform === 'win32' ? '/C' : '-c';
+    const newPtyProcess = pty.spawn(shell, [shellArg, terminal.restartCommand], {
       name: 'xterm-color',
       cols: process.stdout.columns,
       rows: process.stdout.rows,

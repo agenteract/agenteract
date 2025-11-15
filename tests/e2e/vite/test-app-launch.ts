@@ -100,9 +100,11 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
+    const timestamp = Date.now();
+
     // 3. Copy react-example to temp directory and replace workspace:* dependencies
     info('Copying react-example to temp directory and preparing for Verdaccio...');
-    exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${Date.now()}`);
+    exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${timestamp}`);
     info(`Target directory: ${exampleAppDir}`);
 
     await runCommand(`npx shx rm -rf "${exampleAppDir}"`);
@@ -125,7 +127,6 @@ async function main() {
 
     const originalContent = readFileSync(pkgJsonPath, 'utf8');
     const originalHasWorkspace = originalContent.includes('workspace:');
-    info(`Original package.json contains workspace: ${originalHasWorkspace}`);
 
     const pkgJson = JSON.parse(originalContent);
 
@@ -134,7 +135,6 @@ async function main() {
       if (pkgJson[depType]) {
         Object.keys(pkgJson[depType]).forEach(key => {
           if (pkgJson[depType][key] === 'workspace:*') {
-            info(`  Replacing ${depType}.${key}: workspace:* -> *`);
             pkgJson[depType][key] = '*';
             replacedCount++;
           }
@@ -144,14 +144,12 @@ async function main() {
 
     // Write the file with explicit encoding
     const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
-    info(`Writing modified package.json (${newContent.length} bytes)`);
     writeFileSync(pkgJsonPath, newContent, 'utf8');
 
     // Verify the file was written correctly
     await sleep(200); // Small delay to ensure file system sync on Windows
     const verifyContent = readFileSync(pkgJsonPath, 'utf8');
     const verifyHasWorkspace = verifyContent.includes('workspace:');
-    info(`Verified package.json contains workspace: ${verifyHasWorkspace} (expected: false)`);
 
     if (verifyHasWorkspace) {
       error(`Failed to replace workspace:* dependencies! File still contains "workspace:"`);
@@ -183,7 +181,7 @@ export default defineConfig({
 
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
-    testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${Date.now()}`);
+    testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${timestamp}`);
     await runCommand(`npx shx rm -rf "${testConfigDir}"`);
     await runCommand(`npx shx mkdir -p "${testConfigDir}"`);
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
@@ -193,7 +191,7 @@ export default defineConfig({
     // 5. Create agenteract config pointing to the temp app
     info('Creating agenteract config for react-app in temp directory...');
     await runCommand(
-      `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" react-app 'npm run dev'`
+      `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" react-app "npm run dev"`
     );
     success('Config created');
 

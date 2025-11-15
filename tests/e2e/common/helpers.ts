@@ -167,6 +167,10 @@ function escapeShellArg(arg: string): string {
  * Run a shell command and return output
  */
 export async function runCommand(command: string): Promise<string> {
+  if (process.platform === 'win32' && command.startsWith('cd')) {
+    // on window, use /d to change drive letter
+    command = command.replace(/^cd /g, 'cd /d ');
+  }
   info(`Running: ${command}`);
   const { stdout, stderr } = await execAsync(command);
   return stdout + stderr;
@@ -250,6 +254,12 @@ export function spawnBackground(
   const env = { ...process.env };
   delete env.npm_config_user_agent;
   delete env.npm_execpath;
+
+  if (process.platform === 'win32') {
+    args.unshift(command);;
+    args.unshift('/C');
+    command = 'cmd.exe'
+  }
 
   const proc = spawn(command, args, {
     stdio: 'pipe',
