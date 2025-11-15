@@ -159,6 +159,36 @@ async function main() {
     }
     success(`Verified copy: package.json and src/main.tsx exist`);
 
+    // Debug: List all files in the app directory for troubleshooting
+    try {
+      const { readdirSync, statSync } = require('fs');
+      info(`Contents of ${exampleAppDir}:`);
+      const rootFiles = readdirSync(exampleAppDir);
+      rootFiles.forEach(file => {
+        const filePath = join(exampleAppDir, file);
+        const isDir = statSync(filePath).isDirectory();
+        info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
+      });
+
+      // List src directory contents
+      const srcDir = join(exampleAppDir, 'src');
+      if (existsSync(srcDir)) {
+        const srcFiles = readdirSync(srcDir);
+        info(`Contents of ${srcDir}:`);
+        srcFiles.forEach(file => {
+          const filePath = join(srcDir, file);
+          const isDir = statSync(filePath).isDirectory();
+          info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
+        });
+
+        // Show content of main.tsx
+        const mainTsxContent = readFileSync(copiedSrcPath, 'utf-8');
+        info(`Content of src/main.tsx (first 500 chars):\n${mainTsxContent.substring(0, 500)}`);
+      }
+    } catch (e) {
+      info(`Could not list directory for debug: ${e}`);
+    }
+
     // Remove node_modules to avoid workspace symlinks
     const nodeModulesPath = join(exampleAppDir, 'node_modules');
     const packageLockPath = join(exampleAppDir, 'package-lock.json');
@@ -281,19 +311,10 @@ export default defineConfig({
 
     // Log Puppeteer version for debugging
     try {
-      const puppeteerVersion = (puppeteer as any).version || 'unknown';
-      info(`Puppeteer version: ${puppeteerVersion}`);
-
-      // Also check the installed version from package.json
-      const { execAsync: exec } = await import('util').then(m => ({ execAsync: promisify(m.default.exec) }));
-      try {
-        const { stdout } = await exec('npm list puppeteer --depth=0');
-        info(`Installed Puppeteer: ${stdout.trim()}`);
-      } catch (e) {
-        // Ignore if npm list fails
-      }
+      const { stdout } = await exec('npm list puppeteer --depth=0');
+      info(`Installed Puppeteer: ${stdout.trim()}`);
     } catch (e) {
-      info(`Could not detect Puppeteer version: ${e}`);
+      info(`Could not detect Puppeteer version: ${e instanceof Error ? e.message : e}`);
     }
 
     browser = await puppeteer.launch({

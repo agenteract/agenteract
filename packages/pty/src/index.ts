@@ -159,7 +159,7 @@ export function startPty(options: PtyOptions): void {
     
     let { bin, args } = parseCommand(options.command);
     if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
-    console.log(`Parsed: 123 ${bin} ${args.join(' ')}`);
+    console.log(`Parsed: ${bin} ${args.join(' ')}`);
     if (process.platform === 'win32') { 
         // expand all args that are wrapped in quotes
         let args2: string[] = [];
@@ -177,15 +177,29 @@ export function startPty(options: PtyOptions): void {
 
     const app = express();
 
+    if (process.platform === 'win32') {
+        process.chdir(workingDir);
+    }
+
+    let cwd = process.cwd()
+
+    if (process.platform === 'win32') {
+        process.chdir(workingDir);
+    }
+
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
         // setting cwd on windows causes path to duplicate, possible but in node-pty / windowsTerminal
-        cwd: process.platform === 'win32' ? undefined : process.cwd(),
+        cwd: process.platform === 'win32' ? undefined : workingDir,
         env: mergedEnv,
     });
+
+    if (process.platform === 'win32') {
+        process.chdir(cwd);
+    }
 
     const logBuffer: string[] = [];
     const MAX_LINES = 2000;
