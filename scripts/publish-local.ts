@@ -288,7 +288,8 @@ function publishPackages(): { published: number; alreadyExists: number; failed: 
   const packagesDir = join(PROJECT_ROOT, 'packages');
   const packageDirs = readdirSync(packagesDir, { withFileTypes: true })
     .filter(dirent => dirent.isDirectory())
-    .map(dirent => join(packagesDir, dirent.name));
+    .map(dirent => join(packagesDir, dirent.name))
+    .filter(dir => existsSync(join(dir, 'package.json'))); // Only include dirs with package.json
 
   let publishedCount = 0;
   let alreadyExistsCount = 0;
