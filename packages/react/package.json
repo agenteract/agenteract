@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/react",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "React and React Native bridge utilities for Agenteract",
   "main": "./dist/cjs/react/src/index.js",
   "module": "./dist/esm/react/src/index.js",
