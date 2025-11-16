@@ -2,7 +2,6 @@
 import { startPty, PtyOptions } from './index.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-
 interface CliArgs {
     command: string;
     port: number;
@@ -11,7 +10,31 @@ interface CliArgs {
     env?: string;       // JSON string of env vars
 }
 
-const argv = yargs(hideBin(process.argv))
+// combine arguments where any start and end with " and ^ until we find closing "
+// eg ["\"npm", "run^", "dev\""] -> ["\"npm run dev\""]
+let combinedArgs = [];
+
+for (let i = 0; i < process.argv.length; i++) {
+    let arg = process.argv[i];
+    if (arg.startsWith('"') && arg.endsWith('^')) {
+        let combinedArg = arg.substring(1, arg.length - 1);
+        i++
+        for (; i < process.argv.length; ++i) {
+            let nextArg = process.argv[i];
+            if (nextArg.endsWith('^') || nextArg.endsWith('"')) {
+                combinedArg += ' ' + nextArg.substring(0, nextArg.length - 1);
+            } else {
+                i--;
+                break;
+            }
+        }
+        combinedArgs.push(`"${combinedArg}"`);
+    } else {
+        combinedArgs.push(arg);
+    }
+}
+
+const argv = yargs(hideBin(combinedArgs))
     .option('command', {
         alias: 'c',
         type: 'string',

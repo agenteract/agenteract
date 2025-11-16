@@ -3,8 +3,10 @@
  * Common helper functions for E2E tests
  */
 
-import { spawn, exec, ChildProcess } from 'child_process';
+import { spawn, exec, execSync, ChildProcess } from 'child_process';
 import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { realpathSync } from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -167,6 +169,10 @@ function escapeShellArg(arg: string): string {
  * Run a shell command and return output
  */
 export async function runCommand(command: string): Promise<string> {
+  if (process.platform === 'win32' && command.startsWith('cd')) {
+    // on window, use /d to change drive letter
+    command = command.replace(/^cd /g, 'cd /d ');
+  }
   info(`Running: ${command}`);
   const { stdout, stderr } = await execAsync(command);
   return stdout + stderr;
@@ -251,6 +257,12 @@ export function spawnBackground(
   delete env.npm_config_user_agent;
   delete env.npm_execpath;
 
+  if (process.platform === 'win32') {
+    args.unshift(command);;
+    args.unshift('/C');
+    command = 'cmd.exe'
+  }
+
   const proc = spawn(command, args, {
     stdio: 'pipe',
     detached: false,
@@ -312,6 +324,38 @@ export async function killProcess(
   }
 
   success(`${name} stopped`);
+}
+
+/**
+ * Get temporary directory with 8.3 paths expanded on Windows
+ * On Windows CI, tmpdir() may return 8.3 short paths (e.g., "RUNNER~1")
+ * which can cause issues with node-pty. This function expands them to full paths.
+ */
+export function getTmpDir(): string {
+  const tmp = tmpdir();
+  
+  // On Windows, expand 8.3 short paths to full paths
+  if (process.platform === 'win32') {
+    try {
+      // realpathSync expands 8.3 paths to full paths on Windows
+      return realpathSync(tmp);
+    } catch (err) {
+      // If realpathSync fails (e.g., path doesn't exist), try Windows command
+      try {
+        // Use PowerShell to expand the path
+        const expanded = execSync(
+          `powershell -Command "(Get-Item '${tmp}').FullName"`,
+          { encoding: 'utf-8', stdio: 'pipe' }
+        ).trim();
+        return expanded;
+      } catch {
+        // Fallback to original path if expansion fails
+        return tmp;
+      }
+    }
+  }
+  
+  return tmp;
 }
 
 /**

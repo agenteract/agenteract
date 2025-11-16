@@ -12,7 +12,8 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
+import { join } from 'path';
 
 const exec = promisify(execCallback);
 import {
@@ -30,6 +31,7 @@ import {
   waitFor,
   sleep,
   setupCleanup,
+  getTmpDir,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -59,7 +61,7 @@ async function cleanup() {
 
     if (testConfigDir) {
       try {
-        await runCommand(`rm -rf ${testConfigDir}`);
+        rmSync(testConfigDir, { recursive: true, force: true });
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -67,7 +69,7 @@ async function cleanup() {
 
     if (exampleAppDir) {
       try {
-        await runCommand(`rm -rf ${exampleAppDir}`);
+        rmSync(exampleAppDir, { recursive: true, force: true });
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -81,13 +83,15 @@ async function main() {
   try {
     info('Starting Vite E2E test: App Launch');
 
-    // 1. Clean up any existing processes on agenteract ports
-    info('Cleaning up any existing processes on agenteract ports...');
-    try {
-      await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
-      await sleep(2000); // Give processes time to die
-    } catch (err) {
-      // Ignore cleanup errors
+    // 1. Clean up any existing processes on agenteract ports (Unix only)
+    if (process.platform !== 'win32') {
+      info('Cleaning up any existing processes on agenteract ports...');
+      try {
+        await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
+        await sleep(2000); // Give processes time to die
+      } catch (err) {
+        // Ignore cleanup errors
+      }
     }
 
     // 2. Start Verdaccio
@@ -96,36 +100,77 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
-    // 3. Copy react-example to /tmp and replace workspace:* dependencies
-    info('Copying react-example to /tmp and preparing for Verdaccio...');
-    exampleAppDir = `/tmp/agenteract-e2e-vite-app-${Date.now()}`;
-    await runCommand(`rm -rf ${exampleAppDir}`);
-    await runCommand(`cp -r examples/react-example ${exampleAppDir}`);
+    const timestamp = Date.now();
+
+    // 3. Copy react-example to temp directory and replace workspace:* dependencies
+    info('Copying react-example to temp directory and preparing for Verdaccio...');
+    exampleAppDir = join(getTmpDir(), `agenteract-e2e-vite-app-${timestamp}`);
+    info(`Target directory: ${exampleAppDir}`);
+
+    // Clean up if exists
+    if (existsSync(exampleAppDir)) {
+      rmSync(exampleAppDir, { recursive: true, force: true });
+    }
+
+    // Use Node.js native cpSync for reliable cross-platform copying
+    const sourceDir = join(process.cwd(), 'examples', 'react-example');
+    info(`Copying from: ${sourceDir}`);
+    cpSync(sourceDir, exampleAppDir, { recursive: true });
+
+    // Verify the copy worked - check for critical files
+    const copiedPkgPath = join(exampleAppDir, 'package.json');
+    const copiedSrcPath = join(exampleAppDir, 'src', 'main.tsx');
+
+    if (!existsSync(copiedPkgPath)) {
+      throw new Error(`Copy failed: package.json not found at ${copiedPkgPath}`);
+    }
+    if (!existsSync(copiedSrcPath)) {
+      throw new Error(`Copy failed: src/main.tsx not found at ${copiedSrcPath}`);
+    }
+    success(`Verified copy: package.json and src/main.tsx exist`);
 
     // Remove node_modules to avoid workspace symlinks
-    await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
+    const nodeModulesPath = join(exampleAppDir, 'node_modules');
+    const packageLockPath = join(exampleAppDir, 'package-lock.json');
+    if (existsSync(nodeModulesPath)) {
+      rmSync(nodeModulesPath, { recursive: true, force: true });
+    }
+    if (existsSync(packageLockPath)) {
+      rmSync(packageLockPath, { force: true });
+    }
 
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = `${exampleAppDir}/package.json`;
+    const pkgJsonPath = join(exampleAppDir, 'package.json');
     const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
 
+    let replacedCount = 0;
     ['dependencies', 'devDependencies'].forEach(depType => {
       if (pkgJson[depType]) {
         Object.keys(pkgJson[depType]).forEach(key => {
           if (pkgJson[depType][key] === 'workspace:*') {
             pkgJson[depType][key] = '*';
+            replacedCount++;
           }
         });
       }
     });
 
-    writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-    success('Workspace dependencies replaced');
+    // Write the file with explicit encoding
+    const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
+    writeFileSync(pkgJsonPath, newContent, 'utf8');
+
+    // Verify the file was written correctly
+    await sleep(200); // Small delay to ensure file system sync on Windows
+    const verifyContent = readFileSync(pkgJsonPath, 'utf8');
+    if (verifyContent.includes('workspace:')) {
+      throw new Error('Failed to replace workspace dependencies');
+    }
+    success(`Workspace dependencies replaced (${replacedCount} replacements)`);
 
     // Fix vite.config.ts to remove monorepo-specific paths
     info('Fixing vite.config.ts...');
-    const viteConfigPath = `${exampleAppDir}/vite.config.ts`;
+    const viteConfigPath = join(exampleAppDir, 'vite.config.ts');
     const newViteConfig = `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -139,22 +184,29 @@ export default defineConfig({
 
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
-    await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
+    await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
-    testConfigDir = `/tmp/agenteract-e2e-test-vite-${Date.now()}`;
-    await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/vite --registry http://localhost:4873`);
+    testConfigDir = join(getTmpDir(), `agenteract-e2e-test-vite-${timestamp}`);
+
+    // Clean up if exists
+    if (existsSync(testConfigDir)) {
+      rmSync(testConfigDir, { recursive: true, force: true });
+    }
+
+    // Create directory
+    mkdirSync(testConfigDir, { recursive: true });
+    await runCommand(`cd "${testConfigDir}" && npm init -y`);
+    // install packages so latest are used with npx
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
-    // 5. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for react-app in /tmp...');
+    // 5. Create agenteract config pointing to the temp app
+    info('Creating agenteract config for react-app in temp directory...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} react-app 'npm run dev'`
+      `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" react-app "npm run dev"`
     );
     success('Config created');
 
@@ -174,9 +226,7 @@ export default defineConfig({
     // Check dev logs to see what port Vite is running on
     info('Checking Vite dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
-      info('Vite dev logs:');
-      console.log(devLogs);
+      await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
     } catch (err) {
       error(`Failed to get dev logs: ${err}`);
     }
@@ -185,35 +235,70 @@ export default defineConfig({
     info('Launching headless browser...');
     browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-web-security', // Allow module loading in headless mode
+        '--disable-features=IsolateOrigins,site-per-process',
+      ],
     });
 
     const page = await browser.newPage();
+
     info('Opening http://localhost:5173 in headless browser...');
-    await page.goto('http://localhost:5173', { waitUntil: 'networkidle0' });
-    success('Browser loaded Vite app');
+    await page.goto('http://localhost:5173', {
+      waitUntil: 'networkidle0',
+      timeout: 60000,
+    });
+    success('Browser navigation complete');
 
-    // Give AgentDebugBridge time to connect
-    await sleep(3000);
+    // Wait for React to actually render
+    info('Waiting for React app to render...');
+    try {
+      await page.waitForFunction(
+        () => {
+          const root = document.getElementById('root');
+          return root && root.children.length > 0;
+        },
+        { timeout: 30000 }
+      );
+      success('React app rendered');
+    } catch (err) {
+      error('React app did not render within 30 seconds');
+      throw new Error('React app failed to render');
+    }
 
-    // 8. Wait for AgentDebugBridge connection
+    let hierarchy: string | null = null;
+
     await waitFor(
       async () => {
         try {
-          await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
-          return true;
-        } catch {
+          hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
+          info(`page content: ` + await page.content());
+          // print page console logs
+          info(`Hierarchy: ${hierarchy}`);
+
+          const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
+          info('Vite dev logs:');
+          console.log(devLogs);
+
+          return hierarchy?.includes('Agenteract Web Demo');
+        } catch (err) {
+          error(`Error getting hierarchy: ${err}`);
           return false;
         }
       },
-      'AgentDebugBridge to connect',
-      30000,
-      2000
+      'Vite dev server to start',
+      300000,
+      5000
     );
+
+    if (!hierarchy) {
+      throw new Error('Unexpected error: hierarchy not found');
+    }
 
     // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    const hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');

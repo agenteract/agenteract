@@ -3,6 +3,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { realpathSync } from 'fs';
 
 export interface PtyValidation {
     fileExists?: string[];      // Files that must exist in the working directory
@@ -123,11 +124,17 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
     }
 
     if (inSingleQuotes || inDoubleQuotes) {
-        throw new Error('Unclosed quote in command string');
+        throw new Error('Unclosed quote in command string: ' + commandStr);
     }
 
     if (parts.length === 0) {
         throw new Error('Command string resulted in no parts');
+    }
+
+    // Add Windows specific prefix for command execution, prevents issues with binary lacking extension
+    if (process.platform === 'win32') {
+        parts.unshift('/C');
+        parts.unshift('cmd.exe');
     }
 
     return {
@@ -137,31 +144,71 @@ function parseCommand(commandStr: string): { bin: string; args: string[] } {
 }
 
 /**
- * Start a generic PTY with HTTP bridge for logs and commands
- * Supports validation, custom environments, and enhanced error handling
+ * Expand 8.3 short paths to full paths on Windows
+ * This is necessary because node-pty on Windows may have issues with 8.3 paths
+ * On Windows CI, tmpdir() may return 8.3 short paths (e.g., "RUNNER~1")
  */
-export function startPty(options: PtyOptions): void {
-    const workingDir = options.cwd || process.cwd();
-    const mergedEnv = { ...process.env, ...options.env };
+function expandPathIfWindows(filePath: string): string {
+    if (process.platform === 'win32') {
+        try {
+            // realpathSync expands 8.3 paths to full paths on Windows
+            return realpathSync(filePath);
+        } catch (err) {
+            // If realpathSync fails, try PowerShell as fallback
+            try {
+                const expanded = execSync(
+                    `powershell -Command "(Get-Item '${filePath}').FullName"`,
+                    { encoding: 'utf-8', stdio: 'pipe' }
+                ).trim();
+                return expanded;
+            } catch {
+                // Fallback to original path if expansion fails
+                return filePath;
+            }
+        }
+    }
+    return filePath;
+}
 
-    console.log(`Starting PTY...`);
-    console.log(`Working directory: ${workingDir}`);
-    console.log(`Command: ${options.command}`);
+export function startPty(options: PtyOptions): void {
+    let workingDir = options.cwd || process.cwd();
+    // Expand 8.3 paths on Windows to avoid issues with node-pty
+    workingDir = expandPathIfWindows(workingDir);
+    const mergedEnv = { ...process.env, ...options.env };
 
     // Pre-flight validation
     validateEnvironment(options.validation, workingDir);
-
-    const { bin, args } = parseCommand(options.command);
-    console.log(`Parsed: ${bin} ${args.join(' ')}`);
+    
+    let { bin, args } = parseCommand(options.command);
+    if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
+    if (process.platform === 'win32') { 
+        // expand all args that are wrapped in quotes
+        let args2: string[] = [];
+        args.forEach(arg => {
+            if (arg.startsWith('"') && arg.endsWith('"')) {
+                args2.push(...arg.substring(1, arg.length - 1).split(' '));
+            } else if (arg.includes(' ')) {
+                args2.push(...arg.split(' '));
+            } else {
+                args2.push(arg);
+            }
+        });
+        args = args2;
+    }
 
     const app = express();
+
+    if (process.platform === 'win32') {
+        process.chdir(workingDir);
+    }
 
     // Start command inside a pseudo-terminal
     const shell = spawn(bin, args, {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        cwd: workingDir,
+        // setting cwd on windows causes path to duplicate, possible bug in node-pty / windowsTerminal
+        cwd: process.platform === 'win32' ? undefined : workingDir,
         env: mergedEnv,
     });
 

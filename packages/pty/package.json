@@ -3,11 +3,11 @@
   "version": "0.0.2",
   "description": "PTY process manager for Agenteract",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
-    "agenterpty": "./dist/src/cli.js",
-    "@agenteract/pty": "./dist/src/cli.js"
+    "agenterpty": "./dist/cli.js",
+    "@agenteract/pty": "./dist/cli.js"
   },
   "files": [
     "dist/**/*.js",
@@ -33,13 +33,13 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist .tsbuildinfo*"
+    "clean": "shx rm -rf dist .tsbuildinfo*"
   },
   "exports": {
     ".": {
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.js",
-      "types": "./dist/src/index.d.ts"
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "license": "Apache-2.0",
