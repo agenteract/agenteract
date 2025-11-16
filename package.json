@@ -1,6 +1,6 @@
 {
   "name": "agenteract",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "description": "Agenteract - agent to app interaction framework",
   "license": "MIT",
   "author": "Michael Ribbons",
@@ -23,6 +23,7 @@
     "verdaccio:stop": "tsx scripts/stop-verdaccio.ts",
     "verdaccio:publish": "tsx scripts/publish-local.ts",
     "verdaccio:test": "tsx scripts/test-verdaccio-auth.ts",
+    "version:check": "tsx scripts/check-package-versions.ts",
     "version:patch": "tsx scripts/version.ts patch",
     "version:minor": "tsx scripts/version.ts minor",
     "version:major": "tsx scripts/version.ts major",
