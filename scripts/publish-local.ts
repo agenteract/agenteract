@@ -95,25 +95,6 @@ function buildPackages(): void {
     const coreCjsPath = join(coreDistPath, 'cjs', 'src', 'index.js');
     const coreEsmPath = join(coreDistPath, 'esm', 'src', 'index.js');
     
-    // List what's actually in dist to help debug
-    console.log('Checking dist directory structure...');
-    try {
-      const distContents = readdirSync(coreDistPath);
-      console.log(`   dist contains: ${distContents.join(', ')}`);
-      
-      if (existsSync(join(coreDistPath, 'cjs'))) {
-        const cjsContents = readdirSync(join(coreDistPath, 'cjs'));
-        console.log(`   dist/cjs contains: ${cjsContents.join(', ')}`);
-        
-        if (existsSync(join(coreDistPath, 'cjs', 'src'))) {
-          const cjsSrcContents = readdirSync(join(coreDistPath, 'cjs', 'src'));
-          console.log(`   dist/cjs/src contains: ${cjsSrcContents.join(', ')}`);
-        }
-      }
-    } catch (e) {
-      // Ignore listing errors
-    }
-    
     if (!existsSync(coreCjsPath)) {
       console.error(`❌ Build failed: Missing ${coreCjsPath}`);
       console.error('   This suggests TypeScript compilation did not produce the expected output.');

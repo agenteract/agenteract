@@ -176,16 +176,11 @@ export function startPty(options: PtyOptions): void {
     workingDir = expandPathIfWindows(workingDir);
     const mergedEnv = { ...process.env, ...options.env };
 
-    console.log(`Starting PTY...`);
-    console.log(`Working directory: ${workingDir}`);
-    console.log(`Command: ${options.command}`);
-
     // Pre-flight validation
     validateEnvironment(options.validation, workingDir);
     
     let { bin, args } = parseCommand(options.command);
     if (process.platform === 'win32') args = args.map(arg => arg.replace(/\^/g, ''));
-    console.log(`Parsed: ${bin} ${args.join(' ')}`);
     if (process.platform === 'win32') { 
         // expand all args that are wrapped in quotes
         let args2: string[] = [];
@@ -212,7 +207,7 @@ export function startPty(options: PtyOptions): void {
         name: 'xterm-color',
         cols: 80,
         rows: 30,
-        // setting cwd on windows causes path to duplicate, possible but in node-pty / windowsTerminal
+        // setting cwd on windows causes path to duplicate, possible bug in node-pty / windowsTerminal
         cwd: process.platform === 'win32' ? undefined : workingDir,
         env: mergedEnv,
     });

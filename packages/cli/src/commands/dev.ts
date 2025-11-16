@@ -166,7 +166,6 @@ export async function runDevCommand(args: { config: string }) {
     let errorOutput: string[] = []; // Capture error output
 
     if (cmdInfo.type !== 'native' && cmdInfo.command) {
-      console.log(`Spawning command: ${cmdInfo.command}`);
       const shell = process.platform === 'win32' ? 'cmd.exe' : process.env.SHELL || '/bin/bash';
       const shellArg = process.platform === 'win32' ? '/C' : '-c';
       ptyProcess = pty.spawn(shell, [shellArg, cmdInfo.command], {

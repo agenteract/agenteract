@@ -125,69 +125,9 @@ async function main() {
       throw new Error(`Copy failed: package.json not found at ${copiedPkgPath}`);
     }
     if (!existsSync(copiedSrcPath)) {
-      error(`Copy failed: src/main.tsx not found at ${copiedSrcPath}`);
-      // List what files ARE in the directory
-      try {
-        const { readdirSync, statSync } = require('fs');
-
-        // List root directory
-        const rootFiles = readdirSync(exampleAppDir);
-        info(`Files in ${exampleAppDir}:`);
-        rootFiles.forEach(file => {
-          const filePath = join(exampleAppDir, file);
-          const isDir = statSync(filePath).isDirectory();
-          info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
-        });
-
-        // List src directory if it exists
-        const srcDir = join(exampleAppDir, 'src');
-        if (existsSync(srcDir)) {
-          const srcFiles = readdirSync(srcDir);
-          info(`Files in ${srcDir}:`);
-          srcFiles.forEach(file => {
-            const filePath = join(srcDir, file);
-            const isDir = statSync(filePath).isDirectory();
-            info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
-          });
-        } else {
-          error(`src directory does not exist at ${srcDir}`);
-        }
-      } catch (e) {
-        error(`Could not list directory contents: ${e}`);
-      }
-      throw new Error(`Copy failed: src/main.tsx not found`);
+      throw new Error(`Copy failed: src/main.tsx not found at ${copiedSrcPath}`);
     }
     success(`Verified copy: package.json and src/main.tsx exist`);
-
-    // Debug: List all files in the app directory for troubleshooting
-    try {
-      const { readdirSync, statSync } = require('fs');
-      info(`Contents of ${exampleAppDir}:`);
-      const rootFiles = readdirSync(exampleAppDir);
-      rootFiles.forEach(file => {
-        const filePath = join(exampleAppDir, file);
-        const isDir = statSync(filePath).isDirectory();
-        info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
-      });
-
-      // List src directory contents
-      const srcDir = join(exampleAppDir, 'src');
-      if (existsSync(srcDir)) {
-        const srcFiles = readdirSync(srcDir);
-        info(`Contents of ${srcDir}:`);
-        srcFiles.forEach(file => {
-          const filePath = join(srcDir, file);
-          const isDir = statSync(filePath).isDirectory();
-          info(`  ${isDir ? '[DIR]' : '[FILE]'} ${file}`);
-        });
-
-        // Show content of main.tsx
-        const mainTsxContent = readFileSync(copiedSrcPath, 'utf-8');
-        info(`Content of src/main.tsx (first 500 chars):\n${mainTsxContent.substring(0, 500)}`);
-      }
-    } catch (e) {
-      info(`Could not list directory for debug: ${e}`);
-    }
 
     // Remove node_modules to avoid workspace symlinks
     const nodeModulesPath = join(exampleAppDir, 'node_modules');
@@ -202,12 +142,7 @@ async function main() {
     // Replace workspace:* dependencies with * for Verdaccio
     info('Replacing workspace:* dependencies...');
     const pkgJsonPath = join(exampleAppDir, 'package.json');
-    info(`Reading package.json from: ${pkgJsonPath}`);
-
-    const originalContent = readFileSync(pkgJsonPath, 'utf8');
-    const originalHasWorkspace = originalContent.includes('workspace:');
-
-    const pkgJson = JSON.parse(originalContent);
+    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
 
     let replacedCount = 0;
     ['dependencies', 'devDependencies'].forEach(depType => {
@@ -228,13 +163,7 @@ async function main() {
     // Verify the file was written correctly
     await sleep(200); // Small delay to ensure file system sync on Windows
     const verifyContent = readFileSync(pkgJsonPath, 'utf8');
-    const verifyHasWorkspace = verifyContent.includes('workspace:');
-
-    if (verifyHasWorkspace) {
-      error(`Failed to replace workspace:* dependencies! File still contains "workspace:"`);
-      error(`Original length: ${originalContent.length}, New length: ${verifyContent.length}`);
-      error(`Showing first 500 chars of verified content:`);
-      error(verifyContent.substring(0, 500));
+    if (verifyContent.includes('workspace:')) {
       throw new Error('Failed to replace workspace dependencies');
     }
     success(`Workspace dependencies replaced (${replacedCount} replacements)`);
@@ -256,8 +185,6 @@ export default defineConfig({
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
     await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
-    // install packages so latest are used with npx
-    // await runCommand(`cd "${exampleAppDir}" && npm install @agenteract/cli @agenteract/server @agenteract/pty --registry http://localhost:4873`);
     success('React-example prepared with Verdaccio packages');
 
     // 4. Install CLI packages in separate config directory
@@ -299,24 +226,13 @@ export default defineConfig({
     // Check dev logs to see what port Vite is running on
     info('Checking Vite dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
-      info('Vite dev logs:');
-      console.log(devLogs);
+      await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
     } catch (err) {
       error(`Failed to get dev logs: ${err}`);
     }
 
     // 6. Launch headless browser with Puppeteer
     info('Launching headless browser...');
-
-    // Log Puppeteer version for debugging
-    try {
-      const { stdout } = await exec('npm list puppeteer --depth=0');
-      info(`Installed Puppeteer: ${stdout.trim()}`);
-    } catch (e) {
-      info(`Could not detect Puppeteer version: ${e instanceof Error ? e.message : e}`);
-    }
-
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -349,28 +265,8 @@ export default defineConfig({
       success('React app rendered');
     } catch (err) {
       error('React app did not render within 30 seconds');
-      const content = await page.content();
-      info(`Page HTML: ${content.substring(0, 1000)}`);
       throw new Error('React app failed to render');
     }
-
-    // Give AgentDebugBridge time to connect
-    // await sleep(3000);
-
-    // // 8. Wait for AgentDebugBridge connection
-    // await waitFor(
-    //   async () => {
-    //     try {
-    //       await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
-    //       return true;
-    //     } catch {
-    //       return false;
-    //     }
-    //   },
-    //   'AgentDebugBridge to connect',
-    //   30000,
-    //   2000
-    // );
 
     let hierarchy: string | null = null;
 
@@ -398,14 +294,11 @@ export default defineConfig({
     );
 
     if (!hierarchy) {
-      // shouldn't be reached
-      error('Unexpected error: hierarchy not found');
       throw new Error('Unexpected error: hierarchy not found');
     }
 
     // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
-    // hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
 
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');
