@@ -5,11 +5,33 @@
  */
 
 import { execSync, spawn, ChildProcess } from 'child_process';
-import { mkdirSync, rmSync, writeFileSync, unlinkSync, readFileSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, unlinkSync, readFileSync, existsSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-const TEST_DIR = join(tmpdir(), `agenteract-integration-test-${process.pid}`);
+/**
+ * Get temporary directory with 8.3 paths expanded on Windows
+ */
+function getTmpDir(): string {
+  const tmp = tmpdir();
+  if (process.platform === 'win32') {
+    try {
+      return realpathSync(tmp);
+    } catch {
+      try {
+        return execSync(
+          `powershell -Command "(Get-Item '${tmp}').FullName"`,
+          { encoding: 'utf-8', stdio: 'pipe' }
+        ).trim();
+      } catch {
+        return tmp;
+      }
+    }
+  }
+  return tmp;
+}
+
+const TEST_DIR = join(getTmpDir(), `agenteract-integration-test-${process.pid}`);
 const REGISTRY = process.env.REGISTRY || 'http://localhost:4873';
 const START_DIR = process.cwd();
 
@@ -284,7 +306,7 @@ console.log('✓ @agenteract/core imported via ESM');
   }
 
   try {
-    const hierarchyPath = join(tmpdir(), 'hierarchy.txt');
+    const hierarchyPath = join(getTmpDir(), 'hierarchy.txt');
     const execOptions: any = {};
     if (process.platform === 'win32') {
       execOptions.shell = true;

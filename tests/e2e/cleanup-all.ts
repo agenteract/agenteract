@@ -4,9 +4,31 @@
  */
 
 import { execSync } from 'child_process';
-import { readdirSync, rmSync, statSync } from 'fs';
+import { readdirSync, rmSync, statSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+
+/**
+ * Get temporary directory with 8.3 paths expanded on Windows
+ */
+function getTmpDir(): string {
+  const tmp = tmpdir();
+  if (process.platform === 'win32') {
+    try {
+      return realpathSync(tmp);
+    } catch {
+      try {
+        return execSync(
+          `powershell -Command "(Get-Item '${tmp}').FullName"`,
+          { encoding: 'utf-8', stdio: 'pipe' }
+        ).trim();
+      } catch {
+        return tmp;
+      }
+    }
+  }
+  return tmp;
+}
 
 function killProcesses(pattern: string): void {
   try {
@@ -45,7 +67,7 @@ async function main() {
   // Clean up temp directories
   console.log('🗑️  Removing temp directories...');
 
-  const tmpDir = tmpdir();
+  const tmpDir = getTmpDir();
   const patterns = [
     /^agenteract-e2e-test-vite-/,
     /^agenteract-e2e-test-flutter-/,

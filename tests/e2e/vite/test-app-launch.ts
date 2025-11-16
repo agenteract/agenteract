@@ -13,7 +13,6 @@ import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
 import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
-import { tmpdir } from 'os';
 import { join } from 'path';
 
 const exec = promisify(execCallback);
@@ -32,6 +31,7 @@ import {
   waitFor,
   sleep,
   setupCleanup,
+  getTmpDir,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -104,7 +104,7 @@ async function main() {
 
     // 3. Copy react-example to temp directory and replace workspace:* dependencies
     info('Copying react-example to temp directory and preparing for Verdaccio...');
-    exampleAppDir = join(tmpdir(), `agenteract-e2e-vite-app-${timestamp}`);
+    exampleAppDir = join(getTmpDir(), `agenteract-e2e-vite-app-${timestamp}`);
     info(`Target directory: ${exampleAppDir}`);
 
     // Clean up if exists
@@ -262,7 +262,7 @@ export default defineConfig({
 
     // 4. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
-    testConfigDir = join(tmpdir(), `agenteract-e2e-test-vite-${timestamp}`);
+    testConfigDir = join(getTmpDir(), `agenteract-e2e-test-vite-${timestamp}`);
 
     // Clean up if exists
     if (existsSync(testConfigDir)) {
