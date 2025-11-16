@@ -129,19 +129,22 @@ graph TB
 
 The following diagram illustrates the high-level system architecture showing how all components interact:
 
+**Note:** AI agents interact with the system using the `@agenteract/agents` CLI as documented in `AGENTS.md`. This provides a high-level interface for commands like `hierarchy`, `tap`, `input`, `logs`, etc. The underlying HTTP/WebSocket implementation details are abstracted away.
+
 ```mermaid
 graph TB
     subgraph "AI Agent Layer"
         AGENT[AI Coding Agent<br/>Gemini CLI / Cursor / Aider / etc.]
+        AGENTS_CLI["@agenteract/agents CLI<br/>hierarchy, tap, input, logs, etc."]
     end
 
     subgraph "Agenteract Infrastructure"
         CLI["Agenteract CLI<br/>agenteract/cli"]
-        SERVER["Agent Server<br/>agenteract/server<br/>HTTP: 8766<br/>WebSocket: 8765"]
-        LOGSERVER["Log Server<br/>WebSocket: 8767"]
-        PTY1["PTY Bridge 1<br/>agenteract/pty<br/>Port 8790"]
-        PTY2["PTY Bridge 2<br/>agenteract/pty<br/>Port 8791"]
-        PTY3["PTY Bridge N<br/>agenteract/pty<br/>Port 879X"]
+        SERVER["Agent Server<br/>agenteract/server"]
+        LOGSERVER["Log Server"]
+        PTY1["PTY Bridge 1<br/>agenteract/pty"]
+        PTY2["PTY Bridge 2<br/>agenteract/pty"]
+        PTY3["PTY Bridge N<br/>agenteract/pty"]
     end
 
     subgraph "Application Layer"
@@ -157,7 +160,8 @@ graph TB
         DEV3[Flutter Process<br/>flutter run]
     end
 
-    AGENT -->|HTTP POST<br/>Commands| SERVER
+    AGENT -->|Uses commands from<br/>AGENTS.md| AGENTS_CLI
+    AGENTS_CLI -->|hierarchy, tap, input,<br/>scroll, swipe, logs| SERVER
     SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP1
     SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP2
     SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP3
@@ -199,10 +203,24 @@ graph TB
 
 ### Architecture Layers
 
-1. **AI Agent Layer**: External AI agents (Gemini, Cursor, Aider) that send commands
-2. **Infrastructure Layer**: Core services (CLI, Server, PTY bridges) that orchestrate the system
-3. **Application Layer**: Running apps with AgentDebugBridge integration
-4. **Development Server Layer**: Framework-specific dev servers for hot reloading
+1. **AI Agent Layer**:
+   - AI coding agents (Gemini, Cursor, Aider, etc.) that interact with applications
+   - Uses `@agenteract/agents` CLI commands as instructed in `AGENTS.md`
+   - Commands: `hierarchy`, `tap`, `input`, `scroll`, `swipe`, `logs`, `dev-logs`, `cmd`
+
+2. **Infrastructure Layer**:
+   - Core services (CLI, Server, PTY bridges) that orchestrate the system
+   - Agent Server routes commands between agents and applications
+   - PTY bridges manage development servers
+
+3. **Application Layer**:
+   - Running apps with `AgentDebugBridge` integration
+   - Apps expose UI hierarchy and accept interaction commands
+   - Supports React, React Native, Flutter, Swift UI
+
+4. **Development Server Layer**:
+   - Framework-specific dev servers for hot reloading and building
+   - Expo, Vite, Flutter CLI, or custom dev servers
 
 ---
 
