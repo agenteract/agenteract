@@ -139,67 +139,40 @@ graph TB
     end
 
     subgraph "Agenteract Infrastructure"
-        CLI["Agenteract CLI<br/>agenteract/cli"]
-        SERVER["Agent Server<br/>agenteract/server"]
-        LOGSERVER["Log Server"]
-        PTY1["PTY Bridge 1<br/>agenteract/pty"]
-        PTY2["PTY Bridge 2<br/>agenteract/pty"]
-        PTY3["PTY Bridge N<br/>agenteract/pty"]
+        CLI["Agenteract CLI<br/>agenteract/cli<br/>(starts all services)"]
+        SERVER["Agent Server<br/>Routes commands to apps"]
+        LOGSERVER["Log Server<br/>(optional - for native apps)"]
+        PTY["PTY Bridges<br/>(one per project)"]
     end
 
-    subgraph "Application Layer"
-        APP1[Expo App<br/>AgentDebugBridge]
-        APP2[React Web App<br/>AgentDebugBridge]
-        APP3[Flutter App<br/>AgentDebugBridge]
-        APP4[Swift App<br/>AgentDebugBridge]
-    end
-
-    subgraph "Development Servers"
-        DEV1[Expo Dev Server<br/>npx expo start]
-        DEV2[Vite Dev Server<br/>npx vite]
-        DEV3[Flutter Process<br/>flutter run]
+    subgraph "Your Application"
+        DEV[Dev Server<br/>Expo / Vite / Flutter / Custom]
+        APP[Application<br/>with AgentDebugBridge]
     end
 
     AGENT -->|Uses commands from<br/>AGENTS.md| AGENTS_CLI
-    AGENTS_CLI -->|hierarchy, tap, input,<br/>scroll, swipe, logs| SERVER
-    SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP1
-    SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP2
-    SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP3
-    SERVER -->|WebSocket<br/>View Hierarchy &<br/>UI Commands| APP4
+    AGENTS_CLI -->|Executes commands<br/>hierarchy, tap, input, etc.| SERVER
+
+    SERVER <-->|WebSocket<br/>Commands & Responses| APP
 
     CLI -->|Spawns & Manages| SERVER
     CLI -->|Spawns & Manages| LOGSERVER
-    CLI -->|Spawns & Manages| PTY1
-    CLI -->|Spawns & Manages| PTY2
-    CLI -->|Spawns & Manages| PTY3
+    CLI -->|Spawns & Manages| PTY
 
-    PTY1 -->|Controls via PTY| DEV1
-    PTY2 -->|Controls via PTY| DEV2
-    PTY3 -->|Controls via PTY| DEV3
+    PTY -->|Manages & Captures Logs| DEV
+    DEV -.->|Serves App<br/>Hot Reload| APP
 
-    DEV1 -.->|Serves HMR| APP1
-    DEV2 -.->|Serves HMR| APP2
-    DEV3 -.->|Compiles & Runs| APP3
-
-    APP1 -->|Responses &<br/>View Hierarchy| SERVER
-    APP2 -->|Responses &<br/>View Hierarchy| SERVER
-    APP3 -->|Responses &<br/>View Hierarchy| SERVER
-    APP4 -->|Responses &<br/>View Hierarchy| SERVER
-
-    APP1 -.->|Console Logs| LOGSERVER
-    APP2 -.->|Console Logs| LOGSERVER
-    APP3 -.->|Console Logs| LOGSERVER
-    APP4 -.->|Console Logs| LOGSERVER
+    APP -.->|Console Logs<br/>(native apps)| LOGSERVER
 
     style AGENT fill:#e1f5ff
+    style AGENTS_CLI fill:#e1f5ff
     style SERVER fill:#ffe1e1
-    style LOGSERVER fill:#ffe1e1
     style CLI fill:#ffe1e1
-    style APP1 fill:#e1ffe1
-    style APP2 fill:#e1ffe1
-    style APP3 fill:#e1ffe1
-    style APP4 fill:#e1ffe1
+    style APP fill:#e1ffe1
+    style DEV fill:#f0f0f0
 ```
+
+**Note:** Multiple applications can run simultaneously. The Agent Server routes commands to the correct app based on the `project` parameter. Each project gets its own PTY bridge and terminal in the CLI multiplexer.
 
 ### Architecture Layers
 
