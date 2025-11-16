@@ -256,12 +256,156 @@ sequenceDiagram
 
 - **Request-Response Pattern**: HTTP endpoint accepts commands, waits for WebSocket response
 - **UUID-based Correlation**: Each request gets a unique ID to match responses
-- **Timeout Handling**: Server waits up to 30 seconds for WebSocket responses
+- **Timeout Handling**: Server waits up to 10 seconds for WebSocket responses
 - **Project Routing**: WebSocket connections are project-specific via URL path
 
 ---
 
-## 6. AgentDebugBridge Component Architecture
+## 6. Agent Server Architecture
+
+The Agent Server (`@agenteract/server`) is the central hub for communication between AI agents and running applications. It operates in two modes:
+
+### Server Modes
+
+#### 1. Command Mode (Default)
+The main agent server runs HTTP and WebSocket servers for handling agent commands.
+
+**Ports:**
+- HTTP Server: `127.0.0.1:8766` (localhost only)
+- WebSocket Server: `0.0.0.0:8765` (accessible on network)
+
+**HTTP Endpoints:**
+
+| Endpoint | Method | Purpose | Request Body | Response |
+|----------|--------|---------|--------------|----------|
+| `/gemini-agent` | POST | Execute agent command | `{action, project, ...params}` | Command response with same structure |
+| `/logs` | GET | Retrieve application logs | Query: `?project=name&since=50` | `{status, logs, source}` |
+
+**Features:**
+- **Device Info Storage**: Apps send device information (simulator status, device ID, bundle ID, device name, OS version, model)
+- **Streaming Logs**: Real-time log forwarding via `AGENT_LOG::` prefixed stdout to CLI
+- **simctl Fallback**: For iOS simulators, falls back to `xcrun simctl` if app doesn't respond to log requests
+- **Available Projects**: Error responses include list of currently connected projects
+- **Timeout**: 10-second timeout for all command/log responses
+
+#### 2. Log Server Mode (`--log-only`)
+Dedicated server for native app log streaming.
+
+**Port:**
+- WebSocket Server: `0.0.0.0:8767`
+
+**Purpose:**
+Native apps (iOS, Android) connect to stream console logs in real-time. The server prints logs to stdout formatted as `[projectName] [level] message`.
+
+### Server Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Agent Server (Default Mode)"
+        HTTP[HTTP Server<br/>127.0.0.1:8766]
+        WS[WebSocket Server<br/>0.0.0.0:8765]
+        PENDING[Pending Requests Map<br/>UUID → HTTP Response]
+        CONNECTIONS[Project Connections Map<br/>Project → WebSocket + DeviceInfo]
+    end
+
+    subgraph "Log Server (--log-only Mode)"
+        LOGWS[WebSocket Server<br/>0.0.0.0:8767]
+    end
+
+    subgraph "External"
+        AGENT[AI Agent]
+        APP[Applications<br/>AgentDebugBridge]
+        NATIVE[Native Apps<br/>iOS/Android]
+        SIMCTL[xcrun simctl<br/>iOS Simulator Logs]
+    end
+
+    AGENT -->|POST /gemini-agent| HTTP
+    AGENT -->|GET /logs?project=X| HTTP
+
+    HTTP -->|Generate UUID<br/>Store response object| PENDING
+    HTTP -->|Lookup project connection| CONNECTIONS
+    CONNECTIONS -->|Send command via WS| WS
+
+    APP <-->|ws://0.0.0.0:8765/projectName| WS
+    WS -->|Store socket + device info| CONNECTIONS
+    WS -->|Response with UUID| PENDING
+    PENDING -->|Match UUID<br/>Send HTTP response| HTTP
+
+    APP -->|Streaming logs| WS
+    WS -->|AGENT_LOG:: to stdout| HTTP
+
+    NATIVE <-->|ws://0.0.0.0:8767/projectName| LOGWS
+    LOGWS -->|Print to stdout| LOGWS
+
+    HTTP -.->|Timeout fallback for iOS| SIMCTL
+    SIMCTL -.->|Captured logs| HTTP
+
+    style HTTP fill:#ffe1e1
+    style WS fill:#e1f5ff
+    style LOGWS fill:#fff4e1
+    style PENDING fill:#f0f0f0
+    style CONNECTIONS fill:#f0f0f0
+```
+
+### Network Binding Differences
+
+**Important:** The server uses different network bindings for security:
+
+- **HTTP Server** (`127.0.0.1:8766`): Localhost only - agents must run on same machine
+- **WebSocket Servers** (`0.0.0.0:8765`, `0.0.0.0:8767`): Network accessible - allows apps running on physical devices or other machines (iOS devices, Android emulators on different hosts)
+
+This design allows AI agents to remain localhost-only while applications can connect from physical devices on the same network.
+
+### Message Flow Through Server
+
+1. **Agent → Server**: HTTP POST with command
+2. **Server**: Generate UUID, store HTTP response object in pending map
+3. **Server → App**: Forward command via WebSocket with UUID
+4. **App → Server**: Send response via WebSocket with same UUID
+5. **Server**: Match UUID in pending map, send HTTP response to agent
+6. **Cleanup**: Remove UUID from pending map
+
+### Device Info Protocol
+
+Apps can send device information to the server:
+
+```json
+{
+  "status": "deviceInfo",
+  "deviceInfo": {
+    "isSimulator": true,
+    "deviceId": "ABC123",
+    "bundleId": "com.example.app",
+    "deviceName": "iPhone 15 Pro",
+    "osVersion": "17.0",
+    "deviceModel": "iPhone15,2"
+  }
+}
+```
+
+This enables the server to:
+- Use `simctl` fallback for iOS simulator logs
+- Provide better error messages with device context
+- Route logs appropriately
+
+### Streaming Logs vs. Get Logs
+
+The server supports two log mechanisms:
+
+**1. Streaming Logs (Real-time)**
+- Apps send `{status: "log", logs: [...]}` via WebSocket anytime
+- Server forwards to CLI via `AGENT_LOG::{project, log}` stdout
+- Appears in CLI's terminal multiplexer for that project
+
+**2. Get Logs (On-demand)**
+- Agent requests via `GET /logs?project=X&since=50`
+- Server sends `getConsoleLogs` command to app via WebSocket
+- App responds with buffered logs
+- Fallback to `simctl` for iOS simulators if app doesn't respond
+
+---
+
+## 7. AgentDebugBridge Component Architecture
 
 The `AgentDebugBridge` is the core React component that applications integrate to enable agent interaction:
 
@@ -347,7 +491,7 @@ graph TB
 
 ---
 
-## 7. CLI Development Environment
+## 8. CLI Development Environment
 
 The CLI orchestrates the entire development environment using a custom terminal multiplexer:
 
@@ -442,7 +586,7 @@ module.exports = {
 
 ---
 
-## 8. Protocol & Message Format
+## 9. Protocol & Message Format
 
 The communication protocol uses JSON with versioning for compatibility:
 
@@ -562,7 +706,7 @@ graph TB
 
 ---
 
-## 9. Technology Stack
+## 10. Technology Stack
 
 ```mermaid
 graph TB
@@ -647,7 +791,7 @@ graph TB
 
 ---
 
-## 10. Key Architectural Patterns
+## 11. Key Architectural Patterns
 
 ### 1. Bridge Pattern
 **Implementation**: `AgentDebugBridge`
@@ -711,7 +855,7 @@ CLI ←→ PTY Bridge ←→ Dev Server Process
 
 ---
 
-## 11. Data Flow Summary
+## 12. Data Flow Summary
 
 The following flowchart shows the complete data flow from developer initialization to agent interaction:
 
@@ -793,7 +937,7 @@ flowchart TD
 
 ---
 
-## 12. Port Allocation
+## 13. Port Allocation
 
 ### Default Port Assignments
 
@@ -829,34 +973,39 @@ module.exports = {
 
 ---
 
-## 13. Security & Scope
+## 14. Security & Scope
 
 ### Current Security Model
 
 **⚠️ Agenteract is designed for local development only**
 
-- **Localhost Binding**: All servers bind to `127.0.0.1` (localhost)
+- **Mixed Network Binding**:
+  - HTTP server binds to `127.0.0.1` (localhost only - agents must be on same machine)
+  - WebSocket servers bind to `0.0.0.0` (network accessible - allows apps on physical devices/other machines)
 - **No Authentication**: Current version has no auth layer
 - **No Encryption**: WebSocket connections are unencrypted (`ws://` not `wss://`)
-- **Same Machine Only**: Requires agent and apps on same machine
+- **Agent Co-location**: AI agents must run on the same machine as the server
 
 ### Security Considerations
 
 | Threat | Current Mitigation | Future Plans |
 |--------|-------------------|--------------|
-| **Remote Access** | Localhost-only binding | Add option for secure remote access with auth |
-| **Unauthorized Commands** | None | Token-based authentication |
-| **MITM Attacks** | None (local only) | TLS/SSL for remote scenarios |
-| **DoS Attacks** | Rate limiting on HTTP endpoints | Enhanced rate limiting |
+| **Unauthorized WebSocket Access** | None - WS servers bind to 0.0.0.0 | Token-based authentication for WS connections |
+| **Unauthorized Commands** | HTTP binds to 127.0.0.1 only | Token-based authentication |
+| **MITM Attacks** | None - unencrypted WebSocket | TLS/SSL for encrypted WebSocket connections |
+| **DoS Attacks** | 10-second timeouts | Enhanced rate limiting |
 | **Data Leakage** | Apps self-report UI only | Configurable filtering of sensitive data |
+| **Network Scanning** | WebSocket servers discoverable on LAN | Optional binding configuration |
 
 ### Recommended Security Practices
 
-1. **Never expose ports publicly**: Use firewall rules to block external access to 8765-8790
-2. **Trust your agent**: Only run agents from trusted sources
-3. **Review hierarchy data**: Ensure sensitive data isn't exposed in view hierarchy
-4. **Use testID carefully**: Don't include sensitive information in testID values
-5. **Monitor console logs**: Log server captures all console output
+1. **Secure your network**: WebSocket ports 8765 and 8767 are accessible on your local network. Use firewall rules if needed.
+2. **Never expose ports to internet**: Use firewall rules to block external access to 8765-8790 from outside your LAN
+3. **Trust your agent**: Only run agents from trusted sources
+4. **Review hierarchy data**: Ensure sensitive data isn't exposed in view hierarchy
+5. **Use testID carefully**: Don't include sensitive information in testID values
+6. **Monitor console logs**: Log server captures all console output
+7. **Trusted networks only**: Only run on trusted networks (home/office), not public WiFi
 
 ### Future Security Roadmap
 
