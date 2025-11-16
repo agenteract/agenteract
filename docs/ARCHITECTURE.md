@@ -92,16 +92,16 @@ agenteract/
 
 ```mermaid
 graph TB
-    CORE[@agenteract/core<br/>Protocol & Types]
+    CORE["agenteract/core<br/>Protocol & Types"]
 
-    SERVER[@agenteract/server<br/>WebSocket Server]
-    CLI[@agenteract/cli<br/>CLI Tool]
-    PTY[@agenteract/pty<br/>Process Manager]
-    REACT[@agenteract/react<br/>React Bindings]
-    DOM[@agenteract/dom<br/>DOM Utilities]
-    AGENTS[@agenteract/agents<br/>Agent Instructions]
-    EXPO[@agenteract/expo<br/>Deprecated]
-    VITE[@agenteract/vite<br/>Deprecated]
+    SERVER["agenteract/server<br/>WebSocket Server"]
+    CLI["agenteract/cli<br/>CLI Tool"]
+    PTY["agenteract/pty<br/>Process Manager"]
+    REACT["agenteract/react<br/>React Bindings"]
+    DOM["agenteract/dom<br/>DOM Utilities"]
+    AGENTS["agenteract/agents<br/>Agent Instructions"]
+    EXPO["agenteract/expo<br/>Deprecated"]
+    VITE["agenteract/vite<br/>Deprecated"]
 
     CORE --> SERVER
     CORE --> CLI
@@ -136,12 +136,12 @@ graph TB
     end
 
     subgraph "Agenteract Infrastructure"
-        CLI[Agenteract CLI<br/>@agenteract/cli]
-        SERVER[Agent Server<br/>@agenteract/server<br/>HTTP: 8766<br/>WebSocket: 8765]
-        LOGSERVER[Log Server<br/>WebSocket: 8767]
-        PTY1[PTY Bridge 1<br/>@agenteract/pty<br/>Port 8790]
-        PTY2[PTY Bridge 2<br/>@agenteract/pty<br/>Port 8791]
-        PTY3[PTY Bridge N<br/>@agenteract/pty<br/>Port 879X]
+        CLI["Agenteract CLI<br/>agenteract/cli"]
+        SERVER["Agent Server<br/>agenteract/server<br/>HTTP: 8766<br/>WebSocket: 8765"]
+        LOGSERVER["Log Server<br/>WebSocket: 8767"]
+        PTY1["PTY Bridge 1<br/>agenteract/pty<br/>Port 8790"]
+        PTY2["PTY Bridge 2<br/>agenteract/pty<br/>Port 8791"]
+        PTY3["PTY Bridge N<br/>agenteract/pty<br/>Port 879X"]
     end
 
     subgraph "Application Layer"
@@ -357,8 +357,8 @@ graph TB
         MAIN[Main CLI Process<br/>blessed Terminal UI<br/>Tab Navigation]
 
         subgraph "Spawned Processes (node-pty)"
-            SERVER[Agent Server<br/>npx @agenteract/server<br/>Ports 8765-8766]
-            LOG[Log Server<br/>WebSocket Server<br/>Port 8767]
+            SERVER["Agent Server<br/>npx agenteract/server<br/>Ports 8765-8766"]
+            LOG["Log Server<br/>WebSocket Server<br/>Port 8767"]
             PTY1[PTY Bridge 1<br/>expo-app:8790<br/>npx expo start]
             PTY2[PTY Bridge 2<br/>react-app:8791<br/>npx vite]
             PTY3[PTY Bridge 3<br/>flutter-app:8792<br/>flutter run]
@@ -379,7 +379,7 @@ graph TB
     USER -->|npx @agenteract/cli dev| MAIN
     MAIN -->|Reads| CONFIG
 
-    CONFIG -.->|server.port: 8766<br/>projects: [...]<br/>projectNames: [...]| MAIN
+    CONFIG -.->|server.port: 8766<br/>projects config<br/>projectNames config| MAIN
 
     MAIN -->|Spawns via node-pty| SERVER
     MAIN -->|Spawns via node-pty| LOG
@@ -454,9 +454,9 @@ graph TB
     end
 
     subgraph "Message Structure"
-        BASE[Base Message<br/>{_v: "1.0.0"}]
-        CMD[AgentCommand<br/>{action, id, ...params}]
-        RESP[AgentResponse<br/>{status, id, ...data}]
+        BASE["Base Message<br/>_v: 1.0.0"]
+        CMD["AgentCommand<br/>action, id, params"]
+        RESP["AgentResponse<br/>status, id, data"]
     end
 
     subgraph "Command Actions"
@@ -471,9 +471,9 @@ graph TB
     end
 
     subgraph "Response Types"
-        SUCCESS[success<br/>{status: "success", data}]
-        OK[ok<br/>{status: "ok"}]
-        ERROR[error<br/>{status: "error", error}]
+        SUCCESS["success<br/>status: success, data"]
+        OK["ok<br/>status: ok"]
+        ERROR["error<br/>status: error, error"]
     end
 
     SCHEMA --> ENC
