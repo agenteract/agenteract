@@ -349,12 +349,12 @@ graph TB
 
 ## 7. CLI Development Environment
 
-The CLI orchestrates the entire development environment by spawning and managing multiple processes:
+The CLI orchestrates the entire development environment using a custom terminal multiplexer:
 
 ```mermaid
 graph TB
     subgraph "CLI Process (@agenteract/cli dev)"
-        MAIN[Main CLI Process<br/>Process Manager]
+        MAIN[Main CLI Process<br/>Terminal Multiplexer<br/>Raw Mode stdin]
 
         subgraph "Spawned Processes (node-pty)"
             SERVER["Agent Server<br/>npx agenteract/server<br/>Ports 8765-8766"]
@@ -362,6 +362,14 @@ graph TB
             PTY1[PTY Bridge 1<br/>expo-app:8790<br/>npx expo start]
             PTY2[PTY Bridge 2<br/>react-app:8791<br/>npx vite]
             PTY3[PTY Bridge 3<br/>flutter-app:8792<br/>flutter run]
+        end
+
+        subgraph "Terminal Views"
+            TAB1[Terminal 1: agent-server<br/>Buffered output]
+            TAB2[Terminal 2: log-server<br/>Buffered output]
+            TAB3[Terminal 3: expo-app<br/>Buffered output]
+            TAB4[Terminal 4: react-app<br/>Buffered output]
+            TAB5[Terminal 5: flutter-app<br/>Buffered output]
         end
     end
 
@@ -379,13 +387,17 @@ graph TB
     MAIN -->|Spawns via node-pty| PTY2
     MAIN -->|Spawns via node-pty| PTY3
 
-    SERVER -.->|stdout/stderr| MAIN
-    LOG -.->|stdout/stderr| MAIN
-    PTY1 -.->|stdout/stderr| MAIN
-    PTY2 -.->|stdout/stderr| MAIN
-    PTY3 -.->|stdout/stderr| MAIN
+    SERVER -.->|stdout/stderr to buffer| TAB1
+    LOG -.->|stdout/stderr to buffer| TAB2
+    PTY1 -.->|stdout/stderr to buffer| TAB3
+    PTY2 -.->|stdout/stderr to buffer| TAB4
+    PTY3 -.->|stdout/stderr to buffer| TAB5
 
-    USER -->|Ctrl+C to quit| MAIN
+    MAIN -->|Renders active terminal| USER
+
+    USER -->|Tab key: cycle terminals| MAIN
+    USER -->|Ctrl+C: quit| MAIN
+    USER -->|Enter: restart exited process| MAIN
 
     style MAIN fill:#ffe1e1
     style CONFIG fill:#e1f5ff
@@ -395,10 +407,13 @@ graph TB
 ### CLI Features
 
 - **Unified Interface**: Single command starts entire development environment
+- **Terminal Multiplexer**: Custom multiplexer using raw mode stdin and ANSI escape codes (no external UI library)
+- **Tab Navigation**: Press Tab to cycle through terminals, each showing buffered output
 - **Process Management**: Spawns and manages multiple child processes via node-pty
 - **Auto Port Allocation**: Automatically assigns sequential ports to PTY bridges
-- **Graceful Shutdown**: Cleans up all child processes on exit
-- **Real-time Output**: See combined stdout/stderr from all processes
+- **Process Restart**: Press Enter on exited terminals to restart them
+- **Graceful Shutdown**: Cleans up all child processes on exit (Ctrl+C)
+- **Buffer Management**: Each terminal maintains up to 1000 lines of scrollback
 
 ### Configuration Schema
 
@@ -671,10 +686,10 @@ interface AgentCommand {
 
 Server and apps observe each other's messages, reacting to events in real-time.
 
-### 5. Process Manager Pattern
-**Implementation**: CLI with node-pty
+### 5. Multiplexer Pattern
+**Implementation**: Custom terminal multiplexer
 
-Single CLI process spawns and manages multiple child processes via pseudo-terminals.
+Single CLI process multiplexes multiple PTY processes, maintaining separate buffers and switching views with Tab key. Implemented using raw mode stdin and ANSI escape codes (without external UI libraries).
 
 ### 6. Plugin Architecture
 **Implementation**: Framework-specific packages
@@ -761,9 +776,12 @@ flowchart TD
 
     RETURN --> READY
 
-    START --> RUNNING[CLI runs in foreground<br/>Shows process output]
+    START --> UI[CLI shows multiplexed terminal UI<br/>Active: first terminal]
 
-    RUNNING --> QUIT[Developer presses Ctrl+C]
+    UI --> SWITCH[Developer presses Tab<br/>to switch terminals]
+    SWITCH --> UI
+
+    UI --> QUIT[Developer presses Ctrl+C]
     QUIT --> CLEANUP[Kill all child processes<br/>Close connections]
     CLEANUP --> EXIT([Exit])
 
