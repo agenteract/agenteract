@@ -349,12 +349,12 @@ graph TB
 
 ## 7. CLI Development Environment
 
-The CLI orchestrates the entire development environment using a terminal multiplexer:
+The CLI orchestrates the entire development environment by spawning and managing multiple processes:
 
 ```mermaid
 graph TB
     subgraph "CLI Process (@agenteract/cli dev)"
-        MAIN[Main CLI Process<br/>blessed Terminal UI<br/>Tab Navigation]
+        MAIN[Main CLI Process<br/>Process Manager]
 
         subgraph "Spawned Processes (node-pty)"
             SERVER["Agent Server<br/>npx agenteract/server<br/>Ports 8765-8766"]
@@ -362,14 +362,6 @@ graph TB
             PTY1[PTY Bridge 1<br/>expo-app:8790<br/>npx expo start]
             PTY2[PTY Bridge 2<br/>react-app:8791<br/>npx vite]
             PTY3[PTY Bridge 3<br/>flutter-app:8792<br/>flutter run]
-        end
-
-        subgraph "Terminal UI Tabs"
-            TAB1[Tab 1: agent-server<br/>Shows server output]
-            TAB2[Tab 2: log-server<br/>Shows log stream]
-            TAB3[Tab 3: expo-app<br/>Shows Expo DevTools]
-            TAB4[Tab 4: react-app<br/>Shows Vite output]
-            TAB5[Tab 5: flutter-app<br/>Shows Flutter build]
         end
     end
 
@@ -387,18 +379,13 @@ graph TB
     MAIN -->|Spawns via node-pty| PTY2
     MAIN -->|Spawns via node-pty| PTY3
 
-    SERVER -.->|stdout/stderr| TAB1
-    LOG -.->|stdout/stderr| TAB2
-    PTY1 -.->|stdout/stderr| TAB3
-    PTY2 -.->|stdout/stderr| TAB4
-    PTY3 -.->|stdout/stderr| TAB5
+    SERVER -.->|stdout/stderr| MAIN
+    LOG -.->|stdout/stderr| MAIN
+    PTY1 -.->|stdout/stderr| MAIN
+    PTY2 -.->|stdout/stderr| MAIN
+    PTY3 -.->|stdout/stderr| MAIN
 
-    USER -->|Press Tab key| MAIN
-    USER -->|Press q to quit| MAIN
-
-    MAIN -->|Renders| TAB1
-    MAIN -->|Renders| TAB3
-    MAIN -->|Renders| TAB5
+    USER -->|Ctrl+C to quit| MAIN
 
     style MAIN fill:#ffe1e1
     style CONFIG fill:#e1f5ff
@@ -408,11 +395,10 @@ graph TB
 ### CLI Features
 
 - **Unified Interface**: Single command starts entire development environment
-- **Terminal Multiplexing**: blessed-based UI with tab navigation
 - **Process Management**: Spawns and manages multiple child processes via node-pty
 - **Auto Port Allocation**: Automatically assigns sequential ports to PTY bridges
 - **Graceful Shutdown**: Cleans up all child processes on exit
-- **Real-time Output**: See stdout/stderr from all processes in dedicated tabs
+- **Real-time Output**: See combined stdout/stderr from all processes
 
 ### Configuration Schema
 
@@ -577,7 +563,6 @@ graph TB
         EXPRESS[Express<br/>HTTP Server]
         WS[ws<br/>WebSocket Server]
         PTY[node-pty<br/>Pseudo Terminal]
-        BLESSED[blessed<br/>Terminal UI]
     end
 
     subgraph "Frontend Frameworks"
@@ -597,20 +582,17 @@ graph TB
 
     subgraph "Testing Infrastructure"
         JEST[Jest<br/>Unit Testing]
-        PUPPETEER[Puppeteer<br/>E2E Testing]
-        DETOX[Detox<br/>Mobile E2E planned]
+        PUPPETEER[Puppeteer<br/>Chrome launcher for E2E]
     end
 
     subgraph "CI/CD"
         GHA[GitHub Actions]
-        DOCKER[Docker<br/>For test isolation]
     end
 
     PNPM -->|Manages| NODE
     NODE -->|Runs| EXPRESS
     NODE -->|Runs| WS
     NODE -->|Runs| PTY
-    NODE -->|Runs| BLESSED
 
     TS -->|Compiles with| TSC
     TSC -->|Outputs to| NPM_REG
@@ -624,11 +606,9 @@ graph TB
     EXPO -->|Uses| METRO
     REACT -->|Uses| VITE_BUILD
 
-    GHA -->|Publishes to| VERDACCIO
+    GHA -->|Tests publishing to| VERDACCIO
     GHA -->|Runs| JEST
-    GHA -->|Runs| PUPPETEER
-
-    DOCKER -.->|Isolates| GHA
+    GHA -->|Uses for Chrome| PUPPETEER
 
     style NODE fill:#68a063
     style REACT fill:#61dafb
@@ -643,12 +623,12 @@ graph TB
 | **pnpm** | Efficient monorepo management, fast installs, strict dependency resolution |
 | **TypeScript** | Type safety across packages, better IDE support, fewer runtime errors |
 | **node-pty** | Cross-platform pseudo-terminal for managing dev servers |
-| **blessed** | Rich terminal UI for CLI multiplexer |
 | **ws** | Lightweight, performant WebSocket library |
 | **Express** | Simple HTTP server for agent endpoints |
 | **React 19** | Latest React features, concurrent rendering support |
 | **Jest** | Industry-standard testing framework |
-| **Puppeteer** | Browser automation for E2E web testing |
+| **Puppeteer** | Launches Chrome browser for E2E testing |
+| **Verdaccio** | Local npm registry for testing package publishing |
 
 ---
 
@@ -691,10 +671,10 @@ interface AgentCommand {
 
 Server and apps observe each other's messages, reacting to events in real-time.
 
-### 5. Multiplexer Pattern
-**Implementation**: CLI terminal UI
+### 5. Process Manager Pattern
+**Implementation**: CLI with node-pty
 
-Single CLI process multiplexes multiple child processes, presenting them as tabs in a unified interface.
+Single CLI process spawns and manages multiple child processes via pseudo-terminals.
 
 ### 6. Plugin Architecture
 **Implementation**: Framework-specific packages
@@ -781,12 +761,9 @@ flowchart TD
 
     RETURN --> READY
 
-    START --> UI[CLI shows blessed UI<br/>with tabs for each process]
+    START --> RUNNING[CLI runs in foreground<br/>Shows process output]
 
-    UI --> SWITCH[Developer presses Tab<br/>to switch views]
-    SWITCH --> UI
-
-    UI --> QUIT[Developer presses 'q']
+    RUNNING --> QUIT[Developer presses Ctrl+C]
     QUIT --> CLEANUP[Kill all child processes<br/>Close connections]
     CLEANUP --> EXIT([Exit])
 
