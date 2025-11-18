@@ -369,6 +369,8 @@ Your agent is now ready to Agenteract!
 
 This guide covers how to set up the local development environment to run the Expo example app and the agent server.
 
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for in depth information about the project structure.
+
 ### **1. Prerequisites**
 
 First, clone the repository and ensure you have [pnpm](https://pnpm.io/) installed.
