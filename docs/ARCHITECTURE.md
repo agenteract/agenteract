@@ -402,72 +402,38 @@ The `AgentDebugBridge` is the core React component that applications integrate t
 
 ```mermaid
 graph TB
-    subgraph "Application Code"
+    subgraph "Your Application"
         APP[App.tsx<br/>Root Component]
-        COMPONENTS[UI Components<br/>Button, TextInput, ScrollView, etc.<br/>with testID props]
+        COMPONENTS[UI Components<br/>with testID props]
     end
 
-    subgraph "AgentDebugBridge Core"
-        BRIDGE[AgentDebugBridge<br/>React Component]
-        WS[WebSocket Client<br/>ws://localhost:8765/projectName]
-        LOGGER[Console Logger<br/>Intercepts console.log/warn/error]
+    subgraph "AgentDebugBridge"
+        BRIDGE[Bridge Component]
+        REGISTRY[AgentRegistry<br/>testID → Component Map]
+        ACTIONS[Action Handlers<br/>tap, input, scroll, swipe, etc.]
+        HIERARCHY[View Hierarchy<br/>Fiber Tree Traversal]
     end
 
-    subgraph "Registry & Hierarchy"
-        REGISTRY[AgentRegistry<br/>Map: testID → RefObject]
-        HIERARCHY[getFilteredHierarchy<br/>Fiber Tree Traversal]
-    end
+    SERVER[Agent Server]
 
-    subgraph "Action Handlers"
-        TAP[simulateTap<br/>Execute onPress]
-        INPUT[simulateInput<br/>Execute onChangeText]
-        SCROLL[simulateScroll<br/>Execute scrollTo]
-        SWIPE[simulateSwipe<br/>Execute gesture]
-        LONG[simulateLongPress<br/>Execute onLongPress]
-    end
+    APP -->|Renders| BRIDGE
+    COMPONENTS -->|Register via testID| REGISTRY
 
-    subgraph "Server"
-        SERVER[Agent Server<br/>ws://localhost:8765]
-    end
+    SERVER <-->|WebSocket<br/>Commands & Responses| BRIDGE
 
-    APP -->|Renders as child| BRIDGE
-    APP -->|Contains| COMPONENTS
+    BRIDGE -->|Execute action| ACTIONS
+    ACTIONS -->|Lookup component| REGISTRY
+    REGISTRY -->|Trigger handler| COMPONENTS
 
-    COMPONENTS -->|useAgentBinding hook| REGISTRY
-    REGISTRY -->|Stores| COMPONENTS
-
-    BRIDGE -->|Manages| WS
-    WS <-->|WebSocket Protocol| SERVER
-
-    WS -->|Receives command| BRIDGE
-
-    BRIDGE -->|getViewHierarchy| HIERARCHY
-    HIERARCHY -->|Traverses| APP
-    HIERARCHY -->|Reads| REGISTRY
-    HIERARCHY -->|Returns tree| BRIDGE
-
-    BRIDGE -->|tap action| TAP
-    BRIDGE -->|input action| INPUT
-    BRIDGE -->|scroll action| SCROLL
-    BRIDGE -->|swipe action| SWIPE
-    BRIDGE -->|longPress action| LONG
-
-    TAP -->|Lookup in| REGISTRY
-    INPUT -->|Lookup in| REGISTRY
-    SCROLL -->|Lookup in| REGISTRY
-    SWIPE -->|Lookup in| REGISTRY
-    LONG -->|Lookup in| REGISTRY
-
-    REGISTRY -->|Get ref & execute| COMPONENTS
-
-    BRIDGE -->|Intercepts| LOGGER
-    LOGGER -->|Captures| COMPONENTS
+    BRIDGE -->|Build hierarchy| HIERARCHY
+    HIERARCHY -->|Traverse tree| APP
 
     style BRIDGE fill:#ffe1e1
     style REGISTRY fill:#e1f5ff
     style SERVER fill:#e1ffe1
-    style HIERARCHY fill:#fff4e1
 ```
+
+**Note:** Action handlers support `tap`, `input`, `scroll`, `swipe`, `longPress`, and more. Each looks up the target component by `testID` in the registry and executes the appropriate handler.
 
 ### Component Responsibilities
 
@@ -488,56 +454,29 @@ The CLI orchestrates the entire development environment using a custom terminal 
 
 ```mermaid
 graph TB
-    subgraph "CLI Process (@agenteract/cli dev)"
-        MAIN[Main CLI Process<br/>Terminal Multiplexer<br/>Raw Mode stdin]
-
-        subgraph "Spawned Processes (node-pty)"
-            SERVER["Agent Server<br/>npx agenteract/server<br/>Ports 8765-8766"]
-            LOG["Log Server<br/>WebSocket Server<br/>Port 8767"]
-            PTY1[PTY Bridge 1<br/>expo-app:8790<br/>npx expo start]
-            PTY2[PTY Bridge 2<br/>react-app:8791<br/>npx vite]
-            PTY3[PTY Bridge 3<br/>flutter-app:8792<br/>flutter run]
-        end
-
-        subgraph "Terminal Views"
-            TAB1[Terminal 1: agent-server<br/>Buffered output]
-            TAB2[Terminal 2: log-server<br/>Buffered output]
-            TAB3[Terminal 3: expo-app<br/>Buffered output]
-            TAB4[Terminal 4: react-app<br/>Buffered output]
-            TAB5[Terminal 5: flutter-app<br/>Buffered output]
-        end
-    end
-
     USER[Developer]
-    CONFIG[agenteract.config.js<br/>Configuration File]
+    CONFIG[agenteract.config.js]
+
+    subgraph "CLI Process"
+        MAIN[Terminal Multiplexer<br/>Manages all processes]
+        PROCESSES[Spawned Processes<br/>Agent Server + PTY Bridges]
+        BUFFERS[Output Buffers<br/>One per process]
+    end
 
     USER -->|npx @agenteract/cli dev| MAIN
     MAIN -->|Reads| CONFIG
+    MAIN -->|Spawns via node-pty| PROCESSES
+    PROCESSES -->|stdout/stderr| BUFFERS
+    BUFFERS -->|Active terminal view| USER
 
-    CONFIG -.->|server.port: 8766<br/>projects config<br/>projectNames config| MAIN
-
-    MAIN -->|Spawns via node-pty| SERVER
-    MAIN -->|Spawns via node-pty| LOG
-    MAIN -->|Spawns via node-pty| PTY1
-    MAIN -->|Spawns via node-pty| PTY2
-    MAIN -->|Spawns via node-pty| PTY3
-
-    SERVER -.->|stdout/stderr to buffer| TAB1
-    LOG -.->|stdout/stderr to buffer| TAB2
-    PTY1 -.->|stdout/stderr to buffer| TAB3
-    PTY2 -.->|stdout/stderr to buffer| TAB4
-    PTY3 -.->|stdout/stderr to buffer| TAB5
-
-    MAIN -->|Renders active terminal| USER
-
-    USER -->|Tab key: cycle terminals| MAIN
-    USER -->|Ctrl+C: quit| MAIN
-    USER -->|Enter: restart exited process| MAIN
+    USER <-->|Multiplexed shell<br/>Tab to switch, Ctrl+C to quit| MAIN
 
     style MAIN fill:#ffe1e1
     style CONFIG fill:#e1f5ff
     style USER fill:#e1ffe1
 ```
+
+**Note:** The CLI spawns one process per configured project (plus the Agent Server and optional Log Server). Each process has its own output buffer, and the developer can switch between them using Tab.
 
 ### CLI Features
 
