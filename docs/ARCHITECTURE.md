@@ -7,14 +7,15 @@
 3. [Core Packages](#3-core-packages)
 4. [System Architecture](#4-system-architecture)
 5. [Communication Flow](#5-communication-flow)
-6. [AgentDebugBridge Component Architecture](#6-agentdebugbridge-component-architecture)
-7. [CLI Development Environment](#7-cli-development-environment)
-8. [Protocol & Message Format](#8-protocol--message-format)
-9. [Technology Stack](#9-technology-stack)
-10. [Key Architectural Patterns](#10-key-architectural-patterns)
-11. [Data Flow Summary](#11-data-flow-summary)
-12. [Port Allocation](#12-port-allocation)
-13. [Security & Scope](#13-security--scope)
+6. [Agent Server Architecture](#6-agent-server-architecture)
+7. [AgentDebugBridge Component Architecture](#7-agentdebugbridge-component-architecture)
+8. [CLI Development Environment](#8-cli-development-environment)
+9. [Protocol & Message Format](#9-protocol--message-format)
+10. [Technology Stack](#10-technology-stack)
+11. [Key Architectural Patterns](#11-key-architectural-patterns)
+12. [Data Flow Summary](#12-data-flow-summary)
+13. [Port Allocation](#13-port-allocation)
+14. [Security & Scope](#14-security--scope)
 
 ---
 
@@ -521,60 +522,24 @@ module.exports = {
 The communication protocol uses JSON with versioning for compatibility:
 
 ```mermaid
-graph TB
-    subgraph "Core Protocol (@agenteract/core)"
-        SCHEMA[Protocol Schema<br/>TypeScript Definitions]
-        ENC[encodeMessage<br/>Adds version metadata]
-        DEC[decodeMessage<br/>Version-aware parsing]
+graph LR
+    subgraph "Message Flow"
+        CMD["Command<br/>action + id + params"]
+        RESP["Response<br/>status + id + data"]
     end
 
-    subgraph "Message Structure"
-        BASE["Base Message<br/>_v: 1.0.0"]
-        CMD["AgentCommand<br/>action, id, params"]
-        RESP["AgentResponse<br/>status, id, data"]
-    end
+    AGENT[Agent] -->|Send command| CMD
+    CMD -->|Forward to app| APP[App]
+    APP -->|Return result| RESP
+    RESP -->|Match by UUID| AGENT
 
-    subgraph "Command Actions"
-        GET[getViewHierarchy<br/>Returns UI tree]
-        TAP[tap<br/>testID, x?, y?]
-        INPUT[input<br/>testID, text]
-        SCROLL[scroll<br/>testID, direction, amount]
-        SWIPE[swipe<br/>testID, direction]
-        LONG[longPress<br/>testID, duration]
-        LOGS[getConsoleLogs<br/>Returns log array]
-        CLEAR[clearConsoleLogs<br/>Clears buffer]
-    end
-
-    subgraph "Response Types"
-        SUCCESS["success<br/>status: success, data"]
-        OK["ok<br/>status: ok"]
-        ERROR["error<br/>status: error, error"]
-    end
-
-    SCHEMA --> ENC
-    SCHEMA --> DEC
-
-    ENC -->|Produces| BASE
-    BASE --> CMD
-    BASE --> RESP
-
-    CMD --> GET
-    CMD --> TAP
-    CMD --> INPUT
-    CMD --> SCROLL
-    CMD --> SWIPE
-    CMD --> LONG
-    CMD --> LOGS
-    CMD --> CLEAR
-
-    RESP --> SUCCESS
-    RESP --> OK
-    RESP --> ERROR
-
-    style SCHEMA fill:#ffe1e1
     style CMD fill:#e1f5ff
     style RESP fill:#e1ffe1
 ```
+
+**Commands:** `getViewHierarchy`, `tap`, `input`, `scroll`, `swipe`, `longPress`, `getConsoleLogs`, `clearConsoleLogs`
+
+**Responses:** `success` (with data), `ok` (action completed), `error` (with message)
 
 ### Message Examples
 
