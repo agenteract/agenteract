@@ -162,7 +162,7 @@ graph TB
     PTY -->|Manages & Captures Logs| DEV
     DEV -.->|Serves App<br/>Hot Reload| APP
 
-    APP -.->|Console Logs<br/>(native apps)| LOGSERVER
+    APP -.->|Console Logs<br/>native apps only| LOGSERVER
 
     style AGENT fill:#e1f5ff
     style AGENTS_CLI fill:#e1f5ff
