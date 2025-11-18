@@ -92,6 +92,7 @@ agenteract/
 ### Package Relationships
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     CORE["agenteract/core<br/>Protocol & Types"]
 
@@ -133,6 +134,7 @@ The following diagram illustrates the high-level system architecture showing how
 **Note:** AI agents interact with the system using the `@agenteract/agents` CLI as documented in `AGENTS.md`. This provides a high-level interface for commands like `hierarchy`, `tap`, `input`, `logs`, etc. The underlying HTTP/WebSocket implementation details are abstracted away.
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     subgraph "AI Agent Layer"
         AGENT[AI Coding Agent<br/>Gemini CLI / Cursor / Aider / etc.]
@@ -292,6 +294,7 @@ Native apps (iOS, Android) connect to stream console logs in real-time. The serv
 ### Server Architecture Diagram
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     subgraph "Agent Server (Default Mode)"
         HTTP[HTTP Server<br/>127.0.0.1:8766]
@@ -402,6 +405,7 @@ The server supports two log mechanisms:
 The `AgentDebugBridge` is the core React component that applications integrate to enable agent interaction:
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     subgraph "Your Application"
         APP[App.tsx<br/>Root Component]
@@ -454,6 +458,7 @@ graph TB
 The CLI orchestrates the entire development environment using a custom terminal multiplexer:
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     USER[Developer]
     CONFIG[agenteract.config.js]
@@ -464,13 +469,11 @@ graph TB
         BUFFERS[Output Buffers<br/>One per process]
     end
 
-    USER -->|npx @agenteract/cli dev| MAIN
+    USER <-->|npx @agenteract/cli dev<br/>Multiplexed shell<br/>Tab to switch| MAIN
     MAIN -->|Reads| CONFIG
     MAIN -->|Spawns via node-pty| PROCESSES
     PROCESSES -->|stdout/stderr| BUFFERS
     BUFFERS -->|Active terminal view| USER
-
-    USER <-->|Multiplexed shell<br/>Tab to switch, Ctrl+C to quit| MAIN
 
     style MAIN fill:#ffe1e1
     style CONFIG fill:#e1f5ff
@@ -522,6 +525,7 @@ module.exports = {
 The communication protocol uses JSON with versioning for compatibility:
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph LR
     subgraph "Message Flow"
         CMD["Command<br/>action + id + params"]
@@ -604,6 +608,7 @@ graph LR
 ## 10. Technology Stack
 
 ```mermaid
+%%{ init : { "theme" : "default", "themeVariables" : { "background" : "#000" }}}%%
 graph TB
     subgraph "Package Management"
         PNPM[pnpm<br/>Monorepo Workspaces]
@@ -755,6 +760,7 @@ CLI ←→ PTY Bridge ←→ Dev Server Process
 The following flowchart shows the complete data flow from developer initialization to agent interaction:
 
 ```mermaid
+%%{ init : { "themeVariables" : { "background" : "#aaa" }}}%%
 flowchart TD
     START([Developer runs<br/>npx @agenteract/cli dev])
 
@@ -824,10 +830,10 @@ flowchart TD
     QUIT --> CLEANUP[Kill all child processes<br/>Close connections]
     CLEANUP --> EXIT([Exit])
 
-    style START fill:#e1f5ff
-    style READY fill:#e1ffe1
-    style EXEC fill:#ffe1e1
-    style ERROR1 fill:#ffe1e1
+    style START fill:#e1f5ff,color:#3a3a3a
+    style READY fill:#e1ffe1,color:#3a3a3a
+    style EXEC fill:#ffe1e1,color:#3a3a3a
+    style ERROR1 fill:#ffe1e1,color:#3a3a3a
 ```
 
 ---
