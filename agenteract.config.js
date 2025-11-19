@@ -32,6 +32,11 @@ export default {
       type: 'native'
     },
     {
+      name: 'kmp-app',
+      path: './examples/kmp-example',
+      type: 'native'
+    },
+    {
       name: 'flutter-app',
       path: './examples/flutter_example',
       type: 'flutter',
