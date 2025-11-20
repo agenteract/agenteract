@@ -212,15 +212,13 @@ export async function runAgentCommand(...args: string[]): Promise<string> {
   // Escape all arguments for safe shell usage
   const escapedArgs = commandArgs.map(escapeShellArg);
 
-  if (cwd) {
     // Run from the specified directory using the locally installed package
-    const command = `npx @agenteract/agents ${escapedArgs.join(' ')}`;
-    const { stdout, stderr } = await execAsync(command, { cwd });
-    return stdout + stderr;
-  }
-
   const command = `npx @agenteract/agents ${escapedArgs.join(' ')}`;
-  return runCommand(command);
+  const { stdout, stderr } = await execAsync(command, { cwd });
+  if (stderr.includes('Debugger attached'))
+    return stdout;
+  return stdout + stderr;
+
 }
 
 /**

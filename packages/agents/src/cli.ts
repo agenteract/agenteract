@@ -210,7 +210,7 @@ yargs(hideBin(process.argv))
       try {
         const { agentServerUrl } = await getServerUrls();
         const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}`);
-        console.log(response.data);
+        console.log(JSON.stringify(response.data));
       } catch (error) {
         handleRequestError(error);
       }
@@ -387,11 +387,12 @@ yargs(hideBin(process.argv))
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'tap',
           testID: argv.testID,
         });
+        console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
         const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
@@ -440,12 +441,13 @@ yargs(hideBin(process.argv))
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'input',
           testID: argv.testID,
           value: argv.value,
         });
+        console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
         const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
@@ -500,13 +502,14 @@ yargs(hideBin(process.argv))
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'scroll',
           testID: argv.testID,
           direction: argv.direction,
           amount: argv.amount,
         });
+        console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
         const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
@@ -562,13 +565,14 @@ yargs(hideBin(process.argv))
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'swipe',
           testID: argv.testID,
           direction: argv.direction,
           velocity: argv.velocity,
         });
+        console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
         const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
@@ -612,11 +616,12 @@ yargs(hideBin(process.argv))
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
           project: argv.project,
           action: 'longPress',
           testID: argv.testID,
         });
+        console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
         const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
