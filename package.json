@@ -17,6 +17,7 @@
     "test:e2e:expo:ios": "tsx tests/e2e/expo/test-app-launch-ios.ts",
     "test:e2e:flutter:ios": "tsx tests/e2e/flutter/test-app-launch-ios.ts",
     "test:e2e:swift:ios": "tsx tests/e2e/swiftui/test-app-launch-ios.ts",
+    "test:e2e:kotlin": "tsx tests/e2e/kotlin/test-app-launch.ts",
     "test:e2e:kotlin:darwin": "tsx tests/e2e/kotlin/test-app-launch.ts",
     "test:e2e:all": "pnpm test:e2e:vite && pnpm test:e2e:expo:ios && pnpm test:e2e:flutter:ios && pnpm test:e2e:swift:ios",
     "test:e2e:cleanup": "tsx tests/e2e/cleanup-all.ts",
