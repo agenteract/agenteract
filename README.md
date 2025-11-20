@@ -69,6 +69,7 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | `@agenteract/dom` | DOM utilities for web applications |
 | [agenteract-swift](https://github.com/agenteract/agenteract-swift) | iOS / Swift Bindings / Package
 | [flutter](./packages/flutter/) | Flutter Bindings Package
+| `@agenteract/kotlin` | Kotlin Multiplatform Bindings Package
 
 ## **🚀 Getting Started (Preview)**
 
@@ -335,6 +336,10 @@ TextField(
 
 See [agenteract-swift](https://github.com/agenteract/agenteract-swift)
 
+**For Kotlin Multiplatform (Compose Multiplatform)**
+
+Consult [packages/kotlin/AGENTS.md](packages/kotlin/AGENTS.md) for installation and usage instructions.
+
 ## **5. Running Agenteract**
 
 With your configuration in place and your app instrumented, you can now start Agenteract.
@@ -513,6 +518,7 @@ pnpm test:e2e:vite
 pnpm test:e2e:flutter:ios
 # Expo is currently disabled in CI as there is an undiagnosed issue where the app doesn't respond
 pnpm test:e2e:expo:ios
+pnpm test:e2e:kotlin
 ```
 
 **GitHub Actions:** Integration tests run automatically on PRs and pushes to `main` and `release/**` branches using Verdaccio as a service container.
@@ -558,7 +564,7 @@ See [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) for the complete release 
 
 This project uses dual licensing:
 
-- **MIT License**: Most packages (`@agenteract/react`, `@agenteract/expo`, `@agenteract/vite`, `@agenteract/flutter-cli`, `@agenteract/flutter`, `@agenteract/cli`, `@agenteract/server`, `@agenteract/dom`, `@agenteract/gemini`)
+- **MIT License**: Most packages (`@agenteract/react`, `@agenteract/expo`, `@agenteract/vite`, `@agenteract/flutter-cli`, `@agenteract/flutter`, `@agenteract/cli`, `@agenteract/server`, `@agenteract/dom`, `@agenteract/gemini`, `@agenteract/kotlin`)
 - **Apache-2.0 License**: Core infrastructure packages (`@agenteract/core`, `@agenteract/agents`, `@agenteract/pty`)
 
 Copyright © 2025 Agenteract Project.
