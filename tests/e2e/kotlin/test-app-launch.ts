@@ -34,8 +34,16 @@ let agentServer: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let testConfigDir: string | null = null;
 
+const platform = process.argv.find(arg => arg.startsWith('--platform='))?.split('=')[1] || 'desktop';
+
 async function cleanup() {
   info('Cleaning up...');
+
+  if (platform === 'android') {
+    try {
+      await runCommand('adb shell am force-stop io.agenteract.kmp_example', 'Stop Android App');
+    } catch (e) { /* ignore */ }
+  }
 
   if (appProcess) {
     // Gradle runs the app in a child process, we might need to be more aggressive
@@ -62,7 +70,7 @@ async function main() {
   setupCleanup(cleanup);
 
   try {
-    info('Starting Kotlin E2E test: App Launch');
+    info(`Starting Kotlin E2E test: App Launch (${platform})`);
 
     // 1. Clean up ports
     if (process.platform !== 'win32') {
@@ -108,14 +116,56 @@ async function main() {
     await sleep(5000);
 
     // 6. Run the Kotlin App
-    info('Starting KMP App (this may take a moment to compile)...');
-    // We use 'run' task from the compose plugin
-    appProcess = spawnBackground(
-        './gradlew', 
-        ['run', '--quiet'], 
-        'kmp-app', 
-        { cwd: exampleAppDir }
-    );
+    if (platform === 'desktop') {
+        info('Starting KMP App (Desktop)...');
+        // We use 'run' task from the compose plugin
+        appProcess = spawnBackground(
+            './gradlew', 
+            ['run', '--quiet'], 
+            'kmp-app', 
+            { cwd: exampleAppDir }
+        );
+    } else if (platform === 'ios') {
+        info('Building KMP iOS framework via Gradle...');
+        
+        // 1. Build the iOS framework using Gradle
+        info(`Running ./gradlew iosSimulatorArm64Binaries in ${exampleAppDir}`);
+        await runCommand(`cd "${exampleAppDir}" && ./gradlew iosSimulatorArm64Binaries`);
+
+        success('✅ Kotlin iOS framework built successfully!');
+        // Since we are only verifying build success and not launching a UI app,
+        // we will exit here. If actual UI launch is needed, a host Xcode project
+        // and `xcodebuild` commands would be required.
+        process.exit(0);
+    } else if (platform === 'android') {
+        info('Starting KMP App (Android) on emulator/device...');
+        
+        // Ensure an emulator or device is running
+        info('Checking for connected Android devices/emulators...');
+        await runCommand('adb devices', 'Verify ADB devices');
+
+        // 1. Install the debug APK
+        info(`Running ./gradlew installDebug in ${exampleAppDir}`);
+        await runCommand(`cd "${exampleAppDir}" && ./gradlew installDebug`);
+        success('✅ Android app installed successfully!');
+
+        // 2. Launch the app using adb
+        const androidAppId = 'io.agenteract.kmp_example'; // From build.gradle.kts
+        const mainActivity = '.MainActivity'; // Common main activity name
+        
+        // ADB Reverse for AgentDebugBridge connection
+        info('Setting up adb reverse port forwarding (8765 -> 8765)...');
+        await runCommand('adb reverse tcp:8765 tcp:8765', 'ADB Reverse');
+
+        info(`Launching Android app: ${androidAppId}/${mainActivity}`);
+        appProcess = spawnBackground(
+            'adb',
+            ['shell', 'am', 'start', '-n', `${androidAppId}/${mainActivity}`],
+            'kmp-android-app',
+            { cwd: exampleAppDir } // Adb command doesn't need cwd but good practice
+        );
+        success('✅ Android app launched successfully!');
+    }
 
     // 7. Wait for Connection & Hierarchy
     info('Waiting for app to connect and report hierarchy...');

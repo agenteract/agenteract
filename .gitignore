@@ -4,6 +4,7 @@ dist
 .env
 .DS_Store
 .idea
+local.properties
 .vscode
 
 # Verdaccio storage (local testing)

@@ -1,4 +1,4 @@
-package com.agenteract
+package io.agenteract
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement

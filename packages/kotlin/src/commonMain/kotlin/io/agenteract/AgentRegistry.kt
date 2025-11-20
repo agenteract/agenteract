@@ -1,4 +1,4 @@
-package com.agenteract
+package io.agenteract
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

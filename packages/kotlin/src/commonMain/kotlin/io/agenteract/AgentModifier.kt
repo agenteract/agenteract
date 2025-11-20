@@ -1,4 +1,4 @@
-package com.agenteract
+package io.agenteract
 
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember

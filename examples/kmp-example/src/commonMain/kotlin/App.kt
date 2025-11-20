@@ -41,9 +41,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.agenteract.AgentDebugBridge
-import com.agenteract.agent
-import com.agenteract.AgentLogger
+import io.agenteract.AgentDebugBridge
+import io.agenteract.agent
+import io.agenteract.AgentLogger
 import kotlinx.coroutines.launch
 
 @Composable
