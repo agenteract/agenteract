@@ -32,7 +32,7 @@ fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int 
 
         while (isActive) {
             try {
-                println("AgentDebugBridge: Connecting to ws://$host:$port/$projectName")
+                AgentLogger.log("AgentDebugBridge: Connecting to ws://$host:$port/$projectName")
                 
                 client.webSocket(
                     method = HttpMethod.Get,
@@ -40,7 +40,7 @@ fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int 
                     port = port,
                     path = "/$projectName"
                 ) {
-                    println("AgentDebugBridge: Connected!")
+                    AgentLogger.log("AgentDebugBridge: Connected!")
                     
                     // Main loop
                     for (frame in incoming) {
@@ -53,17 +53,17 @@ fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int 
                                     send(responseText)
                                 }
                             } catch (e: Exception) {
-                                println("AgentDebugBridge: Error handling message: $e")
+                                AgentLogger.log("AgentDebugBridge: Error handling message: $e")
                                 send(json.encodeToString(AgentResponse(status = "error", error = e.toString())))
                             }
                         }
                     }
                 }
             } catch (e: Exception) {
-                println("AgentDebugBridge: Connection failed: $e")
+                AgentLogger.log("AgentDebugBridge: Connection failed: $e")
             }
             
-            println("AgentDebugBridge: Reconnecting in 3s...")
+            AgentLogger.log("AgentDebugBridge: Reconnecting in 3s...")
             delay(3000)
         }
     }
@@ -74,7 +74,7 @@ private suspend fun handleCommand(
     json: Json,
     sendResponse: suspend (AgentResponse) -> Unit
 ) {
-    println("Received command: ${command.action} id=${command.id}")
+    AgentLogger.log("Received command: ${command.action} id=${command.id}")
     
     when (command.action) {
         "getViewHierarchy" -> {
@@ -86,11 +86,11 @@ private suspend fun handleCommand(
             ))
         }
         "getConsoleLogs" -> {
-            // TODO: Implement log capturing
+            val logs = AgentLogger.getLogs()
             sendResponse(AgentResponse(
                 id = command.id,
                 status = "success",
-                logs = emptyList()
+                logs = logs
             ))
         }
         "tap" -> {
@@ -102,16 +102,6 @@ private suspend fun handleCommand(
             
             val node = AgentRegistry.getNode(testID)
             if (node?.onTap != null) {
-                // We need to dispatch this to the UI thread? 
-                // Since we are in a LaunchedEffect, we are on the main dispatcher usually (in Compose)
-                // But Ktor might be on IO.
-                // However, `onTap` callbacks in Compose usually expect Main thread.
-                // KMP `Dispatchers.Main` should be used.
-                
-                // Note: In simple KMP/Compose Desktop, we might be able to call it directly if we are careful.
-                // But ideally we should switch to Main context.
-                // For now, let's assume safe invocation or add Dispatchers.Main context switching if needed.
-                
                 try {
                     node.onTap.invoke()
                     sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -143,12 +133,67 @@ private suspend fun handleCommand(
             }
         }
         "scroll" -> {
-            // TODO: Implement scroll
-             sendResponse(AgentResponse(id = command.id, status = "error", error = "Scroll not implemented"))
+             val testID = command.testID
+             val direction = command.direction
+             val amount = command.amount ?: 100.0
+             
+             if (testID == null || direction == null) {
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "Missing testID or direction"))
+                 return
+             }
+             
+             val node = AgentRegistry.getNode(testID)
+             if (node?.onScroll != null) {
+                 try {
+                     node.onScroll.invoke(direction, amount)
+                     sendResponse(AgentResponse(id = command.id, status = "ok"))
+                 } catch (e: Exception) {
+                      sendResponse(AgentResponse(id = command.id, status = "error", error = "Scroll failed: $e"))
+                 }
+             } else {
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "No scroll handler found for $testID"))
+             }
         }
         "swipe" -> {
-            // TODO: Implement swipe
-             sendResponse(AgentResponse(id = command.id, status = "error", error = "Swipe not implemented"))
+            val testID = command.testID
+             val direction = command.direction
+             val velocity = command.velocity ?: "medium"
+             
+             if (testID == null || direction == null) {
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "Missing testID or direction"))
+                 return
+             }
+             
+             val node = AgentRegistry.getNode(testID)
+             if (node?.onSwipe != null) {
+                 try {
+                     node.onSwipe.invoke(direction, velocity)
+                     sendResponse(AgentResponse(id = command.id, status = "ok"))
+                 } catch (e: Exception) {
+                      sendResponse(AgentResponse(id = command.id, status = "error", error = "Swipe failed: $e"))
+                 }
+             } else {
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "No swipe handler found for $testID"))
+             }
+        }
+        "longPress" -> {
+            val testID = command.testID
+            if (testID == null) {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Missing testID"))
+                return
+            }
+            
+            val node = AgentRegistry.getNode(testID)
+            if (node?.onLongPress != null) {
+                try {
+                    node.onLongPress.invoke()
+                    sendResponse(AgentResponse(id = command.id, status = "ok"))
+                } catch (e: Exception) {
+                     sendResponse(AgentResponse(id = command.id, status = "error", error = "Long press failed: $e"))
+                }
+            } else {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "No long press handler found for $testID"))
+            }
         }
         else -> {
             sendResponse(AgentResponse(id = command.id, status = "error", error = "Unknown action: ${command.action}"))
