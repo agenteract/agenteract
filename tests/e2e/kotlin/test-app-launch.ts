@@ -206,7 +206,7 @@ async function main() {
             }
         },
         'App to connect and return hierarchy',
-        60000, // 60 seconds
+        process.env.CI ? 300000 : 60000, // 5 mins for CI, 1 min for local
         2000
     );
 
