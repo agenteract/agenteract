@@ -47,9 +47,6 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Setup XVFB
-        uses: coactions/setup-xvfb@v1
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -57,9 +54,11 @@ jobs:
         run: chmod +x examples/kmp-example/gradlew
 
       - name: Run Kotlin E2E tests
-        run: |
-          echo "Display: $DISPLAY"
-          pnpm test:e2e:kotlin
+        uses: coactions/setup-xvfb@v1
+        with:
+          run: |
+            echo "Display: $DISPLAY"
+            pnpm test:e2e:kotlin
 
       - name: Upload test artifacts on failure
         if: failure()
