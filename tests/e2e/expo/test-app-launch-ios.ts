@@ -278,21 +278,23 @@ async function main() {
     let hierarchy: string = '';
     let connectionAttempts = 0;
     // currently expo is slow because expo go downloads an update on first launch
-    const maxAttempts = 12; // 12 * 5s = 1 minute total
+    const maxAttempts = 12; // 180 * 5s = 15 minutes total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
       await sleep(5000);
 
 
-      const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-      info(`Expo Go processes: \n${psResult}`);
-
-      // Take a screenshot every 10 attempts (every ~50 seconds)
-      if (connectionAttempts % 5 === 0) {
-        const screenshotPath = `${screenshotsDir}/attempt-${connectionAttempts}.png`;
-        await takeSimulatorScreenshot(screenshotPath);
+      try {
+        const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+        info(`Expo Go processes: \n${psResult}`);
+      } catch (err) {
+        info(`Expo Go processes not found... continuing...`);
       }
+
+      // Take a screenshot every attempt to debug hanging issues
+      const screenshotPath = `${screenshotsDir}/attempt-${connectionAttempts}.png`;
+      await takeSimulatorScreenshot(screenshotPath);
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);
@@ -334,8 +336,12 @@ async function main() {
               console.log(`Error getting dev logs: ${logErr}`);
             }
           }
-          const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-          console.log(`Expo Go processes: \n${psResult}`);
+          try {
+            const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+            info(`Expo Go processes: \n${psResult}`);
+          } catch (err) {
+            info(`Expo Go processes not found...`);
+          }
         } else {
           info(`Connection attempt failed: ${errMsg}`);
         }

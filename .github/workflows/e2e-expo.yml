@@ -1,26 +1,22 @@
 name: E2E Tests - Expo
 
 on:
-  # TEMPORARILY DISABLED: Expo E2E tests are hanging in CI
-  # Issue: Expo Go may be stuck downloading updates or network blocked
-  # TODO: Investigate screenshot artifacts and re-enable once resolved
-
   # Run on PRs to main (pre-merge validation)
-  # pull_request:
-  #   branches: [ main ]
-  #   paths:
-  #     - 'packages/**'
-  #     - 'examples/expo-example/**'
-  #     - 'tests/e2e/**'
-  #     - '.github/workflows/e2e-expo.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'examples/expo-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-expo.yml'
   # Run on pushes to main (post-merge validation)
-  # push:
-  #   branches: [ main, 'release/**' ]
-  #   paths:
-  #     - 'packages/**'
-  #     - 'examples/expo-example/**'
-  #     - 'tests/e2e/**'
-  #     - '.github/workflows/e2e-expo.yml'
+  push:
+    branches: [ main, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/expo-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-expo.yml'
   # Allow manual triggering only (for investigation)
   workflow_dispatch:
 
@@ -95,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-expo-screenshots
-          path: .e2e-test-expo/screenshots-*/
+          path: .e2e-test-expo/
           retention-days: 7
           if-no-files-found: ignore
 
