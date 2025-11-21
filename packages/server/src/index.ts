@@ -8,9 +8,11 @@ import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
-import { generateAuthToken, saveRuntimeConfig, deleteRuntimeConfig } from '@agenteract/core/node';
+import { generateAuthToken, saveRuntimeConfig, deleteRuntimeConfig, resetPNPMWorkspaceCWD } from '@agenteract/core/node';
 
 const isLogServer = process.argv.includes('--log-only');
+
+resetPNPMWorkspaceCWD();
 
 if (isLogServer) {
     const LOG_WS_PORT = 8767;

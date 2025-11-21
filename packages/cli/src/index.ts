@@ -5,6 +5,9 @@ import { hideBin } from 'yargs/helpers';
 import { runDevCommand } from './commands/dev.js';
 import { runConnectCommand } from './commands/connect.js';
 import { addConfig } from './config.js';
+import { resetPNPMWorkspaceCWD } from '@agenteract/core/node';
+
+resetPNPMWorkspaceCWD();
 
 yargs(hideBin(process.argv))
   .command(

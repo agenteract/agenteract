@@ -407,11 +407,7 @@ cd packages/agents
 pnpm link --global
 cd packages/cli
 pnpm link --global
-cd packages/expo
-pnpm link --global
-cd packages/vite
-pnpm link --global
-cd packages/flutter-cli
+cd packages/pty
 pnpm link --global
 
 ```
