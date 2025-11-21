@@ -49,7 +49,7 @@ xcrun simctl spawn booted log stream --predicate 'processImagePath contains "Age
 
 Or for all app logs:
 ```bash
-xcrun simctl spawn booted log stream --level debug --predicate 'subsystem contains "com.agenteract"'
+xcrun simctl spawn booted log stream --level debug --predicate 'subsystem contains "io.agenteract"'
 ```
 
 #### For Physical Devices

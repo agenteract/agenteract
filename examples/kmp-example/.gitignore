@@ -1,0 +1,8 @@
+**/.gradle
+build
+.idea
+.vscode
+.DS_Store
+java_pid*.hprof
+local.properties
+.kotlin

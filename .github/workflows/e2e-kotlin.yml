@@ -1,0 +1,77 @@
+name: E2E Tests - Kotlin
+
+on:
+  # Run on PRs to main (pre-merge validation)
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'examples/kmp-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-kotlin.yml'
+  # Run on pushes to main (post-merge validation)
+  push:
+    branches: [ main, 'release/**' ]
+    paths:
+      - 'packages/**'
+      - 'examples/kmp-example/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e-kotlin.yml'
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  e2e-kotlin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.9.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Make gradlew executable
+        run: chmod +x examples/kmp-example/gradlew
+
+      - name: Run Kotlin E2E tests
+        uses: coactions/setup-xvfb@v1
+        with:
+          run: |
+            echo "Display: $DISPLAY"
+            pnpm test:e2e:kotlin
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-kotlin-failure-logs
+          path: |
+            .e2e-test-kotlin/
+            tests/e2e/kotlin/*.log
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pnpm verdaccio:stop
+          pkill -f "java" || true
