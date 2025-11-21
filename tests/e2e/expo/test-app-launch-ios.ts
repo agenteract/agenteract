@@ -122,7 +122,7 @@ async function cleanup() {
 
   // Clean up old test directories (keep only last 3 runs)
   try {
-    const e2eBase = `${process.cwd()}/.e2e-test-expo`;
+    const e2eBase = `${process.cwd()}/e2e-test-expo-temp`;
     const cleanupCmd = `cd ${e2eBase} 2>/dev/null && ls -t | tail -n +7 | xargs rm -rf 2>/dev/null || true`;
     await runCommand(cleanupCmd);
   } catch (err) {
@@ -151,11 +151,11 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
-    // 5. Copy expo-example to .e2e-test-expo within the repo
+    // 5. Copy expo-example to e2e-test-expo-temp within the repo
     // Note: Watchman needs access and will prompt for permissions outside the repo
     // Using a directory in the repo (already in .gitignore) avoids permission issues
-    info('Copying expo-example to .e2e-test-expo and preparing for Verdaccio...');
-    const e2eBase = `${process.cwd()}/.e2e-test-expo`;
+    info('Copying expo-example to e2e-test-expo-temp and preparing for Verdaccio...');
+    const e2eBase = `${process.cwd()}/e2e-test-expo-temp`;
     await runCommand(`mkdir -p ${e2eBase}`);
     exampleAppDir = `${e2eBase}/expo-app-${Date.now()}`;
     await runCommand(`rm -rf ${exampleAppDir}`);
@@ -210,8 +210,10 @@ async function main() {
 
     // 7. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for expo-app in /tmp...');
+    // Use --localhost to ensure stable connection in CI/Simulator
+    // Use --ios to auto-launch on iOS simulator (more reliable than manual 'i' keystroke)
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start'`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost'`
     );
     success('Config created');
 
@@ -246,53 +248,27 @@ async function main() {
     }
 
     // 9. Launch iOS app via agenteract CLI command
-    info('Launching iOS app via Expo CLI...');
-    try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'i');
-      success('iOS launch command sent');
-    } catch (err) {
-      error(`Failed to send iOS launch command: ${err}`);
-    }
-
+    info('iOS launch initiated via --ios flag in dev server command');
+    // No need to send 'i' command manually anymore
+    
     await sleep(1000);
-
-    try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'y');
-      success('Responding y to install expo prompt, just in case.');
-    } catch (err) {
-      error(`Failed to send y command: ${err}`);
-    }
-
-    // Wait a bit for the app to start launching
-    await sleep(5000);
 
     // 10. Wait for AgentDebugBridge connection (Expo can take a while to build and launch)
     info('Waiting for Expo app to build and connect...');
     info('This may take 3-5 minutes for the first build...');
 
     // Create screenshots directory
-    const screenshotsDir = `${process.env.GITHUB_WORKSPACE ?? process.cwd()}/.e2e-test-expo/screenshots-${Date.now()}`;
+    const screenshotsDir = `${process.env.GITHUB_WORKSPACE ?? process.cwd()}/e2e-test-expo-temp/screenshots-${Date.now()}`;
     await runCommand(`mkdir -p ${screenshotsDir}`);
     info(`Screenshots will be saved to: ${screenshotsDir}`);
 
     let hierarchy: string = '';
     let connectionAttempts = 0;
-    // currently expo is slow because expo go downloads an update on first launch
-    const maxAttempts = 12; // 12 * 5s = 1 minute total
+    const maxAttempts = 180; // wait 3 minutes for app to start
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
-      await sleep(5000);
-
-
-      const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-      info(`Expo Go processes: \n${psResult}`);
-
-      // Take a screenshot every 10 attempts (every ~50 seconds)
-      if (connectionAttempts % 5 === 0) {
-        const screenshotPath = `${screenshotsDir}/attempt-${connectionAttempts}.png`;
-        await takeSimulatorScreenshot(screenshotPath);
-      }
+      await sleep(1000);
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);
@@ -334,8 +310,12 @@ async function main() {
               console.log(`Error getting dev logs: ${logErr}`);
             }
           }
-          const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-          console.log(`Expo Go processes: \n${psResult}`);
+          try {
+            const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+            info(`Expo Go processes: \n${psResult}`);
+          } catch (err) {
+            info(`Expo Go processes not found...`);
+          }
         } else {
           info(`Connection attempt failed: ${errMsg}`);
         }
