@@ -122,7 +122,7 @@ async function cleanup() {
 
   // Clean up old test directories (keep only last 3 runs)
   try {
-    const e2eBase = `${process.cwd()}/.e2e-test-expo`;
+    const e2eBase = `${process.cwd()}/e2e-test-expo-temp`;
     const cleanupCmd = `cd ${e2eBase} 2>/dev/null && ls -t | tail -n +7 | xargs rm -rf 2>/dev/null || true`;
     await runCommand(cleanupCmd);
   } catch (err) {
@@ -151,11 +151,11 @@ async function main() {
     // 3. Publish packages
     await publishPackages();
 
-    // 5. Copy expo-example to .e2e-test-expo within the repo
+    // 5. Copy expo-example to e2e-test-expo-temp within the repo
     // Note: Watchman needs access and will prompt for permissions outside the repo
     // Using a directory in the repo (already in .gitignore) avoids permission issues
-    info('Copying expo-example to .e2e-test-expo and preparing for Verdaccio...');
-    const e2eBase = `${process.cwd()}/.e2e-test-expo`;
+    info('Copying expo-example to e2e-test-expo-temp and preparing for Verdaccio...');
+    const e2eBase = `${process.cwd()}/e2e-test-expo-temp`;
     await runCommand(`mkdir -p ${e2eBase}`);
     exampleAppDir = `${e2eBase}/expo-app-${Date.now()}`;
     await runCommand(`rm -rf ${exampleAppDir}`);
@@ -271,7 +271,7 @@ async function main() {
     info('This may take 3-5 minutes for the first build...');
 
     // Create screenshots directory
-    const screenshotsDir = `${process.env.GITHUB_WORKSPACE ?? process.cwd()}/.e2e-test-expo/screenshots-${Date.now()}`;
+    const screenshotsDir = `${process.env.GITHUB_WORKSPACE ?? process.cwd()}/e2e-test-expo-temp/screenshots-${Date.now()}`;
     await runCommand(`mkdir -p ${screenshotsDir}`);
     info(`Screenshots will be saved to: ${screenshotsDir}`);
 

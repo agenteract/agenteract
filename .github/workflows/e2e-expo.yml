@@ -82,7 +82,7 @@ jobs:
         with:
           name: e2e-expo-failure-logs
           path: |
-            .e2e-test-expo/
+            e2e-test-expo-temp/
             tests/e2e/expo/*.log
           retention-days: 7
 
@@ -91,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-expo-screenshots
-          path: .e2e-test-expo/
+          path: e2e-test-expo-temp/
           retention-days: 7
           if-no-files-found: ignore
 
