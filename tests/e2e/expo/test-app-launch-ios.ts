@@ -275,7 +275,7 @@ async function main() {
     let hierarchy: string = '';
     let connectionAttempts = 0;
     // currently expo is slow because expo go downloads an update on first launch
-    const maxAttempts = 12; // 180 * 5s = 15 minutes total
+    const maxAttempts = 180; // 180 * 5s = 15 minutes total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
