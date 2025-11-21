@@ -41,3 +41,5 @@ export function detectInvoker(): { pkgManager: string, isNpx: boolean, isPnpmDlx
 
   return { pkgManager, isNpx, isPnpmDlx };
 }
+
+export * from './config-types.js';

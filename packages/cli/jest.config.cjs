@@ -3,6 +3,7 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   moduleNameMapper: {
+    '^@agenteract/core/node$': '<rootDir>/../core/src/node/index.ts',
     '^@agenteract/(.*)$': '<rootDir>/../$1/src',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },

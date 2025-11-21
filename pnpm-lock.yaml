@@ -181,6 +181,9 @@ importers:
 
   packages/agents:
     dependencies:
+      '@agenteract/core':
+        specifier: workspace:*
+        version: link:../core
       axios:
         specifier: ^1.7.2
         version: 1.12.2

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import yargs from 'yargs';
+
 import { hideBin } from 'yargs/helpers';
 import axios from 'axios';
 
