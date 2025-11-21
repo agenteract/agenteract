@@ -253,16 +253,6 @@ async function main() {
     
     await sleep(1000);
 
-    try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'y');
-      success('Responding y to install expo prompt, just in case.');
-    } catch (err) {
-      error(`Failed to send y command: ${err}`);
-    }
-
-    // Wait a bit for the app to start launching
-    await sleep(5000);
-
     // 10. Wait for AgentDebugBridge connection (Expo can take a while to build and launch)
     info('Waiting for Expo app to build and connect...');
     info('This may take 3-5 minutes for the first build...');
@@ -274,24 +264,11 @@ async function main() {
 
     let hierarchy: string = '';
     let connectionAttempts = 0;
-    // currently expo is slow because expo go downloads an update on first launch
-    const maxAttempts = 180; // 180 * 5s = 15 minutes total
+    const maxAttempts = 180; // wait 3 minutes for app to start
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
-      await sleep(5000);
-
-
-      try {
-        const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-        info(`Expo Go processes: \n${psResult}`);
-      } catch (err) {
-        info(`Expo Go processes not found... continuing...`);
-      }
-
-      // Take a screenshot every attempt to debug hanging issues
-      const screenshotPath = `${screenshotsDir}/attempt-${connectionAttempts}.png`;
-      await takeSimulatorScreenshot(screenshotPath);
+      await sleep(1000);
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);

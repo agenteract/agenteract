@@ -87,7 +87,7 @@ jobs:
           retention-days: 7
 
       - name: Upload screenshots (always, for debugging)
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: e2e-expo-screenshots
