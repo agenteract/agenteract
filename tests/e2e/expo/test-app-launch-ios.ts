@@ -210,8 +210,10 @@ async function main() {
 
     // 7. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for expo-app in /tmp...');
+    // Use --localhost to ensure stable connection in CI/Simulator
+    // Use --ios to auto-launch on iOS simulator (more reliable than manual 'i' keystroke)
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start'`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost'`
     );
     success('Config created');
 
@@ -246,14 +248,9 @@ async function main() {
     }
 
     // 9. Launch iOS app via agenteract CLI command
-    info('Launching iOS app via Expo CLI...');
-    try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'i');
-      success('iOS launch command sent');
-    } catch (err) {
-      error(`Failed to send iOS launch command: ${err}`);
-    }
-
+    info('iOS launch initiated via --ios flag in dev server command');
+    // No need to send 'i' command manually anymore
+    
     await sleep(1000);
 
     try {
