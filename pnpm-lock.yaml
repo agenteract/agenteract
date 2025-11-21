@@ -206,6 +206,9 @@ importers:
       node-pty:
         specifier: ^1.0.0
         version: 1.0.0
+      qrcode-terminal:
+        specifier: ^0.12.0
+        version: 0.12.0
       yargs:
         specifier: ^17.7.2
         version: 17.7.2
@@ -213,6 +216,9 @@ importers:
       '@types/jest':
         specifier: ^29.5.12
         version: 29.5.14
+      '@types/qrcode-terminal':
+        specifier: ^0.12.2
+        version: 0.12.2
       '@types/yargs':
         specifier: ^17.0.32
         version: 17.0.33
@@ -351,6 +357,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@agenteract/core':
+        specifier: workspace:*
+        version: link:../core
       express:
         specifier: ^4.19.2
         version: 4.21.2
@@ -2114,6 +2123,9 @@ packages:
 
   '@types/node@24.8.1':
     resolution: {integrity: sha512-alv65KGRadQVfVcG69MuB4IzdYVpRwMG/mq8KWOaoOdyY617P5ivaDiMCGOFDWD2sAn5Q0mR3mRtUOgm99hL9Q==}
+
+  '@types/qrcode-terminal@0.12.2':
+    resolution: {integrity: sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q==}
 
   '@types/qs@6.14.0':
     resolution: {integrity: sha512-eOunJqu0K1923aExK6y8p6fsihYEn/BYuQ4g0CxAAgFc4b/ZLN4CrsRZ55srTdqoiLzU2B2evC+apEIxprEzkQ==}
@@ -4974,6 +4986,10 @@ packages:
 
   qrcode-terminal@0.11.0:
     resolution: {integrity: sha512-Uu7ii+FQy4Qf82G4xu7ShHhjhGahEpCWc3x8UavY3CTcWV+ufmmCtwkr7ZKsX42jdL0kr1B5FKUeqJvAn51jzQ==}
+    hasBin: true
+
+  qrcode-terminal@0.12.0:
+    resolution: {integrity: sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==}
     hasBin: true
 
   qs@6.13.0:
@@ -8323,6 +8339,8 @@ snapshots:
   '@types/node@24.8.1':
     dependencies:
       undici-types: 7.14.0
+
+  '@types/qrcode-terminal@0.12.2': {}
 
   '@types/qs@6.14.0': {}
 
@@ -12152,6 +12170,8 @@ snapshots:
   pure-rand@7.0.1: {}
 
   qrcode-terminal@0.11.0: {}
+
+  qrcode-terminal@0.12.0: {}
 
   qs@6.13.0:
     dependencies:

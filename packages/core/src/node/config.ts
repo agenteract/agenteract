@@ -1,6 +1,42 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { AgenteractConfig, DevServerConfig, ProjectConfig } from '../config-types.js';
+
+export interface RuntimeConfig {
+  host: string;
+  port: number;
+  token: string;
+}
+
+export function getRuntimeConfigPath(cwd: string = process.cwd()): string {
+  return path.join(cwd, '.agenteract-runtime.json');
+}
+
+export async function saveRuntimeConfig(config: RuntimeConfig, cwd: string = process.cwd()): Promise<void> {
+  await fs.writeFile(getRuntimeConfigPath(cwd), JSON.stringify(config, null, 2));
+}
+
+export async function loadRuntimeConfig(cwd: string = process.cwd()): Promise<RuntimeConfig | null> {
+  try {
+    const content = await fs.readFile(getRuntimeConfigPath(cwd), 'utf-8');
+    return JSON.parse(content) as RuntimeConfig;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteRuntimeConfig(cwd: string = process.cwd()): Promise<void> {
+  try {
+    await fs.unlink(getRuntimeConfigPath(cwd));
+  } catch {
+    // Ignore if file doesn't exist
+  }
+}
+
+export function generateAuthToken(): string {
+  return randomUUID();
+}
 
 export class MissingConfigError extends Error {
   constructor(message: string) {

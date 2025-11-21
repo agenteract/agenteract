@@ -3,6 +3,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { runDevCommand } from './commands/dev.js';
+import { runConnectCommand } from './commands/connect.js';
 import { addConfig } from './config.js';
 
 yargs(hideBin(process.argv))
@@ -19,6 +20,20 @@ yargs(hideBin(process.argv))
     },
     (argv) => {
       runDevCommand(argv);
+    }
+  )
+  .command(
+    'connect <scheme>',
+    'Pair a device/simulator with the running server via Deep Link',
+    (yargs) => {
+      return yargs.positional('scheme', {
+        describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp")',
+        type: 'string',
+        demandOption: true
+      });
+    },
+    (argv) => {
+      runConnectCommand({ scheme: argv.scheme! }).catch(console.error);
     }
   )
   .command(

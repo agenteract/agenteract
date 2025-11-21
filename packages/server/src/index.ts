@@ -8,6 +8,8 @@ import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
+import { generateAuthToken, saveRuntimeConfig, deleteRuntimeConfig } from '@agenteract/core/node';
+
 const isLogServer = process.argv.includes('--log-only');
 
 if (isLogServer) {
@@ -80,16 +82,53 @@ interface ProjectConnection {
 const WS_PORT = 8765;
 // Use a Map to store connections and device info, keyed by project name
 const projectConnections = new Map<string, ProjectConnection>();
+
+// --- Security & Token Generation ---
+const AUTH_TOKEN = generateAuthToken();
+
+// Save runtime config for CLI to use
+(async () => {
+  try {
+    await saveRuntimeConfig({
+      host: '0.0.0.0',
+      port: WS_PORT,
+      token: AUTH_TOKEN
+    });
+    
+    const cleanupRuntimeConfig = () => {
+       deleteRuntimeConfig().catch(() => {});
+    };
+    process.on('exit', cleanupRuntimeConfig);
+    process.on('SIGINT', () => { cleanupRuntimeConfig(); process.exit(); });
+    process.on('SIGTERM', () => { cleanupRuntimeConfig(); process.exit(); });
+  } catch (e) {
+    console.error('Failed to write runtime config:', e);
+  }
+})();
+
+log(`Security Token: ${AUTH_TOKEN}`);
+console.log(`[Security] Auth Token generated: ${AUTH_TOKEN}`);
+
+
 const wss = new WebSocketServer({ port: WS_PORT, host: '0.0.0.0' });
 log(`WebSocket server for apps listening on port ${WS_PORT}`);
 
 wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
-  // Extract project name from the connection URL, e.g., /expo-app
-  const projectName = url.parse(req.url || '').pathname?.substring(1);
+  const parsedUrl = url.parse(req.url || '', true);
+  const projectName = parsedUrl.pathname?.substring(1);
+  const clientToken = parsedUrl.query.token as string;
 
   if (!projectName) {
     log('Connection attempt rejected: No project name provided in URL.');
     ws.close(1008, 'Project name required');
+    return;
+  }
+
+  // Enforce Authentication
+  if (clientToken !== AUTH_TOKEN) {
+    log(`Connection attempt rejected for "${projectName}": Invalid or missing token.`);
+    console.log(`[Security] Rejected connection from ${projectName} (Invalid token)`);
+    ws.close(4001, 'Authentication failed: Invalid token');
     return;
   }
 

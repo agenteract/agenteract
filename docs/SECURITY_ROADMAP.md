@@ -68,3 +68,11 @@ Example: `expo-app://agenteract/config?host=192.168.1.5&port=8765&token=abc-123-
 ## 5. Reference
 
 This plan is stored for future reference and implementation.
+
+## Todo:
+ - [ ] pty servers should be authenticated automatically: They can read a token from disk, don't pass by command line
+ - [ ] Tokens - Persist in package/server/src/index.ts - Don't regenerate each time
+ - [ ] Expo go - Deep linking should work for sending endpoint and token
+ - [ ] endpoint and token should support app side configuration by user code - Downstream apps may want to implement their own mechanisms
+ - [ ] Deep linking in general should be seen as a way of starting apps with a specific state to enable quicker dev/test of specific features - Eg don't require entire app flow to reach feature A. Use a predefined app state (eg logged in user) and then navigate to feature A screen for dev/test.
+ 
