@@ -1,13 +1,13 @@
 #!/usr/bin/env node
+import { resetPNPMWorkspaceCWD } from '@agenteract/core/node';
+resetPNPMWorkspaceCWD();
+
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { runDevCommand } from './commands/dev.js';
 import { runConnectCommand } from './commands/connect.js';
 import { addConfig } from './config.js';
-import { resetPNPMWorkspaceCWD } from '@agenteract/core/node';
-
-resetPNPMWorkspaceCWD();
 
 yargs(hideBin(process.argv))
   .command(
@@ -29,14 +29,37 @@ yargs(hideBin(process.argv))
     'connect <scheme>',
     'Pair a device/simulator with the running server via Deep Link',
     (yargs) => {
-      return yargs.positional('scheme', {
-        describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp")',
-        type: 'string',
-        demandOption: true
-      });
+      return yargs
+        .positional('scheme', {
+          describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp")',
+          type: 'string',
+          demandOption: true
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (UDID/serial) to send the link to (skips interactive menu)',
+        })
+        .option('all', {
+          alias: 'a',
+          type: 'boolean',
+          description: 'Send the deep link to all detected devices',
+          default: false,
+        })
+        .option('qr-only', {
+          alias: 'q',
+          type: 'boolean',
+          description: 'Only display the QR code without attempting to open on devices',
+          default: false,
+        });
     },
     (argv) => {
-      runConnectCommand({ scheme: argv.scheme! }).catch(console.error);
+      runConnectCommand({
+        scheme: argv.scheme!,
+        device: argv.device,
+        all: argv.all,
+        qrOnly: argv.qrOnly,
+      }).catch(console.error);
     }
   )
   .command(

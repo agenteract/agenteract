@@ -17,3 +17,5 @@ local.properties
 # E2E test temp directories
 .e2e-test-*
 e2e-test-expo-temp/
+
+.agenteract-runtime.json
