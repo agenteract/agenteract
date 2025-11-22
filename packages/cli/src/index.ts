@@ -26,14 +26,13 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'connect <scheme>',
+    'connect [scheme]',
     'Pair a device/simulator with the running server via Deep Link',
     (yargs) => {
       return yargs
         .positional('scheme', {
-          describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp")',
+          describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp"). Optional if configured via add-config --scheme.',
           type: 'string',
-          demandOption: true
         })
         .option('device', {
           alias: 'd',
@@ -55,7 +54,7 @@ yargs(hideBin(process.argv))
     },
     (argv) => {
       runConnectCommand({
-        scheme: argv.scheme!,
+        scheme: argv.scheme,
         device: argv.device,
         all: argv.all,
         qrOnly: argv.qrOnly,
@@ -78,10 +77,14 @@ yargs(hideBin(process.argv))
       }).positional('port', {
         describe: 'PTY bridge port (optional, defaults to 8790+)',
         type: 'number',
+      }).option('scheme', {
+        alias: 's',
+        type: 'string',
+        description: 'URL scheme for deep linking (e.g., "myapp")',
       });
     },
     (argv) => {
-      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port).catch((error) => {
+      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port, argv.scheme).catch((error) => {
         console.error(error);
       });
     }

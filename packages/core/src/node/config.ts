@@ -172,7 +172,8 @@ export async function addConfig(
   projectPath: string,
   name: string,
   typeOrCommand: string,
-  port?: number
+  port?: number,
+  scheme?: string
 ) {
   const configPath = path.join(rootDir, 'agenteract.config.js');
   let config: any;
@@ -232,7 +233,8 @@ export async function addConfig(
       newProjectConfig = {
         name,
         path: projectPath,
-        type: 'native'
+        type: 'native',
+        ...(scheme && { scheme })
       };
     } else {
       // For non-native legacy types, create with new devServer format
@@ -248,7 +250,8 @@ export async function addConfig(
         devServer: {
           ...preset,
           port: ptyPort
-        }
+        },
+        ...(scheme && { scheme })
       };
 
       console.log(`ℹ️  Creating config with new devServer format (migrated from legacy type '${typeOrCommand}')`);
@@ -261,7 +264,8 @@ export async function addConfig(
       devServer: {
         command: typeOrCommand,
         port: ptyPort
-      }
+      },
+      ...(scheme && { scheme })
     };
   }
 
@@ -279,6 +283,9 @@ export async function addConfig(
   console.log(`✅ Config updated: ${name} at ${projectPath}`);
   if (newProjectConfig.devServer) {
     console.log(`   Dev server: ${newProjectConfig.devServer.command} (port: ${newProjectConfig.devServer.port})`);
+  }
+  if (scheme) {
+    console.log(`   URL scheme: ${scheme}`);
   }
 }
 

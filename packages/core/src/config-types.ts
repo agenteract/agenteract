@@ -20,6 +20,8 @@ export interface ProjectConfig {
   ptyPort?: number;
   // New generic dev server configuration
   devServer?: DevServerConfig;
+  // Optional: URL scheme for deep linking (e.g., 'myapp')
+  scheme?: string;
 }
 
 export interface AgenteractConfig {

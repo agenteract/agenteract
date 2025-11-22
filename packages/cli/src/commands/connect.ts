@@ -1,4 +1,4 @@
-import { loadRuntimeConfig } from '@agenteract/core/node';
+import { loadRuntimeConfig, loadConfig, findConfigRoot } from '@agenteract/core/node';
 import qrcode from 'qrcode-terminal';
 import { spawn, execFile } from 'child_process';
 import { networkInterfaces } from 'os';
@@ -134,16 +134,44 @@ async function openUrlOnDevice(device: Device, url: string): Promise<void> {
 }
 
 export async function runConnectCommand(args: {
-  scheme: string;
+  scheme?: string;
   device?: string;
   all?: boolean;
   qrOnly?: boolean;
 }) {
-  const config = await loadRuntimeConfig();
+  const runtimeConfig = await loadRuntimeConfig();
 
-  if (!config) {
+  if (!runtimeConfig) {
     console.error('❌ Error: Agenteract dev server is not running.');
     console.error('Please run `npx @agenteract/cli dev` in another terminal first.');
+    process.exit(1);
+  }
+
+  // Try to load scheme from config if not provided
+  let scheme = args.scheme;
+  if (!scheme) {
+    const configRoot = await findConfigRoot();
+    if (configRoot) {
+      try {
+        const agenteractConfig = await loadConfig(configRoot);
+        // Find first project with a scheme
+        const projectWithScheme = agenteractConfig.projects.find(p => p.scheme);
+        if (projectWithScheme) {
+          scheme = projectWithScheme.scheme;
+          console.log(`Using scheme "${scheme}" from project "${projectWithScheme.name}"`);
+        }
+      } catch (error) {
+        // Config might not exist or be invalid, that's okay
+      }
+    }
+  }
+
+  // If still no scheme, show error
+  if (!scheme) {
+    console.error('❌ Error: No URL scheme provided.');
+    console.error('Please provide a scheme either:');
+    console.error('  1. Via command line: npx @agenteract/cli connect <scheme>');
+    console.error('  2. Via config: npx @agenteract/cli add-config <path> <name> <type> --scheme <scheme>');
     process.exit(1);
   }
 
@@ -151,7 +179,7 @@ export async function runConnectCommand(args: {
   // Use IP for the QR code so physical devices can connect
   const host = ip === 'localhost' ? 'YOUR_MACHINE_IP' : ip;
 
-  const url = `${args.scheme}://agenteract/config?host=${host}&port=${config.port}&token=${config.token}`;
+  const url = `${scheme}://agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
 
   console.log('\n🔗 Deep Link URL:\n');
   console.log(url);

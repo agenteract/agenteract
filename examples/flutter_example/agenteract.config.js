@@ -7,7 +7,8 @@ export default {
       "devServer": {
         "command": "flutter run",
         "port": 8793
-      }
+      },
+      "scheme": "agenteract-flutter-example"
     }
   ]
 };
