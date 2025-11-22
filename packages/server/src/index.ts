@@ -196,16 +196,42 @@ if (isLogServer) {
                 return;
             }
 
-            // Enforce Authentication
-            if (clientToken !== AUTH_TOKEN) {
-                log(`Connection attempt rejected for "${projectName}": Invalid or missing token.`);
-                console.log(`[Security] Rejected connection from ${projectName} (Invalid token)`);
+            // Check if connection is from localhost
+            const remoteAddress = req.socket.remoteAddress;
+            const hostname = req.headers.host?.split(':')[0];
+
+            const isLocalhost = remoteAddress === '127.0.0.1' ||
+                               remoteAddress === '::1' ||
+                               remoteAddress === '::ffff:127.0.0.1' ||
+                               hostname === 'localhost' ||
+                               hostname === '127.0.0.1' ||
+                               hostname === '[::1]';
+
+            // Enforce Authentication (skip for localhost connections)
+            if (!isLocalhost && clientToken !== AUTH_TOKEN) {
+                log(`Connection attempt rejected for "${projectName}": Invalid or missing token from ${remoteAddress} (host: ${hostname}).`);
+                console.log(`[Security] Rejected connection from ${projectName} on ${remoteAddress} (host: ${hostname})`);
+                console.log(`  Remote address: ${remoteAddress}`);
+                console.log(`  Host header: ${hostname}`);
+                console.log(`  Token provided: ${clientToken ? 'yes (invalid)' : 'no'}`);
                 ws.close(4001, 'Authentication failed: Invalid token');
                 return;
             }
 
-            log(`Project "${projectName}" connected.`);
-            console.log(`[DEBUG] Project "${projectName}" connected via WebSocket`);
+            if (isLocalhost && !clientToken) {
+                log(`Project "${projectName}" connected from localhost (no token required).`);
+                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket from localhost`);
+            } else if (isLocalhost && clientToken === AUTH_TOKEN) {
+                log(`Project "${projectName}" connected from localhost with valid token.`);
+                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket from localhost with token`);
+            } else {
+                log(`Project "${projectName}" connected with valid token.`);
+                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket with authentication`);
+            }
+
+            console.log(`  Remote address: ${remoteAddress}`);
+            console.log(`  Host header: ${hostname}`);
+
             projectConnections.set(projectName, { socket: ws });
 
             ws.on('message', (message: Buffer) => {

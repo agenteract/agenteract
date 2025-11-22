@@ -69,10 +69,34 @@ Example: `expo-app://agenteract/config?host=192.168.1.5&port=8765&token=abc-123-
 
 This plan is stored for future reference and implementation.
 
-## Todo:
+## Implementation Status
+
+### ✅ Completed
+- [x] **Token Generation:** Server generates cryptographic token on startup
+- [x] **Token Persistence:** Tokens saved to `.agenteract-runtime.json` and reused across restarts
+- [x] **Auth Middleware:** WebSocket server validates tokens (with localhost exception)
+- [x] **Connect Command:** `agenteract connect` with QR generation and simulator/emulator auto-open
+- [x] **Device Detection:** Automatic detection of iOS simulators and Android emulators by ID
+- [x] **Configurable Scheme:** Projects can set URL schemes via `--scheme` flag in `add-config`
+- [x] **Localhost Exception:** Connections from localhost don't require tokens for zero-config local dev
+
+### Authentication Behavior
+- **Localhost Connections**: Token is **optional** when detected via:
+  - Remote address: `127.0.0.1`, `::1`, `::ffff:127.0.0.1`
+  - Host header: `localhost`, `127.0.0.1`, `[::1]`
+  - Use cases:
+    - iOS/Android simulators/emulators on same machine
+    - Web browsers connecting to local vite/webpack dev servers
+    - Maintains zero-config developer experience
+- **Remote Connections** (physical devices, network): Token is **required**
+  - Must use `agenteract connect` for deep link pairing
+  - Provides security when server is network-accessible
+
+## Remaining Todo:
  - [ ] pty servers should be authenticated automatically: They can read a token from disk, don't pass by command line
- - [ ] Tokens - Persist in package/server/src/index.ts - Don't regenerate each time
  - [ ] Expo go - Deep linking should work for sending endpoint and token
  - [ ] endpoint and token should support app side configuration by user code - Downstream apps may want to implement their own mechanisms
+ - [ ] Automatically identify scheme based on project contents (e.g., parse AndroidManifest.xml, Info.plist)
  - [ ] Deep linking in general should be seen as a way of starting apps with a specific state to enable quicker dev/test of specific features - Eg don't require entire app flow to reach feature A. Use a predefined app state (eg logged in user) and then navigate to feature A screen for dev/test.
- 
+ - [ ] Document in README
+ - [ ] SSL support
