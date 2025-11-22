@@ -14,9 +14,22 @@
 		514A11012EA9F707000CDAC4 /* AgenteractSwiftExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgenteractSwiftExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		51847FC22ED1A7A500EF84DD /* Exceptions for "AgenteractSwiftExample" folder in "AgenteractSwiftExample" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 514A11002EA9F707000CDAC4 /* AgenteractSwiftExample */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		514A11032EA9F707000CDAC4 /* AgenteractSwiftExample */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				51847FC22ED1A7A500EF84DD /* Exceptions for "AgenteractSwiftExample" folder in "AgenteractSwiftExample" target */,
+			);
 			path = AgenteractSwiftExample;
 			sourceTree = "<group>";
 		};
@@ -262,6 +275,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AgenteractSwiftExample/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -289,6 +303,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = AgenteractSwiftExample/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

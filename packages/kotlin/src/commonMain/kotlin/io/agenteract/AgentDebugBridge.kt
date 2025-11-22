@@ -17,31 +17,57 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Composable
-fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int = 8765) {
+fun AgentDebugBridge(
+    projectName: String,
+    host: String = "localhost",
+    port: Int = 8765,
+    token: String? = null,
+    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null
+) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(projectName) {
+        // Load saved config with error handling
+        val savedConfig = try {
+            AgentConfigManager.loadConfig()
+        } catch (e: Exception) {
+            println("[Agenteract] Failed to load config: $e")
+            null
+        }
+
+        val effectiveHost = savedConfig?.host ?: host
+        val effectivePort = savedConfig?.port ?: port
+        val effectiveToken = savedConfig?.token ?: token
+
         val client = HttpClient {
             install(WebSockets)
         }
 
-        val json = Json { 
-            ignoreUnknownKeys = true 
+        val json = Json {
+            ignoreUnknownKeys = true
             encodeDefaults = true
         }
 
         while (isActive) {
             try {
-                AgentLogger.log("AgentDebugBridge: Connecting to ws://$host:$port/$projectName")
-                
+                // Build WebSocket path with token if available
+                val pathWithToken = if (effectiveToken != null) {
+                    "/$projectName?token=$effectiveToken"
+                } else {
+                    "/$projectName"
+                }
+
+                val maskedPath = pathWithToken.replace(Regex("token=[^&]+"), "token=***")
+                AgentLogger.log("AgentDebugBridge: Connecting to ws://$effectiveHost:$effectivePort$maskedPath")
+
                 client.webSocket(
                     method = HttpMethod.Get,
-                    host = host,
-                    port = port,
-                    path = "/$projectName"
+                    host = effectiveHost,
+                    port = effectivePort,
+                    path = pathWithToken
                 ) {
                     AgentLogger.log("AgentDebugBridge: Connected!")
-                    
+
                     // Main loop
                     for (frame in incoming) {
                         if (frame is Frame.Text) {
@@ -62,11 +88,18 @@ fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int 
             } catch (e: Exception) {
                 AgentLogger.log("AgentDebugBridge: Connection failed: $e")
             }
-            
+
             AgentLogger.log("AgentDebugBridge: Reconnecting in 3s...")
             delay(3000)
         }
     }
+}
+
+/**
+ * Updates the stored configuration and reconnects
+ */
+fun updateAgentConfig(config: AgenteractConfig) {
+    AgentConfigManager.saveConfig(config)
 }
 
 private suspend fun handleCommand(

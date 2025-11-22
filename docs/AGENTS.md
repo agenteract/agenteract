@@ -90,6 +90,106 @@ import Agenteract
 )
 ```
 
+Kotlin Multiplatform:
+
+* AgentDebugBridge example:
+
+https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/kmp-example/src/commonMain/kotlin/App.kt
+
+* Packages:
+`io.agenteract:agenteract-kotlin` (Local path - not yet published)
+
+Installation in `build.gradle.kts`:
+```kotlin
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":kotlin"))
+        }
+    }
+}
+```
+
+**For Android - MainActivity setup:**
+```kotlin
+import io.agenteract.AgenteractContext
+import io.agenteract.DeepLinkHandler
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Initialize Agenteract context
+        AgenteractContext.appContext = applicationContext
+
+        // Handle deep link if present
+        DeepLinkHandler.handleIntent(intent)
+
+        setContent {
+            App()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        DeepLinkHandler.handleIntent(intent)
+    }
+}
+```
+
+**AndroidManifest.xml deep link configuration:**
+```xml
+<activity android:name=".MainActivity" android:exported="true">
+    <!-- Existing intent filters... -->
+
+    <!-- Agenteract deep linking -->
+    <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+
+        <data
+            android:scheme="yourapp"
+            android:host="agenteract"
+            android:pathPrefix="/config" />
+    </intent-filter>
+</activity>
+```
+
+Usage:
+```kotlin
+import io.agenteract.AgentDebugBridge
+// ...
+AgentDebugBridge(projectName = "kmp-app")
+```
+
+Making composables interactive:
+```kotlin
+import io.agenteract.agent
+
+// Button with tap handler
+Button(
+    onClick = { handleClick() },
+    modifier = Modifier.agent(
+        testID = "submit-button",
+        onTap = { handleClick() }
+    )
+) {
+    Text("Submit")
+}
+
+// Text input
+var text by remember { mutableStateOf("") }
+TextField(
+    value = text,
+    onValueChange = { text = it },
+    modifier = Modifier.agent(
+        testID = "username-input",
+        onChangeText = { text = it }
+    )
+)
+```
+
 Flutter:
 
 * AgentDebugBridge example:
@@ -144,6 +244,86 @@ TextField(
   onChanged: (text) => print(text),
 ).withAgent('username-input', onChangeText: (text) => print(text))
 ```
+
+## Physical Device Setup
+
+For testing on **physical devices** (mobile phones, tablets), you need to configure deep linking to enable secure pairing between the device and the Agenteract server.
+
+### Configuring Deep Linking
+
+When adding a configuration for a native app, include the `--scheme` parameter:
+
+```bash
+# For React Native/Expo apps
+pnpm agenteract add-config . my-app native --scheme myapp
+
+# For Expo Go
+pnpm agenteract add-config . my-app expo --scheme exp
+
+# For Swift apps
+pnpm agenteract add-config . my-app native --scheme myapp
+
+# For Kotlin/Android apps
+pnpm agenteract add-config . my-app native --scheme myapp
+```
+
+### Platform-Specific Deep Link Setup
+
+Each platform requires additional configuration in the app to handle deep links:
+
+**React Native / Expo:**
+- See [packages/react/README.md](../packages/react/README.md#deep-linking--configuration) for:
+  - iOS `Info.plist` configuration
+  - Android `AndroidManifest.xml` configuration
+  - Expo `app.json` configuration
+
+**Flutter:**
+- See [packages/flutter/README.md](../packages/flutter/README.md#deep-linking--physical-device-setup) for:
+  - iOS `Info.plist` configuration
+  - Android `AndroidManifest.xml` configuration
+  - Required dependencies (`shared_preferences`, `uni_links`)
+
+**Swift / iOS:**
+- See [agenteract-swift README](https://github.com/agenteract/agenteract-swift#deep-linking--configuration) for:
+  - `Info.plist` URL scheme configuration
+  - Deep link handling in SwiftUI
+
+**Kotlin / Android:**
+- See [packages/kotlin/README.md](../packages/kotlin/README.md#deep-linking--configuration) for:
+  - `AndroidManifest.xml` intent filter configuration
+  - `MainActivity` deep link handling
+  - `AgenteractContext` initialization
+
+### Connecting Physical Devices
+
+Once deep linking is configured in the app:
+
+1. Start the dev server if not already running:
+   ```bash
+   pnpm agenteract dev
+   ```
+
+2. Use the connect command to generate a pairing QR code:
+   ```bash
+   pnpm agenteract connect
+   ```
+
+3. The user scans the QR code with their device camera
+
+4. The app receives the deep link containing:
+   - Server IP address
+   - Server port
+   - Authentication token
+
+5. Configuration is saved permanently to device storage:
+   - **Flutter**: SharedPreferences
+   - **React Native/Expo**: AsyncStorage
+   - **Swift/iOS**: UserDefaults
+   - **Kotlin/Android**: SharedPreferences
+
+### Simulators and Emulators
+
+Simulators and emulators **do not require deep linking** - they automatically connect to `localhost:8765` without any additional configuration.
 
 ## Dev Server Setup
 

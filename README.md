@@ -238,6 +238,10 @@ export default {
 
 To allow Agenteract to "see" and interact with your application, you need to add the `AgentBridge` component to your app's entry point.
 
+### Platform-Specific Setup
+
+For **physical device testing** (React Native, Expo, Swift, Kotlin), you'll also need to configure deep linking to enable secure pairing. See platform-specific instructions below.
+
 **For React Native (Expo) - `App.tsx`:**
 
 ```tsx
@@ -338,7 +342,7 @@ See [agenteract-swift](https://github.com/agenteract/agenteract-swift)
 
 **For Kotlin Multiplatform (Compose Multiplatform)**
 
-Consult [packages/kotlin/AGENTS.md](packages/kotlin/AGENTS.md) for installation and usage instructions.
+Consult [packages/kotlin/README.md](packages/kotlin/README.md) for installation and usage instructions.
 
 ## **5. Running Agenteract**
 
@@ -354,6 +358,47 @@ This command will:
 -   Start the central Agenteract server on the configured `port`.
 -   Start a PTY bridge for each project on its configured `ptyPort`.
 -   Automatically start the development server for each of your configured projects (e.g., `npm run dev` or `npx expo start`).
+
+### Connecting Devices
+
+**For Simulators/Emulators and Web Apps:**
+Applications automatically connect to `localhost:8765` - no additional setup needed!
+
+**For Physical Devices (React Native, Expo, Swift, Kotlin):**
+
+Physical devices require deep link pairing for secure connections:
+
+1. **Configure your app's URL scheme** (if not already done):
+   ```bash
+   npx @agenteract/cli add-config . my-app native --scheme myapp
+   ```
+
+   For Expo Go, use scheme `exp`:
+   ```bash
+   npx @agenteract/cli add-config . my-app expo --scheme exp
+   ```
+
+2. **Start the dev server** (if not already running):
+   ```bash
+   npx @agenteract/cli dev
+   ```
+
+3. **Connect your physical device**:
+   ```bash
+   npx @agenteract/cli connect
+   ```
+
+4. **Scan the QR code** displayed in the terminal with your device camera
+
+The deep link will configure your app with the server's IP address, port, and authentication token. This configuration is saved permanently and used for all future connections.
+
+**Platform-Specific Deep Linking Setup:**
+- **React/Expo**: See [packages/react/README.md](packages/react/README.md#deep-linking--configuration)
+- **Flutter**: See [packages/flutter/README.md](packages/flutter/README.md#deep-linking--physical-device-setup)
+- **Swift/iOS**: See [agenteract-swift README](https://github.com/agenteract/agenteract-swift#deep-linking--configuration)
+- **Kotlin/Android**: See [packages/kotlin/README.md](packages/kotlin/README.md#deep-linking--configuration)
+
+### Agent Interaction
 
 AI agents can now connect to the Agenteract server using the tools described in `AGENTS.md`. The agent can view your app's component hierarchy and perform actions like tapping buttons or typing into text fields.
 

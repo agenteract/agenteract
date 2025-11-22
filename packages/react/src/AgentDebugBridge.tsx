@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { getFilteredHierarchy } from './getFilteredHierarchy';
 import { getNode } from './utils/AgentRegistry';
 import { AgentCommand } from '@agenteract/core';
@@ -28,9 +28,43 @@ const getPlatform = (): 'android' | 'ios' | 'web' => {
   }
 };
 
-const AGENT_SERVER_URL = getPlatform() === 'android' 
-  ? 'ws://10.0.2.2:8765' 
+const DEFAULT_AGENT_SERVER_URL = getPlatform() === 'android'
+  ? 'ws://10.0.2.2:8765'
   : 'ws://127.0.0.1:8765';
+
+// --- Config Storage ---
+interface AgenteractConfig {
+  host: string;
+  port: number;
+  token?: string;
+}
+
+const STORAGE_KEY = '@agenteract:config';
+
+async function saveConfig(config: AgenteractConfig): Promise<void> {
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+    console.log('[Agenteract] Config saved:', config);
+  } catch (error) {
+    console.warn('[Agenteract] Failed to save config:', error);
+  }
+}
+
+async function loadConfig(): Promise<AgenteractConfig | null> {
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const config = JSON.parse(stored);
+      console.log('[Agenteract] Loaded config:', config);
+      return config;
+    }
+  } catch (error) {
+    console.warn('[Agenteract] Failed to load config:', error);
+  }
+  return null;
+}
 
 // --- Simulation Functions ---
 // ... (Simulation functions remain the same)
@@ -308,6 +342,92 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
 export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
+  const [serverUrl, setServerUrl] = useState<string>(DEFAULT_AGENT_SERVER_URL);
+  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+
+  // --- Load Config on Mount ---
+  useEffect(() => {
+    loadConfig().then(config => {
+      if (config) {
+        const protocol = config.host.includes('localhost') || config.host.includes('127.0.0.1') ? 'ws' : 'ws';
+        const url = `${protocol}://${config.host}:${config.port}`;
+        setServerUrl(url);
+        setAuthToken(config.token);
+        console.log('[Agenteract] Using saved config:', url);
+      }
+    });
+  }, []);
+
+  // --- Deep Link Handler ---
+  useEffect(() => {
+    if (getPlatform() === 'web') return; // Skip for web
+
+    try {
+      const Linking = require('expo-linking');
+
+      // Handle initial URL (app opened via deep link)
+      Linking.getInitialURL().then((url: string | null) => {
+        if (url) handleDeepLink(url);
+      });
+
+      // Handle URL when app is already open
+      const subscription = Linking.addEventListener('url', (event: { url: string }) => {
+        handleDeepLink(event.url);
+      });
+
+      return () => subscription?.remove();
+    } catch (error) {
+      console.warn('[Agenteract] expo-linking not available, deep linking disabled');
+    }
+  }, []);
+
+  const handleDeepLink = async (url: string) => {
+    try {
+      console.log('[Agenteract] Received deep link:', url);
+
+      // Parse URL - supports both exp://*/agenteract/config and custom schemes
+      // Examples:
+      //   exp://192.168.1.5:8081/--/agenteract/config?host=...
+      //   myapp://agenteract/config?host=...
+      const parsed = new URL(url);
+
+      // Check if this is an agenteract config link
+      const isAgenteractConfig = parsed.pathname.includes('agenteract/config') ||
+                                 parsed.pathname.includes('/--/agenteract/config');
+
+      if (!isAgenteractConfig) return;
+
+      const params = new URLSearchParams(parsed.search);
+      const host = params.get('host');
+      const port = params.get('port');
+      const token = params.get('token');
+
+      if (host && port) {
+        const config: AgenteractConfig = {
+          host,
+          port: parseInt(port, 10),
+          token: token || undefined,
+        };
+
+        await saveConfig(config);
+
+        const protocol = host.includes('localhost') || host.includes('127.0.0.1') ? 'ws' : 'ws';
+        const newUrl = `${protocol}://${host}:${port}`;
+        setServerUrl(newUrl);
+        setAuthToken(token || undefined);
+
+        console.log('[Agenteract] Config updated from deep link:', config);
+
+        // Reconnect with new config
+        if (socketRef.current) {
+          socketRef.current.close();
+          socketRef.current = null;
+        }
+      }
+    } catch (error) {
+      console.error('[Agenteract] Failed to parse deep link:', error);
+    }
+  };
 
   // --- Console Interception ---
   useEffect(() => {
@@ -335,7 +455,13 @@ export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
   const connect = useCallback(() => {
     if (socketRef.current) return;
 
-    const socket = new WebSocket(`${AGENT_SERVER_URL}/${projectName}`);
+    // Add token to URL if available
+    const wsUrl = authToken
+      ? `${serverUrl}/${projectName}?token=${authToken}`
+      : `${serverUrl}/${projectName}`;
+
+    console.log('[Agenteract] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+    const socket = new WebSocket(wsUrl);
     socketRef.current = socket;
 
     socket.onopen = () => console.log('Connected to agent');
@@ -369,7 +495,7 @@ export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
       // @ts-ignore
       timeoutRef.current = setTimeout(connect, 3000);
     };
-  }, [projectName]); // Add projectName to dependency array
+  }, [projectName, serverUrl, authToken]); // Add dependencies
 
   useEffect(() => {
     connect();

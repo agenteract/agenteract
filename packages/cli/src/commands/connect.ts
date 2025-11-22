@@ -116,7 +116,7 @@ async function getAndroidEmulators(): Promise<Device[]> {
 async function openUrlOnDevice(device: Device, url: string): Promise<void> {
   if (device.type === 'ios-simulator') {
     try {
-      await execFileAsync('xcrun', ['simctl', 'openurl', device.id, url]);
+      await execFileAsync('xcrun', ['simctl', 'openurl', device.id, `"${url}"`]);
       console.log(`✅ Opened URL on ${device.name}`);
     } catch (error) {
       console.error(`❌ Failed to open URL on ${device.name}:`, (error as Error).message);
@@ -124,7 +124,7 @@ async function openUrlOnDevice(device: Device, url: string): Promise<void> {
     }
   } else if (device.type === 'android-emulator') {
     try {
-      await execFileAsync('adb', ['-s', device.id, 'shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', url]);
+      await execFileAsync('adb', ['-s', device.id, 'shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `"${url}"`]);
       console.log(`✅ Opened URL on ${device.name}`);
     } catch (error) {
       console.error(`❌ Failed to open URL on ${device.name}:`, (error as Error).message);
@@ -179,7 +179,17 @@ export async function runConnectCommand(args: {
   // Use IP for the QR code so physical devices can connect
   const host = ip === 'localhost' ? 'YOUR_MACHINE_IP' : ip;
 
-  const url = `${scheme}://agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
+  // Expo Go uses a special deep link format: exp://ip:port/--/path
+  // For other apps, use the standard scheme://path format
+  let url: string;
+  if (scheme === 'exp' || scheme === 'exps') {
+    // Expo Go format - assumes Expo dev server on 8081
+    const expoPort = 8081;
+    url = `${scheme}://${host}:${expoPort}/--/agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
+  } else {
+    // Standard deep link format
+    url = `${scheme}://agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
+  }
 
   console.log('\n🔗 Deep Link URL:\n');
   console.log(url);

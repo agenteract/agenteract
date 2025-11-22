@@ -17,6 +17,17 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Agenteract deep linking -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="agenteract-kmp-example"
+                    android:host="agenteract"
+                    android:pathPrefix="/config" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>
