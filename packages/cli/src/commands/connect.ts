@@ -116,7 +116,7 @@ async function getAndroidEmulators(): Promise<Device[]> {
 async function openUrlOnDevice(device: Device, url: string): Promise<void> {
   if (device.type === 'ios-simulator') {
     try {
-      await execFileAsync('xcrun', ['simctl', 'openurl', device.id, `"${url}"`]);
+      await execFileAsync('xcrun', ['simctl', 'openurl', device.id, url]); // don't quote url with simctl
       console.log(`✅ Opened URL on ${device.name}`);
     } catch (error) {
       console.error(`❌ Failed to open URL on ${device.name}:`, (error as Error).message);

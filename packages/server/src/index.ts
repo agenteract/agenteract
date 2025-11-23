@@ -95,10 +95,99 @@ if (isLogServer) {
         deviceInfo?: DeviceInfo;
     }
 
+    // --- Helper: Generate stable device identifier ---
+    function getDeviceIdentifier(deviceInfo?: DeviceInfo): string {
+        if (!deviceInfo) return 'unknown';
+
+        // For simulators, use UDID if available
+        if (deviceInfo.isSimulator && deviceInfo.deviceId) {
+            return deviceInfo.deviceId;
+        }
+
+        // For physical devices, create stable ID from device properties
+        // Format: deviceName-deviceModel-osVersionMajor
+        const osVersion = deviceInfo.osVersion.split('.')[0]; // e.g., "17.0" -> "17"
+        return `${deviceInfo.deviceName}-${deviceInfo.deviceModel}-${osVersion}`;
+    }
+
+    // --- Helper: Resolve device for a project ---
+    // Returns the connection key for a connected device, falling back to any available device
+    async function resolveDeviceConnection(
+        projectName: string,
+        requestedDevice?: string
+    ): Promise<{ connectionKey: string; connection: ProjectConnection } | { error: string; status: number; availableDevices?: any[]; availableProjects?: string[] }> {
+        // Determine which device to use
+        let targetDeviceId: string | undefined = requestedDevice;
+
+        // If no device specified, try to use default
+        if (!targetDeviceId) {
+            const config = await loadRuntimeConfig();
+            targetDeviceId = config?.defaultDevices?.[projectName];
+        }
+
+        // Build connection key and check if device is actually connected
+        let connectionKey: string | undefined;
+        if (targetDeviceId) {
+            const proposedKey = `${projectName}:${targetDeviceId}`;
+            if (projectConnections.has(proposedKey)) {
+                // Default device is connected
+                connectionKey = proposedKey;
+            } else {
+                // Default device is not connected - fall back to any available device
+                console.log(`[Device] Default device "${targetDeviceId}" for "${projectName}" is not connected, falling back to available device`);
+                targetDeviceId = undefined; // Clear to trigger fallback logic below
+            }
+        }
+
+        if (!connectionKey) {
+            // No device specified or default not connected - try to find any connected device for this project
+            const projectKeys = Array.from(projectConnections.keys())
+                .filter(key => key.startsWith(`${projectName}:`));
+
+            if (projectKeys.length === 0) {
+                const availableProjects = Array.from(projectConnections.keys());
+                return {
+                    error: `Project "${projectName}" has no connected devices.`,
+                    status: 503,
+                    availableProjects
+                };
+            }
+
+            // Use the first available device
+            connectionKey = projectKeys[0];
+            console.log(`[Device] No default device for "${projectName}", using ${connectionKey}`);
+        }
+
+        const connection = projectConnections.get(connectionKey);
+        if (!connection) {
+            const availableDevices = Array.from(projectConnections.entries())
+                .filter(([key]) => key.startsWith(`${projectName}:`))
+                .map(([key, conn]) => ({
+                    key,
+                    deviceId: key.split(':')[1],
+                    deviceInfo: conn.deviceInfo
+                }));
+
+            return {
+                error: `Device "${targetDeviceId}" not connected for project "${projectName}".`,
+                status: 503,
+                availableDevices
+            };
+        }
+
+        return { connectionKey, connection };
+    }
+
     // --- WebSocket Server (for multiple Apps) ---
     const WS_PORT = 8765;
-    // Use a Map to store connections and device info, keyed by project name
+    // Use a Map to store connections and device info, keyed by project:device
     const projectConnections = new Map<string, ProjectConnection>();
+
+    // Track pending device info for connections that haven't sent deviceInfo yet
+    const pendingDeviceInfo = new Map<string, WebSocket>();
+
+    // Track assigned device IDs for connections without device info (keyed by socket)
+    const socketToDeviceId = new Map<WebSocket, string>();
 
     // --- Simctl Log Streaming ---
     function captureSimulatorLogs(deviceId: string, bundleId: string, sinceLines: number = 50): Promise<string[]> {
@@ -189,6 +278,7 @@ if (isLogServer) {
             const parsedUrl = url.parse(req.url || '', true);
             const projectName = parsedUrl.pathname?.substring(1);
             const clientToken = parsedUrl.query.token as string;
+            const clientDeviceId = parsedUrl.query.deviceId as string;
 
             if (!projectName) {
                 log('Connection attempt rejected: No project name provided in URL.');
@@ -232,7 +322,60 @@ if (isLogServer) {
             console.log(`  Remote address: ${remoteAddress}`);
             console.log(`  Host header: ${hostname}`);
 
-            projectConnections.set(projectName, { socket: ws });
+            // Determine device ID: use client-provided ID or generate new one
+            let deviceId: string;
+            let isNewDevice = false;
+
+            if (clientDeviceId) {
+                // Client provided existing device ID
+                deviceId = clientDeviceId;
+                console.log(`[Device] Client reconnecting with device ID "${deviceId}"`);
+            } else {
+                // Generate new persistent device ID for this client (8-char prefix for readability)
+                deviceId = `device-${uuidv4().split('-')[0]}`;
+                isNewDevice = true;
+                console.log(`[Device] Generated new device ID "${deviceId}" for "${projectName}"`);
+            }
+
+            socketToDeviceId.set(ws, deviceId);
+
+            const connectionKey = `${projectName}:${deviceId}`;
+            projectConnections.set(connectionKey, { socket: ws });
+
+            console.log(`[Device] Registered: ${connectionKey}`);
+
+            // Send device ID to client so it can store it
+            if (isNewDevice) {
+                const welcomeMessage = {
+                    status: 'connected',
+                    deviceId: deviceId,
+                    message: 'Store this deviceId and include it in future connections via ?deviceId= parameter'
+                };
+                ws.send(JSON.stringify(welcomeMessage));
+            }
+
+            // Set as default device for this project (will be updated if device info arrives)
+            (async () => {
+                try {
+                    const config = await loadRuntimeConfig();
+                    if (config) {
+                        if (!config.defaultDevices) {
+                            config.defaultDevices = {};
+                        }
+                        // Only set if no default exists yet (don't override user's choice)
+                        if (!config.defaultDevices[projectName]) {
+                            config.defaultDevices[projectName] = deviceId;
+                            await saveRuntimeConfig(config);
+                            console.log(`[Device] Set "${deviceId}" as default for project "${projectName}"`);
+                        }
+                    }
+                } catch (e) {
+                    console.error('[Device] Failed to set default device:', e);
+                }
+            })();
+
+            // Also track in pending so we can update when device info arrives
+            pendingDeviceInfo.set(projectName, ws);
 
             ws.on('message', (message: Buffer) => {
                 console.log(`[DEBUG] Received raw message from "${projectName}": ${message.toString()}`);
@@ -242,10 +385,32 @@ if (isLogServer) {
 
                     // Check if this is device info
                     if (response.status === 'deviceInfo' && response.deviceInfo) {
-                        const connection = projectConnections.get(projectName);
-                        if (connection) {
-                            connection.deviceInfo = response.deviceInfo;
-                            log(`Received device info from "${projectName}": ${JSON.stringify(response.deviceInfo)}`);
+                        const deviceInfo: DeviceInfo = response.deviceInfo;
+
+                        console.log(`[Device] Received device info from "${projectName}"`);
+                        console.log(`  Device: ${deviceInfo.deviceName} (${deviceInfo.deviceModel})`);
+                        console.log(`  OS: ${deviceInfo.osVersion}`);
+                        console.log(`  Simulator: ${deviceInfo.isSimulator}`);
+
+                        // Update existing connection with device info (don't change the device ID)
+                        if (pendingDeviceInfo.has(projectName)) {
+                            const socket = pendingDeviceInfo.get(projectName)!;
+
+                            // Get the existing device ID for this socket
+                            const existingDeviceId = socketToDeviceId.get(socket);
+                            if (existingDeviceId) {
+                                const connectionKey = `${projectName}:${existingDeviceId}`;
+
+                                // Update the connection with device info
+                                const existingConnection = projectConnections.get(connectionKey);
+                                if (existingConnection) {
+                                    existingConnection.deviceInfo = deviceInfo;
+                                    console.log(`[Device] Added device info to: ${connectionKey}`);
+                                }
+                            }
+
+                            pendingDeviceInfo.delete(projectName);
+                            log(`Device info received for: ${projectName}`);
                         }
                         return;
                     }
@@ -280,36 +445,73 @@ if (isLogServer) {
 
             ws.on('close', () => {
                 log(`Project "${projectName}" disconnected.`);
-                projectConnections.delete(projectName);
+
+                // Remove from pending if still there
+                if (pendingDeviceInfo.has(projectName)) {
+                    pendingDeviceInfo.delete(projectName);
+                }
+
+                // Remove from socket tracking
+                socketToDeviceId.delete(ws);
+
+                // Find and remove from projectConnections
+                for (const [key, conn] of projectConnections.entries()) {
+                    if (conn.socket === ws) {
+                        projectConnections.delete(key);
+                        console.log(`[Device] Disconnected: ${key}`);
+                        break;
+                    }
+                }
             });
 
             ws.on('error', (error: Error) => {
                 log(`WebSocket error for "${projectName}": ${error.message}`);
-                projectConnections.delete(projectName);
+
+                // Remove from pending if still there
+                if (pendingDeviceInfo.has(projectName)) {
+                    pendingDeviceInfo.delete(projectName);
+                }
+
+                // Remove from socket tracking
+                socketToDeviceId.delete(ws);
+
+                // Find and remove from projectConnections
+                for (const [key, conn] of projectConnections.entries()) {
+                    if (conn.socket === ws) {
+                        projectConnections.delete(key);
+                        break;
+                    }
+                }
             });
         });
 
         // --- HTTP Server (for the Agent) ---
         const HTTP_PORT = args.port;
 
-        app.post('/gemini-agent', (req, res) => {
+        app.post('/gemini-agent', async (req, res) => {
             const command = req.body;
-            const { project: projectName } = command;
+            const { project: projectName, device: requestedDevice } = command;
 
             if (!projectName) {
                 return res.status(400).json({ error: 'Request body must include a "project" field.' });
             }
 
             log(`Received command for project "${projectName}": ${JSON.stringify(command)}`);
-            const connection = projectConnections.get(projectName);
 
-            if (!connection) {
-                const availableProjects = Array.from(projectConnections.keys());
-                return res.status(503).json({
-                    error: `Project "${projectName}" is not connected.`, 
-                    availableProjects
+            // Resolve device connection
+            const result = await resolveDeviceConnection(projectName, requestedDevice);
+            if ('error' in result) {
+                return res.status(result.status).json({
+                    error: result.error,
+                    ...(result.availableDevices && { availableDevices: result.availableDevices }),
+                    ...(result.availableProjects && { availableProjects: result.availableProjects }),
+                    ...(result.availableDevices && result.availableDevices.length > 0 && {
+                        hint: `Use --device flag to target specific device, or run 'agenteract set-current-device ${projectName} <device-id>' to set default`
+                    })
                 });
             }
+
+            const { connectionKey, connection } = result;
 
             const id = uuidv4();
             command.id = id;
@@ -327,26 +529,30 @@ if (isLogServer) {
 
         app.get('/logs', async (req, res) => {
             const projectName = req.query.project as string;
+            const requestedDevice = req.query.device as string;
             const sinceLines = parseInt(req.query.since as string) || 50;
 
             if (!projectName) {
                 return res.status(400).json({ error: 'Request must include a "project" query parameter.' });
             }
 
-            const connection = projectConnections.get(projectName);
-            if (!connection) {
-                const availableProjects = Array.from(projectConnections.keys());
-                return res.status(503).json({
-                    error: `Project "${projectName}" is not connected.`, 
-                    availableProjects
+            // Resolve device connection
+            const result = await resolveDeviceConnection(projectName, requestedDevice);
+            if ('error' in result) {
+                return res.status(result.status).json({
+                    error: result.error,
+                    ...(result.availableDevices && { availableDevices: result.availableDevices }),
+                    ...(result.availableProjects && { availableProjects: result.availableProjects })
                 });
             }
+
+            const { connectionKey, connection } = result;
 
             // Prefer in-app logs via WebSocket (cleaner, only app logs)
             // Use simctl as fallback if the app doesn't respond
             const id = uuidv4();
             const command = { action: 'getConsoleLogs', id };
-            console.log(`[DEBUG] Requesting logs from ${projectName} via WebSocket, id: ${id}`);
+            console.log(`[DEBUG] Requesting logs from ${connectionKey} via WebSocket, id: ${id}`);
             connection.socket.send(JSON.stringify(command));
 
             pendingRequests.set(id, res);
@@ -354,7 +560,7 @@ if (isLogServer) {
             setTimeout(async () => {
                 if (pendingRequests.has(id)) {
                     // Timeout waiting for app response, try simctl as fallback for simulators
-                    console.log(`[DEBUG] Timeout waiting for logs from ${projectName}, id: ${id}`);
+                    console.log(`[DEBUG] Timeout waiting for logs from ${connectionKey}, id: ${id}`);
                     pendingRequests.delete(id);
 
                     if (connection.deviceInfo?.isSimulator && connection.deviceInfo.deviceId) {
@@ -385,6 +591,37 @@ if (isLogServer) {
                     res.status(504).json({ error: 'Timed out waiting for response from app.' });
                 }
             }, 10000);
+        });
+
+        app.get('/devices', async (req, res) => {
+            const projectName = req.query.project as string;
+
+            if (!projectName) {
+                return res.status(400).json({ error: 'Request must include a "project" query parameter.' });
+            }
+
+            // Get all devices for this project
+            const devices = Array.from(projectConnections.entries())
+                .filter(([key]) => key.startsWith(`${projectName}:`))
+                .map(([key, conn]) => {
+                    const deviceId = key.split(':')[1];
+                    return {
+                        deviceId,
+                        connectionKey: key,
+                        deviceInfo: conn.deviceInfo
+                    };
+                });
+
+            // Get default device
+            const config = await loadRuntimeConfig();
+            const defaultDeviceId = config?.defaultDevices?.[projectName];
+
+            res.json({
+                project: projectName,
+                devices,
+                defaultDevice: defaultDeviceId,
+                totalConnected: devices.length
+            });
         });
 
         app.listen(HTTP_PORT, '0.0.0.0', () => {

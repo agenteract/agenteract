@@ -7,6 +7,7 @@ export interface RuntimeConfig {
   host: string;
   port: number;
   token: string;
+  defaultDevices?: Record<string, string>; // projectName → deviceId
 }
 
 export function getRuntimeConfigPath(cwd: string = process.cwd()): string {
@@ -36,6 +37,38 @@ export async function deleteRuntimeConfig(cwd: string = process.cwd()): Promise<
 
 export function generateAuthToken(): string {
   return randomUUID();
+}
+
+/**
+ * Set the default device for a project
+ */
+export async function setDefaultDevice(
+  projectName: string,
+  deviceId: string,
+  cwd: string = process.cwd()
+): Promise<void> {
+  const config = await loadRuntimeConfig(cwd);
+  if (!config) {
+    throw new Error('Runtime config not found. Is the server running?');
+  }
+
+  if (!config.defaultDevices) {
+    config.defaultDevices = {};
+  }
+
+  config.defaultDevices[projectName] = deviceId;
+  await saveRuntimeConfig(config, cwd);
+}
+
+/**
+ * Get the default device for a project
+ */
+export async function getDefaultDevice(
+  projectName: string,
+  cwd: string = process.cwd()
+): Promise<string | undefined> {
+  const config = await loadRuntimeConfig(cwd);
+  return config?.defaultDevices?.[projectName];
 }
 
 export class MissingConfigError extends Error {

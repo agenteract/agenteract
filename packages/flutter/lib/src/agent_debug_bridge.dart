@@ -50,6 +50,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   String? _storedHost;
   int? _storedPort;
   String? _storedToken;
+  String? _storedDeviceId;
   bool _shouldConnect = false;
   bool _configLoaded = false;
 
@@ -95,11 +96,13 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       final host = prefs.getString('agenteract_host');
       final port = prefs.getInt('agenteract_port');
       final token = prefs.getString('agenteract_token');
+      final deviceId = prefs.getString('agenteract_device_id');
 
       setState(() {
         _storedHost = host;
         _storedPort = port;
         _storedToken = token;
+        _storedDeviceId = deviceId;
         _configLoaded = true;
 
         // Determine if we should connect
@@ -222,14 +225,21 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     _isConnecting = true;
 
     try {
-      // Add token if available
+      // Build URL with token and deviceId if available
       String url = '$serverUrl/${widget.projectName}';
+      final params = <String>[];
       if (_storedToken != null) {
-        url += '?token=$_storedToken';
+        params.add('token=$_storedToken');
+      }
+      if (_storedDeviceId != null) {
+        params.add('deviceId=$_storedDeviceId');
+      }
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
       }
 
       final uri = Uri.parse(url);
-      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
+      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***').replaceAll(RegExp(r'deviceId=([^&]+)'), 'deviceId=***')}');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -264,8 +274,25 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   void _handleMessage(dynamic message) {
     try {
       final data = json.decode(message as String) as Map<String, dynamic>;
+      final status = data['status'] as String?;
       final action = data['action'] as String?;
       final id = data['id'] as String?;
+
+      // Handle server-assigned device ID
+      if (status == 'connected' && data['deviceId'] != null) {
+        final deviceId = data['deviceId'] as String;
+        debugPrint('[Agenteract] Received device ID from server: $deviceId');
+
+        // Store device ID for future connections
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('agenteract_device_id', deviceId);
+          setState(() {
+            _storedDeviceId = deviceId;
+          });
+          debugPrint('[Agenteract] Stored device ID for future connections');
+        });
+        return;
+      }
 
       if (action == null) {
         _sendError('Missing action field', id);

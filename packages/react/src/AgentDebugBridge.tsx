@@ -83,6 +83,7 @@ interface AgenteractConfig {
   host: string;
   port: number;
   token?: string;
+  deviceId?: string;
 }
 
 const STORAGE_KEY = '@agenteract:config';
@@ -396,6 +397,7 @@ export const AgentDebugBridge = ({
   const timeoutRef = useRef<number | null>(null);
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
   const [shouldConnect, setShouldConnect] = useState<boolean>(false);
   const configLoadedRef = useRef<boolean>(false);
 
@@ -410,9 +412,13 @@ export const AgentDebugBridge = ({
         const url = `${protocol}://${config.host}:${config.port}`;
         setServerUrl(url);
         setAuthToken(config.token);
+        setDeviceId(config.deviceId);
         setShouldConnect(true);
         configLoadedRef.current = true;
         console.log('[Agenteract] Using saved config:', url);
+        if (config.deviceId) {
+          console.log('[Agenteract] Using stored device ID:', config.deviceId);
+        }
       } else {
         // No saved config - use default URL
         const defaultUrl = getDefaultServerUrl();
@@ -478,10 +484,14 @@ export const AgentDebugBridge = ({
       const token = params.get('token');
 
       if (host && port) {
+        // Load existing config to preserve deviceId
+        const existingConfig = await loadConfig();
+
         const config: AgenteractConfig = {
           host,
           port: parseInt(port, 10),
           token: token || undefined,
+          deviceId: existingConfig?.deviceId, // Preserve existing device ID
         };
 
         await saveConfig(config);
@@ -490,6 +500,7 @@ export const AgentDebugBridge = ({
         const newUrl = `${protocol}://${host}:${port}`;
         setServerUrl(newUrl);
         setAuthToken(token || undefined);
+        setDeviceId(config.deviceId);
         setShouldConnect(true);
         configLoadedRef.current = true;
 
@@ -541,12 +552,16 @@ export const AgentDebugBridge = ({
     }
 
     try {
-      // Add token to URL if available
-      const wsUrl = authToken
-        ? `${serverUrl}/${projectName}?token=${authToken}`
+      // Build URL with token and deviceId if available
+      const params: string[] = [];
+      if (authToken) params.push(`token=${authToken}`);
+      if (deviceId) params.push(`deviceId=${deviceId}`);
+
+      const wsUrl = params.length > 0
+        ? `${serverUrl}/${projectName}?${params.join('&')}`
         : `${serverUrl}/${projectName}`;
 
-      console.log('[Agenteract] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+      console.log('[Agenteract] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***').replace(/deviceId=[^&]+/, 'deviceId=***'));
       const socket = new WebSocket(wsUrl);
       socketRef.current = socket;
 
@@ -556,7 +571,28 @@ export const AgentDebugBridge = ({
 
       socket.onmessage = async (event) => {
         try {
-          const command: ServerCommand = JSON.parse(event.data);
+          const data = JSON.parse(event.data);
+
+          // Handle server-assigned device ID
+          if (data.status === 'connected' && data.deviceId) {
+            const newDeviceId = data.deviceId as string;
+            console.log('[Agenteract] Received device ID from server:', newDeviceId);
+
+            // Load existing config and update with device ID
+            const existingConfig = await loadConfig();
+            if (existingConfig) {
+              const updatedConfig: AgenteractConfig = {
+                ...existingConfig,
+                deviceId: newDeviceId
+              };
+              await saveConfig(updatedConfig);
+              setDeviceId(newDeviceId);
+              console.log('[Agenteract] Stored device ID for future connections');
+            }
+            return;
+          }
+
+          const command: ServerCommand = data;
           console.log('[Agenteract] Received command:', command.action);
 
           if (command.action === 'getViewHierarchy') {
@@ -591,7 +627,7 @@ export const AgentDebugBridge = ({
       console.log('[Agenteract] Failed to create WebSocket:', error);
       socketRef.current = null;
     }
-  }, [projectName, serverUrl, authToken, shouldConnect]);
+  }, [projectName, serverUrl, authToken, deviceId, shouldConnect]);
 
   useEffect(() => {
     connect();

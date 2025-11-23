@@ -205,12 +205,18 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of lines to tail',
           default: 20,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}`);
+        const deviceParam = argv.device ? `&device=${encodeURIComponent(argv.device)}` : '';
+        const response = await axios.get(`${agentServerUrl}/logs?project=${argv.project}&since=${argv.since}${deviceParam}`);
         console.log(JSON.stringify(response.data));
       } catch (error) {
         handleRequestError(error);
@@ -319,15 +325,24 @@ yargs(hideBin(process.argv))
           alias: 'v',
           type: 'string',
           description: 'Filter hierarchy by value (used with filter-key)',
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'getViewHierarchy',
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
 
         let outputData = response.data;
 
@@ -383,16 +398,25 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of log entries to fetch',
           default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'tap',
           testID: argv.testID,
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -437,17 +461,26 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of log entries to fetch',
           default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'input',
           testID: argv.testID,
           value: argv.value,
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -498,18 +531,27 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of log entries to fetch',
           default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'scroll',
           testID: argv.testID,
           direction: argv.direction,
           amount: argv.amount,
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -561,18 +603,27 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of log entries to fetch',
           default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'swipe',
           testID: argv.testID,
           direction: argv.direction,
           velocity: argv.velocity,
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -612,16 +663,25 @@ yargs(hideBin(process.argv))
           type: 'number',
           description: 'Number of log entries to fetch',
           default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
         });
     },
     async (argv) => {
       try {
         const { agentServerUrl } = await getServerUrls();
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, {
+        const requestBody: any = {
           project: argv.project,
           action: 'longPress',
           testID: argv.testID,
-        });
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -632,6 +692,83 @@ yargs(hideBin(process.argv))
         }
       } catch (error) {
         handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'devices <project>',
+    'List all connected devices for a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        });
+    },
+    async (argv) => {
+      try {
+        const { agentServerUrl } = await getServerUrls();
+        const response = await axios.get(`${agentServerUrl}/devices?project=${argv.project}`);
+        const data = response.data;
+
+        console.log(`\nConnected devices for '${data.project}':`);
+
+        if (data.devices.length === 0) {
+          console.log('  No devices connected');
+          console.log('\nUse "agenteract connect" to pair a device');
+          return;
+        }
+
+        data.devices.forEach((device: any) => {
+          const isDefault = device.deviceId === data.defaultDevice;
+          const defaultMark = isDefault ? ' (default)' : '';
+          const deviceInfo = device.deviceInfo;
+
+          if (deviceInfo) {
+            console.log(`  • ${deviceInfo.deviceName} (${deviceInfo.deviceModel}, ${deviceInfo.osVersion}) [${device.deviceId}]${defaultMark}`);
+          } else {
+            console.log(`  • ${device.deviceId}${defaultMark}`);
+          }
+        });
+
+        console.log(`\nTotal: ${data.totalConnected} device(s) connected`);
+
+        if (data.totalConnected > 1) {
+          console.log('\nUse --device flag to target specific device:');
+          console.log(`  agenteract tap ${data.project} my-button --device <device-id>`);
+          console.log('\nOr set default device:');
+          console.log(`  agenteract set-current-device ${data.project} <device-id>`);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'set-current-device <project> <deviceId>',
+    'Set the default device for a project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('deviceId', {
+          describe: 'Device identifier to set as default',
+          type: 'string',
+          demandOption: true,
+        });
+    },
+    async (argv) => {
+      try {
+        const { setDefaultDevice } = await import('@agenteract/core/node');
+        await setDefaultDevice(argv.project, argv.deviceId);
+        console.log(`✓ Set "${argv.deviceId}" as default device for project "${argv.project}"`);
+      } catch (error: any) {
+        console.error(`✗ Failed to set default device: ${error.message}`);
+        process.exit(1);
       }
     }
   )

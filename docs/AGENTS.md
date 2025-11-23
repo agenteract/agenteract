@@ -80,7 +80,22 @@ These will be called via npx, you will need to press y [enter] the first time th
 
 `@agenteract/agents`
 
-Usage:
+**App setup (No special code needed):**
+
+```swift
+import SwiftUI
+
+@main
+struct YourApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+**Add AgentDebugBridge to your main view:**
 
 ```swift
 import Agenteract
@@ -89,6 +104,13 @@ import Agenteract
     AgentDebugBridge(projectName: "mySwiftApp")
 )
 ```
+
+**Important:** The `AgentDebugBridge` automatically handles:
+- Deep link configuration (no manual code needed in App struct)
+- WebSocket connection for both commands and logs (single connection)
+- Persistent configuration storage
+
+You don't need to create WebSocket managers or handle deep links manually in your App struct.
 
 Kotlin Multiplatform:
 

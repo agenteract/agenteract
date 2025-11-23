@@ -21,7 +21,9 @@ data class AgentResponse(
     val error: String? = null,
     val hierarchy: ViewNode? = null,
     val logs: List<LogEntry>? = null,
-    val action: String? = null
+    val action: String? = null,
+    val deviceId: String? = null,
+    val message: String? = null
 )
 
 @Serializable

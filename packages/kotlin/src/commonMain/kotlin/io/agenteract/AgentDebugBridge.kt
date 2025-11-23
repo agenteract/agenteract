@@ -38,6 +38,7 @@ fun AgentDebugBridge(
         val effectiveHost = savedConfig?.host ?: host
         val effectivePort = savedConfig?.port ?: port
         val effectiveToken = savedConfig?.token ?: token
+        val effectiveDeviceId = savedConfig?.deviceId
 
         val client = HttpClient {
             install(WebSockets)
@@ -50,21 +51,27 @@ fun AgentDebugBridge(
 
         while (isActive) {
             try {
-                // Build WebSocket path with token if available
-                val pathWithToken = if (effectiveToken != null) {
-                    "/$projectName?token=$effectiveToken"
+                // Build WebSocket path with token and deviceId if available
+                val params = mutableListOf<String>()
+                if (effectiveToken != null) params.add("token=$effectiveToken")
+                if (effectiveDeviceId != null) params.add("deviceId=$effectiveDeviceId")
+
+                val pathWithParams = if (params.isNotEmpty()) {
+                    "/$projectName?${params.joinToString("&")}"
                 } else {
                     "/$projectName"
                 }
 
-                val maskedPath = pathWithToken.replace(Regex("token=[^&]+"), "token=***")
+                val maskedPath = pathWithParams
+                    .replace(Regex("token=[^&]+"), "token=***")
+                    .replace(Regex("deviceId=[^&]+"), "deviceId=***")
                 AgentLogger.log("AgentDebugBridge: Connecting to ws://$effectiveHost:$effectivePort$maskedPath")
 
                 client.webSocket(
                     method = HttpMethod.Get,
                     host = effectiveHost,
                     port = effectivePort,
-                    path = pathWithToken
+                    path = pathWithParams
                 ) {
                     AgentLogger.log("AgentDebugBridge: Connected!")
 
@@ -73,9 +80,37 @@ fun AgentDebugBridge(
                         if (frame is Frame.Text) {
                             val text = frame.readText()
                             try {
+                                // Try to parse as a response first (for device ID message)
+                                val responseResult = try {
+                                    json.decodeFromString<AgentResponse>(text)
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                // Check if this is a device ID message from server
+                                if (responseResult != null && responseResult.status == "connected" && responseResult.deviceId != null) {
+                                    val newDeviceId = responseResult.deviceId
+                                    AgentLogger.log("AgentDebugBridge: Received device ID from server: $newDeviceId")
+
+                                    // Load existing config and update with device ID
+                                    val existingConfig = try {
+                                        AgentConfigManager.loadConfig()
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+
+                                    if (existingConfig != null) {
+                                        val updatedConfig = existingConfig.copy(deviceId = newDeviceId)
+                                        AgentConfigManager.saveConfig(updatedConfig)
+                                        AgentLogger.log("AgentDebugBridge: Stored device ID for future connections")
+                                    }
+                                    continue
+                                }
+
+                                // Otherwise handle as command
                                 val command = json.decodeFromString<AgentCommand>(text)
-                                handleCommand(command, json) { response ->
-                                    val responseText = json.encodeToString(response)
+                                handleCommand(command, json) { cmdResponse ->
+                                    val responseText = json.encodeToString(cmdResponse)
                                     send(responseText)
                                 }
                             } catch (e: Exception) {

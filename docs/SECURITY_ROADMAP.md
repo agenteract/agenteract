@@ -186,5 +186,13 @@ Expo Issues:
 - [x] ~~Allow user to configure ADB to only connect with valid parameters - Don't connect automatically~~ (Fixed: Added autoConnect prop, defaults to false on physical devices without config)
 
 General:
-- [ ] Multiple devices - devs often have simulator and physical device running.
+- [x] Multiple devices - devs often have simulator and physical device running.
 It should be possible to set a default device (Otherwise we need to update all APIs to accept a device id which is too heavy + context wasting)
+
+
+- [x] Expo
+- [x] Flutter
+- [x] KMP
+- [x] Swift
+
+- [ ] Expo e2e failing - Was incorrectly finding text in logs before, rather than UI hierarchy?

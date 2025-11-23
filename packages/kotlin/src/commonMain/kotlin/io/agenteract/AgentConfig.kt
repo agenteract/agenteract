@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 data class AgenteractConfig(
     val host: String,
     val port: Int,
-    val token: String? = null
+    val token: String? = null,
+    val deviceId: String? = null
 )
 
 /**
