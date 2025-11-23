@@ -296,11 +296,25 @@ exp://<ip>:8081/--/agenteract/config?host=<ip>&port=<port>&token=<token>
 ```tsx
 interface AgentDebugBridgeProps {
   projectName: string;              // Required: matches agenteract.config.js
-  host?: string;                    // Override default host (default: "localhost")
-  port?: number;                    // Override default port (default: 8765)
-  token?: string;                   // Override default token
-  onConfigUpdate?: (config: AgenteractConfig) => void;  // Called when config changes
+  autoConnect?: boolean;            // Optional: enable/disable automatic connection (default: true)
 }
+```
+
+**Props:**
+- `projectName` (required): Must match the project name in your `agenteract.config.js`
+- `autoConnect` (optional, default: `true`): Controls connection behavior:
+  - `true`: Automatically connects on simulators/emulators and when deep link config is saved
+  - `false`: Only connects after receiving a deep link configuration
+
+**Connection Behavior:**
+- **Simulators/Emulators**: Auto-connects to localhost (no pairing needed)
+- **Physical Devices**: Requires deep link pairing via `agenteract connect`
+- **Config Persistence**: Settings survive app restarts and hot reloads (saved to AsyncStorage)
+
+**Example - Disable Auto-Connect:**
+```tsx
+// Only connect after explicit deep link pairing
+<AgentDebugBridge projectName="my-app" autoConnect={false} />
 ```
 
 ### useAgentBinding

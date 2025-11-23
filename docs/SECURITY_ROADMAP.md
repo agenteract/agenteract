@@ -172,9 +172,19 @@ This plan is stored for future reference and implementation.
 
 
 ## Physical Device Testing
-- [ ] Expo / Android
-- [ ] Expo / iOS
+- [x] Expo / Android
+- [x] Expo / iOS
 - [ ] Flutter / Android
 - [ ] Flutter / iOS
-- [ ] KMP / Android
+- [x] KMP / Android
 - [ ] Swift / iOS
+
+Expo Issues:
+- [x] ~~Settings not saving - connect works, but settings might be lost on hot reload, app still tries to connect to 10.0.0.2~~ (Fixed: Added configLoadedRef to prevent reload race conditions)
+- [x] ~~Log connection errors, catch exceptions (Don't show red box)~~ (Fixed: All errors now logged via console.log/warn instead of throwing)
+- [x] ~~Only try 10.0.2.2 from emulator (non physical device)~~ (Fixed: Added isPhysicalDevice() detection using Platform.constants)
+- [x] ~~Allow user to configure ADB to only connect with valid parameters - Don't connect automatically~~ (Fixed: Added autoConnect prop, defaults to false on physical devices without config)
+
+General:
+- [ ] Multiple devices - devs often have simulator and physical device running.
+It should be possible to set a default device (Otherwise we need to update all APIs to accept a device id which is too heavy + context wasting)

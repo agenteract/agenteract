@@ -28,9 +28,55 @@ const getPlatform = (): 'android' | 'ios' | 'web' => {
   }
 };
 
-const DEFAULT_AGENT_SERVER_URL = getPlatform() === 'android'
-  ? 'ws://10.0.2.2:8765'
-  : 'ws://127.0.0.1:8765';
+// --- Platform & Device Detection ---
+function isAndroidEmulator(): boolean {
+  try {
+    const { Platform } = require('react-native');
+    if (Platform.OS !== 'android') return false;
+
+    // Check various indicators that this is an emulator
+    const constants = Platform.constants || {};
+
+    // Method 1: Check Brand (emulators often have 'google' or 'generic')
+    const brand = constants.Brand || '';
+    const model = constants.Model || '';
+    const fingerprint = constants.Fingerprint || '';
+
+    // Debug logging
+    console.log('[Agenteract] Android device info:', {
+      brand,
+      model,
+      fingerprint: fingerprint.substring(0, 50)
+    });
+
+    // Emulator indicators
+    const isEmulator =
+      brand.toLowerCase().includes('generic') ||
+      model.toLowerCase().includes('emulator') ||
+      model.toLowerCase().includes('sdk') ||
+      fingerprint.toLowerCase().includes('generic') ||
+      fingerprint.toLowerCase().includes('emulator');
+
+    console.log('[Agenteract] Is emulator:', isEmulator);
+    return isEmulator;
+  } catch (error) {
+    console.warn('[Agenteract] Could not detect device type:', error);
+    return false;
+  }
+}
+
+function getDefaultServerUrl(): string {
+  const platform = getPlatform();
+
+  // Only use emulator IP if on Android emulator
+  if (platform === 'android' && isAndroidEmulator()) {
+    console.log('[Agenteract] Using emulator default: ws://10.0.2.2:8765');
+    return 'ws://10.0.2.2:8765';
+  }
+
+  console.log('[Agenteract] Using localhost default: ws://127.0.0.1:8765');
+  return 'ws://127.0.0.1:8765';
+}
 
 // --- Config Storage ---
 interface AgenteractConfig {
@@ -339,24 +385,53 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
 };
 
 // --- AgentDebugBridge Component ---
-export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
+export const AgentDebugBridge = ({
+  projectName,
+  autoConnect = true
+}: {
+  projectName: string;
+  autoConnect?: boolean;
+}) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
-  const [serverUrl, setServerUrl] = useState<string>(DEFAULT_AGENT_SERVER_URL);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [shouldConnect, setShouldConnect] = useState<boolean>(false);
+  const configLoadedRef = useRef<boolean>(false);
 
   // --- Load Config on Mount ---
   useEffect(() => {
+    // Only load config once to prevent hot reload issues
+    if (configLoadedRef.current) return;
+
     loadConfig().then(config => {
       if (config) {
         const protocol = config.host.includes('localhost') || config.host.includes('127.0.0.1') ? 'ws' : 'ws';
         const url = `${protocol}://${config.host}:${config.port}`;
         setServerUrl(url);
         setAuthToken(config.token);
+        setShouldConnect(true);
+        configLoadedRef.current = true;
         console.log('[Agenteract] Using saved config:', url);
+      } else {
+        // No saved config - use default URL
+        const defaultUrl = getDefaultServerUrl();
+        setServerUrl(defaultUrl);
+        const isLocalhost = defaultUrl.includes('127.0.0.1') || defaultUrl.includes('10.0.2.2');
+        setShouldConnect(autoConnect && isLocalhost);
+        configLoadedRef.current = true;
+        if (!isLocalhost) {
+          console.log('[Agenteract] Physical device detected. Use "agenteract connect" to pair.');
+        }
       }
+    }).catch(error => {
+      console.warn('[Agenteract] Error loading config:', error);
+      const defaultUrl = getDefaultServerUrl();
+      setServerUrl(defaultUrl);
+      setShouldConnect(false);
+      configLoadedRef.current = true;
     });
-  }, []);
+  }, [autoConnect]);
 
   // --- Deep Link Handler ---
   useEffect(() => {
@@ -415,6 +490,8 @@ export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
         const newUrl = `${protocol}://${host}:${port}`;
         setServerUrl(newUrl);
         setAuthToken(token || undefined);
+        setShouldConnect(true);
+        configLoadedRef.current = true;
 
         console.log('[Agenteract] Config updated from deep link:', config);
 
@@ -454,48 +531,67 @@ export const AgentDebugBridge = ({ projectName }: { projectName: string }) => {
 
   const connect = useCallback(() => {
     if (socketRef.current) return;
+    if (!shouldConnect) {
+      console.log('[Agenteract] Auto-connect disabled. Use deep link to configure.');
+      return;
+    }
+    if (!serverUrl) {
+      console.log('[Agenteract] No server URL configured yet. Waiting for config to load...');
+      return;
+    }
 
-    // Add token to URL if available
-    const wsUrl = authToken
-      ? `${serverUrl}/${projectName}?token=${authToken}`
-      : `${serverUrl}/${projectName}`;
+    try {
+      // Add token to URL if available
+      const wsUrl = authToken
+        ? `${serverUrl}/${projectName}?token=${authToken}`
+        : `${serverUrl}/${projectName}`;
 
-    console.log('[Agenteract] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
+      console.log('[Agenteract] Connecting to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
+      const socket = new WebSocket(wsUrl);
+      socketRef.current = socket;
 
-    socket.onopen = () => console.log('Connected to agent');
+      socket.onopen = () => {
+        console.log('[Agenteract] Connected to agent server');
+      };
 
-    socket.onmessage = async (event) => {
-      try {
-        const command: ServerCommand = JSON.parse(event.data);
-        console.log('Received command from agent:', command);
+      socket.onmessage = async (event) => {
+        try {
+          const command: ServerCommand = JSON.parse(event.data);
+          console.log('[Agenteract] Received command:', command.action);
 
-        if (command.action === 'getViewHierarchy') {
-          const hierarchy = getFilteredHierarchy();
-          socket.send(JSON.stringify({ status: 'success', hierarchy, id: command.id }));
-        } else if (command.action === 'getConsoleLogs') {
-          socket.send(JSON.stringify({ status: 'success', logs: logBuffer, id: command.id }));
-        } else {
-          await handleCommand(command, socket);
+          if (command.action === 'getViewHierarchy') {
+            const hierarchy = getFilteredHierarchy();
+            socket.send(JSON.stringify({ status: 'success', hierarchy, id: command.id }));
+          } else if (command.action === 'getConsoleLogs') {
+            socket.send(JSON.stringify({ status: 'success', logs: logBuffer, id: command.id }));
+          } else {
+            await handleCommand(command, socket);
+          }
+        } catch (error) {
+          console.warn('[Agenteract] Command error:', error);
+          socket.send(JSON.stringify({ status: 'error', error: (error as Error).message }));
         }
-      } catch (error) {
-        socket.send(JSON.stringify({ status: 'error', error: (error as Error).message }));
-      }
-    };
+      };
 
-    socket.onerror = (error: any) => {
-      console.error('Agent Bridge WebSocket error:', error.message || 'Unknown error');
-    };
+      socket.onerror = (error: any) => {
+        // Log but don't throw - prevents red box errors
+        const errorMsg = error?.message || 'Connection failed';
+        console.log(`[Agenteract] Connection error: ${errorMsg}`);
+      };
 
-    socket.onclose = (event: any) => {
-      console.log(`Disconnected from agent: ${event.reason || `code ${event.code}`}. Reconnecting...`);
+      socket.onclose = (event: any) => {
+        const reason = event.reason || `code ${event.code}`;
+        console.log(`[Agenteract] Disconnected: ${reason}. Reconnecting...`);
+        socketRef.current = null;
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        // @ts-ignore
+        timeoutRef.current = setTimeout(connect, 3000);
+      };
+    } catch (error) {
+      console.log('[Agenteract] Failed to create WebSocket:', error);
       socketRef.current = null;
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      // @ts-ignore
-      timeoutRef.current = setTimeout(connect, 3000);
-    };
-  }, [projectName, serverUrl, authToken]); // Add dependencies
+    }
+  }, [projectName, serverUrl, authToken, shouldConnect]);
 
   useEffect(() => {
     connect();
