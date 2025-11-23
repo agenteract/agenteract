@@ -177,7 +177,7 @@ This plan is stored for future reference and implementation.
 - [x] Flutter / Android
 - [x] Flutter / iOS
 - [x] KMP / Android
-- [ ] Swift / iOS
+- [x] Swift / iOS
 
 Expo Issues:
 - [x] ~~Settings not saving - connect works, but settings might be lost on hot reload, app still tries to connect to 10.0.0.2~~ (Fixed: Added configLoadedRef to prevent reload race conditions)
