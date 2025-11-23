@@ -281,7 +281,7 @@ Each platform requires additional configuration in the app to handle deep links:
 - See [packages/flutter/README.md](../packages/flutter/README.md#deep-linking--physical-device-setup) for:
   - iOS `Info.plist` configuration
   - Android `AndroidManifest.xml` configuration
-  - Required dependencies (`shared_preferences`, `uni_links`)
+  - Required dependencies (`shared_preferences`, `app_links`)
 
 **Swift / iOS:**
 - See [agenteract-swift README](https://github.com/agenteract/agenteract-swift#deep-linking--configuration) for:

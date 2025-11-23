@@ -66,8 +66,9 @@ class MyApp extends StatelessWidget {
     // Wrap with AgentDebugBridge in debug mode only
     if (kDebugMode) {
       return AgentDebugBridge(
-        projectName: 'my-flutter-app',
+        projectName: 'my-flutter-app',  // Required: matches agenteract.config.js
         child: app,
+        autoConnect: true,               // Optional: default true
       );
     }
     return app;
@@ -120,7 +121,7 @@ Deep linking requires these packages (already included in pubspec.yaml):
 ```yaml
 dependencies:
   shared_preferences: ^2.2.2  # Config storage
-  uni_links: ^0.5.1           # Deep link handling
+  app_links: ^6.3.2           # Deep link handling
 ```
 
 ### Platform Configuration
@@ -237,10 +238,46 @@ Where `<scheme>` matches the URL scheme you configured in Info.plist and Android
 - Ensure `shared_preferences` package is installed
 - Run `flutter pub get`
 
-**uni_links error:**
-- Ensure `uni_links` package is installed
+**app_links error:**
+- Ensure `app_links` package is installed
 - Run `flutter pub get`
+- Verify deep linking is configured in AndroidManifest.xml (Android) and Info.plist (iOS)
 - Hot restart after adding deep link configuration
+
+## API Reference
+
+### AgentDebugBridge
+
+```dart
+class AgentDebugBridge extends StatefulWidget {
+  final String projectName;   // Required: matches agenteract.config.js
+  final Widget child;          // Required: your app widget
+  final String? serverUrl;     // Optional: override server URL
+  final bool autoConnect;      // Optional: enable/disable auto-connect (default: true)
+}
+```
+
+**Parameters:**
+- `projectName` (required): Must match the project name in your `agenteract.config.js`
+- `child` (required): Your root app widget
+- `serverUrl` (optional): Override the default server URL
+- `autoConnect` (optional, default: `true`): Controls connection behavior:
+  - `true`: Automatically connects on simulators/emulators and when deep link config is saved
+  - `false`: Only connects after receiving a deep link configuration
+
+**Connection Behavior:**
+- **Simulators/Emulators**: Auto-connects to localhost (no pairing needed)
+- **Physical Devices**: Requires deep link pairing via `agenteract connect`
+- **Config Persistence**: Settings survive app restarts and hot reloads (saved to SharedPreferences)
+
+**Example - Disable Auto-Connect:**
+```dart
+AgentDebugBridge(
+  projectName: 'my-flutter-app',
+  child: MyApp(),
+  autoConnect: false,  // Only connect after explicit deep link pairing
+)
+```
 
 ## Configuration
 

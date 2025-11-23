@@ -174,8 +174,8 @@ This plan is stored for future reference and implementation.
 ## Physical Device Testing
 - [x] Expo / Android
 - [x] Expo / iOS
-- [ ] Flutter / Android
-- [ ] Flutter / iOS
+- [x] Flutter / Android
+- [x] Flutter / iOS
 - [x] KMP / Android
 - [ ] Swift / iOS
 

@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uni_links/uni_links.dart';
+import 'package:app_links/app_links.dart';
 import 'agent_registry.dart';
 import 'hierarchy_builder.dart';
 import 'console_logger.dart';
@@ -25,12 +25,14 @@ class AgentDebugBridge extends StatefulWidget {
   final String projectName;
   final Widget child;
   final String? serverUrl;
+  final bool autoConnect;
 
   const AgentDebugBridge({
     super.key,
     required this.projectName,
     required this.child,
     this.serverUrl,
+    this.autoConnect = true,
   });
 
   @override
@@ -42,28 +44,40 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   Timer? _reconnectTimer;
   bool _isConnecting = false;
   StreamSubscription? _linkSub;
+  late AppLinks _appLinks;
 
   // Config storage
   String? _storedHost;
   int? _storedPort;
   String? _storedToken;
+  bool _shouldConnect = false;
+  bool _configLoaded = false;
 
-  String get _serverUrl {
-    if (widget.serverUrl != null) return widget.serverUrl!;
-    
+  String? get _serverUrl {
+    if (widget.serverUrl != null) return widget.serverUrl;
+
     // Prioritize stored config
     if (_storedHost != null && _storedPort != null) {
       return 'ws://$_storedHost:$_storedPort';
     }
 
-    // Default URLs based on platform (Fallbacks for Zero-Config/Localhost)
+    // Return default URLs based on platform
+    // Note: We provide defaults but only auto-connect if no config is needed
     if (kIsWeb) {
       return 'ws://127.0.0.1:8765';
-    } else if (Platform.isAndroid) {
+    }
+
+    if (Platform.isAndroid) {
+      // Android emulator IP
       return 'ws://10.0.2.2:8765';
-    } else {
+    }
+
+    if (Platform.isIOS) {
+      // iOS simulator/localhost
       return 'ws://127.0.0.1:8765';
     }
+
+    return null;
   }
 
   @override
@@ -73,37 +87,70 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   }
 
   Future<void> _init() async {
+    if (_configLoaded) return; // Prevent re-initialization on hot reload
+
     // 1. Load stored config
     try {
       final prefs = await SharedPreferences.getInstance();
+      final host = prefs.getString('agenteract_host');
+      final port = prefs.getInt('agenteract_port');
+      final token = prefs.getString('agenteract_token');
+
       setState(() {
-        _storedHost = prefs.getString('agenteract_host');
-        _storedPort = prefs.getInt('agenteract_port');
-        _storedToken = prefs.getString('agenteract_token');
+        _storedHost = host;
+        _storedPort = port;
+        _storedToken = token;
+        _configLoaded = true;
+
+        // Determine if we should connect
+        if (host != null && port != null) {
+          // Have saved config - connect
+          _shouldConnect = true;
+          debugPrint('[Agenteract] Using saved config: $host:$port');
+        } else {
+          // No saved config - only connect if autoConnect is enabled and we have a default URL
+          final hasDefaultUrl = _serverUrl != null;
+          _shouldConnect = widget.autoConnect && hasDefaultUrl;
+
+          if (hasDefaultUrl && _shouldConnect) {
+            debugPrint('[Agenteract] Will try connecting to default URL: $_serverUrl');
+            debugPrint('[Agenteract] On physical devices, this may fail. Use "agenteract connect" to pair.');
+          } else if (!hasDefaultUrl) {
+            debugPrint('[Agenteract] No default URL. Use "agenteract connect" to pair.');
+          }
+        }
       });
     } catch (e) {
-      debugPrint('AgentDebugBridge: Failed to load preferences: $e');
+      debugPrint('[Agenteract] Failed to load preferences: $e');
+      setState(() {
+        _configLoaded = true;
+        _shouldConnect = false;
+      });
     }
 
-    // 2. Connect immediately (uses stored config if available)
-    _connect();
+    // 2. Connect if appropriate
+    if (_shouldConnect) {
+      _connect();
+    }
 
     // 3. Listen for Deep Links
     _initDeepLinks();
   }
 
   Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
     try {
-      final initialLink = await getInitialLink();
-      if (initialLink != null) _handleLink(initialLink);
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) _handleLink(initialLink.toString());
     } catch (e) {
-      // Ignore platform errors
+      debugPrint('AgentDebugBridge: Error getting initial link: $e');
     }
 
-    _linkSub = linkStream.listen((String? link) {
-      if (link != null) _handleLink(link);
+    _linkSub = _appLinks.uriLinkStream.listen((Uri? uri) {
+      if (uri != null) _handleLink(uri.toString());
     }, onError: (err) {
-      // Ignore errors
+      debugPrint('AgentDebugBridge: Error in link stream: $err');
     });
   }
 
@@ -120,8 +167,8 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         final token = uri.queryParameters['token'];
 
         if (host != null && portStr != null && token != null) {
-          debugPrint('Agenteract: Received config via Deep Link: $host:$portStr');
-          
+          debugPrint('[Agenteract] Received config via Deep Link: $host:$portStr');
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('agenteract_host', host);
           await prefs.setInt('agenteract_port', int.parse(portStr));
@@ -131,6 +178,8 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
             _storedHost = host;
             _storedPort = int.parse(portStr);
             _storedToken = token;
+            _shouldConnect = true;
+            _configLoaded = true;
           });
 
           // Force Reconnect with new config
@@ -159,40 +208,47 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
 
   void _connect() {
     if (_isConnecting) return;
+    if (!_shouldConnect) {
+      debugPrint('[Agenteract] Auto-connect disabled. Use deep link to configure.');
+      return;
+    }
+
+    final serverUrl = _serverUrl;
+    if (serverUrl == null) {
+      debugPrint('[Agenteract] No server URL configured. Waiting for deep link...');
+      return;
+    }
+
     _isConnecting = true;
 
     try {
       // Add token if available
-      String url = '$_serverUrl/${widget.projectName}';
+      String url = '$serverUrl/${widget.projectName}';
       if (_storedToken != null) {
         url += '?token=$_storedToken';
-      } else {
-         // If no token is stored, we might be in legacy mode or unauthenticated local dev.
-         // But server now requires token. This connection will likely fail with 4001 
-         // unless the server allows localhost without token (which we didn't implement yet, but could).
       }
 
       final uri = Uri.parse(url);
-      debugPrint('AgentDebugBridge: Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
+      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
 
       _channel = WebSocketChannel.connect(uri);
 
       _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
-          debugPrint('AgentDebugBridge WebSocket error: $error');
+          debugPrint('[Agenteract] Connection error: $error');
           _scheduleReconnect();
         },
         onDone: () {
-          debugPrint('AgentDebugBridge: Disconnected. Reconnecting...');
+          debugPrint('[Agenteract] Disconnected. Reconnecting...');
           _scheduleReconnect();
         },
       );
 
-      debugPrint('AgentDebugBridge: Connected to agent server');
+      debugPrint('[Agenteract] Connected to agent server');
       _isConnecting = false;
     } catch (e) {
-      debugPrint('AgentDebugBridge: Connection failed: $e');
+      debugPrint('[Agenteract] Connection failed: $e');
       _isConnecting = false;
       _scheduleReconnect();
     }
