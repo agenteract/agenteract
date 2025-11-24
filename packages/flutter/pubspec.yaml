@@ -1,6 +1,6 @@
 name: agenteract
 description: Agent interaction and debugging bridge for Flutter applications
-version: 0.0.1
+version: 0.1.0
 homepage: https://agenteract.io
 repository:
   type: git
