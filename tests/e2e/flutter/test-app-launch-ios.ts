@@ -411,7 +411,7 @@ async function main() {
 
     let hierarchy: string = '';
     let connectionAttempts = 0;
-    const maxAttempts = 12; // 48 * 5s = 4 minutes total
+    const maxAttempts = 48; // 48 * 5s = 4 minutes total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
