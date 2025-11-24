@@ -52,6 +52,16 @@ jobs:
           flutter --version
           flutter doctor
 
+      - name: Install CocoaPods
+        run: |
+          if ! command -v pod &> /dev/null; then
+            echo "CocoaPods not found, installing..."
+            sudo gem install cocoapods
+          else
+            echo "CocoaPods already installed"
+          fi
+          pod --version
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

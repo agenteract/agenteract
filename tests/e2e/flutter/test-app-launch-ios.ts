@@ -202,6 +202,28 @@ async function main() {
     await runCommand(`cd ${exampleAppDir} && flutter pub get`);
     success('Flutter dependencies installed');
 
+    // 8a. Install CocoaPods dependencies for iOS
+    // This is required after copying the app to a new location
+    // The Pods directory paths need to be regenerated for the new location
+    info('Installing CocoaPods dependencies...');
+    try {
+      // Check if CocoaPods is installed
+      await runCommand('which pod');
+      info('CocoaPods is installed');
+    } catch (err) {
+      error('CocoaPods is not installed. Please install it with: sudo gem install cocoapods');
+      throw new Error('CocoaPods is required for iOS builds');
+    }
+    
+    // Remove existing Pods directory to ensure clean install
+    // This is necessary because paths in Podfile.lock may be incorrect after copying
+    await runCommand(`rm -rf ${exampleAppDir}/ios/Pods ${exampleAppDir}/ios/Podfile.lock`);
+    
+    // Run pod install
+    // Note: We don't use --repo-update to avoid slow CocoaPods spec repo updates in CI
+    await runCommand(`cd ${exampleAppDir}/ios && pod install`);
+    success('CocoaPods dependencies installed');
+
     // 8b. Install @agenteract/flutter-cli in Flutter app directory
     // This is needed because dev.ts spawns npx from the project directory (cwd: projectPath)
     // Without this, npx prompts to install the package
