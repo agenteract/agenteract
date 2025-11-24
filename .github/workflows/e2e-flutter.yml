@@ -91,16 +91,135 @@ jobs:
 
       - name: Run Flutter E2E tests
         run: pnpm test:e2e:flutter:ios
+        env:
+          # Preserve temp directories for artifact collection
+          CI: true
+
+      - name: Save Flutter app directory path
+        if: always()
+        id: flutter-dir
+        run: |
+          # Find and save the Flutter app directory path for debugging
+          FLUTTER_APP_DIR=$(find /tmp -maxdepth 2 -type d -name "agenteract-e2e-flutter-app-*" 2>/dev/null | head -1)
+          if [ -n "$FLUTTER_APP_DIR" ]; then
+            echo "FLUTTER_APP_DIR=$FLUTTER_APP_DIR" >> $GITHUB_ENV
+            echo "directory=$FLUTTER_APP_DIR" >> $GITHUB_OUTPUT
+            echo "Flutter app directory: $FLUTTER_APP_DIR"
+            echo "Directory exists: $(test -d "$FLUTTER_APP_DIR" && echo 'yes' || echo 'no')"
+          else
+            echo "Flutter app directory not found"
+            echo "Searching /tmp for any agenteract directories:"
+            ls -la /tmp/agenteract-* 2>/dev/null || echo "No agenteract directories found"
+          fi
+
+      - name: Collect diagnostic information
+        if: failure()
+        env:
+          FLUTTER_APP_DIR: ${{ steps.flutter-dir.outputs.directory }}
+        run: |
+          echo "=== Collecting diagnostic information ==="
+          
+          # Use saved directory path or find it
+          if [ -z "$FLUTTER_APP_DIR" ]; then
+            FLUTTER_APP_DIR=$(find /tmp -maxdepth 2 -type d -name "agenteract-e2e-flutter-app-*" 2>/dev/null | head -1)
+          fi
+          
+          if [ -n "$FLUTTER_APP_DIR" ]; then
+            echo "Found Flutter app directory: $FLUTTER_APP_DIR"
+            
+            # Create diagnostics directory
+            mkdir -p flutter-diagnostics
+            
+            # Save directory structure
+            echo "=== iOS directory structure ===" > flutter-diagnostics/ios-structure.txt
+            find "$FLUTTER_APP_DIR/ios" -type f -name "*.xcconfig" -o -name "*.xcfilelist" -o -name "Podfile*" | sort >> flutter-diagnostics/ios-structure.txt 2>&1 || true
+            
+            # Save Pods directory structure
+            echo "=== Pods directory structure ===" > flutter-diagnostics/pods-structure.txt
+            if [ -d "$FLUTTER_APP_DIR/ios/Pods" ]; then
+              find "$FLUTTER_APP_DIR/ios/Pods" -type f | head -100 >> flutter-diagnostics/pods-structure.txt 2>&1 || true
+              echo "" >> flutter-diagnostics/pods-structure.txt
+              echo "=== Target Support Files ===" >> flutter-diagnostics/pods-structure.txt
+              ls -la "$FLUTTER_APP_DIR/ios/Pods/Target Support Files/" 2>&1 >> flutter-diagnostics/pods-structure.txt || true
+            else
+              echo "Pods directory does not exist!" >> flutter-diagnostics/pods-structure.txt
+            fi
+            
+            # Save xcconfig files
+            echo "=== Debug.xcconfig ===" > flutter-diagnostics/xcconfig-files.txt
+            cat "$FLUTTER_APP_DIR/ios/Flutter/Debug.xcconfig" >> flutter-diagnostics/xcconfig-files.txt 2>&1 || echo "File not found" >> flutter-diagnostics/xcconfig-files.txt
+            echo "" >> flutter-diagnostics/xcconfig-files.txt
+            echo "=== Release.xcconfig ===" >> flutter-diagnostics/xcconfig-files.txt
+            cat "$FLUTTER_APP_DIR/ios/Flutter/Release.xcconfig" >> flutter-diagnostics/xcconfig-files.txt 2>&1 || echo "File not found" >> flutter-diagnostics/xcconfig-files.txt
+            echo "" >> flutter-diagnostics/xcconfig-files.txt
+            echo "=== Generated.xcconfig ===" >> flutter-diagnostics/xcconfig-files.txt
+            cat "$FLUTTER_APP_DIR/ios/Flutter/Generated.xcconfig" >> flutter-diagnostics/xcconfig-files.txt 2>&1 || echo "File not found" >> flutter-diagnostics/xcconfig-files.txt
+            
+            # Save Podfile
+            echo "=== Podfile ===" > flutter-diagnostics/podfile.txt
+            cat "$FLUTTER_APP_DIR/ios/Podfile" >> flutter-diagnostics/podfile.txt 2>&1 || echo "File not found" >> flutter-diagnostics/podfile.txt
+            
+            # Save Podfile.lock if it exists
+            if [ -f "$FLUTTER_APP_DIR/ios/Podfile.lock" ]; then
+              cp "$FLUTTER_APP_DIR/ios/Podfile.lock" flutter-diagnostics/Podfile.lock
+            fi
+            
+            # Check for workspace
+            echo "=== Workspace check ===" > flutter-diagnostics/workspace-check.txt
+            ls -la "$FLUTTER_APP_DIR/ios/"*.xcworkspace 2>&1 >> flutter-diagnostics/workspace-check.txt || echo "No workspace found" >> flutter-diagnostics/workspace-check.txt
+            
+            # Copy entire iOS directory structure (compressed)
+            echo "Creating iOS directory archive..."
+            tar -czf flutter-diagnostics/ios-directory.tar.gz -C "$FLUTTER_APP_DIR" ios/ 2>&1 || echo "Failed to create archive" > flutter-diagnostics/archive-error.txt
+            
+            echo "Diagnostics collected in flutter-diagnostics/"
+          else
+            echo "Flutter app directory not found in /tmp"
+            echo "Searching for any agenteract temp directories..."
+            find /tmp -maxdepth 1 -type d -name "agenteract-*" > flutter-diagnostics/temp-dirs.txt 2>&1 || true
+          fi
+          
+          # Save CocoaPods version and info
+          echo "=== CocoaPods Info ===" > flutter-diagnostics/cocoapods-info.txt
+          pod --version >> flutter-diagnostics/cocoapods-info.txt 2>&1 || echo "pod command failed" >> flutter-diagnostics/cocoapods-info.txt
+          pod repo list >> flutter-diagnostics/cocoapods-info.txt 2>&1 || true
+          
+          # Save Flutter doctor output
+          echo "=== Flutter Doctor ===" > flutter-diagnostics/flutter-doctor.txt
+          flutter doctor -v >> flutter-diagnostics/flutter-doctor.txt 2>&1 || true
 
       - name: Upload test artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-flutter-failure-logs
+          name: e2e-flutter-failure-artifacts
           path: |
             .e2e-test-flutter/
             tests/e2e/flutter/*.log
+            flutter-diagnostics/
           retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload Flutter app directory for local diagnosis
+        if: failure() && steps.flutter-dir.outputs.directory != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flutter-app-directory
+          path: ${{ steps.flutter-dir.outputs.directory }}
+          retention-days: 7
+          if-no-files-found: ignore
+          compression-level: 6
+
+      - name: Upload Flutter app directory (fallback glob)
+        if: failure() && steps.flutter-dir.outputs.directory == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-flutter-app-directory-fallback
+          path: |
+            /tmp/agenteract-e2e-flutter-app-*/
+          retention-days: 7
+          if-no-files-found: ignore
+          compression-level: 6
 
       - name: Cleanup
         if: always()
