@@ -84,7 +84,7 @@ interface PackageInfo {
   name: string;
   shortName: string;
   path: string;
-  type: 'npm' | 'dart';
+  type: 'npm' | 'dart' | 'kotlin';
   currentVersion: string;
   newVersion: string;
 }
@@ -178,6 +178,7 @@ function getPackageInfo(shortName: string): PackageInfo | null {
   const packagePath = join(packagesDir, shortName);
   const packageJsonPath = join(packagePath, 'package.json');
   const pubspecPath = join(packagePath, 'pubspec.yaml');
+  const buildGradlePath = join(packagePath, 'build.gradle.kts');
 
   if (existsSync(packageJsonPath)) {
     // NPM package
@@ -206,6 +207,28 @@ function getPackageInfo(shortName: string): PackageInfo | null {
       shortName,
       path: packagePath,
       type: 'dart',
+      currentVersion: versionMatch[1].trim(),
+      newVersion: '', // Will be calculated
+    };
+  } else if (existsSync(buildGradlePath)) {
+    // Kotlin Multiplatform package
+    const buildGradleContent = readFileSync(buildGradlePath, 'utf-8');
+    const groupMatch = buildGradleContent.match(/^group\s*=\s*["'](.+?)["']/m);
+    const versionMatch = buildGradleContent.match(/^version\s*=\s*["'](.+?)["']/m);
+
+    if (!versionMatch) {
+      log(`❌ Error: Could not parse version from build.gradle.kts for ${shortName}`, 'red');
+      return null;
+    }
+
+    // Use group as name, or fallback to shortName
+    const name = groupMatch ? groupMatch[1].trim() : `io.agenteract.${shortName}`;
+
+    return {
+      name,
+      shortName,
+      path: packagePath,
+      type: 'kotlin',
       currentVersion: versionMatch[1].trim(),
       newVersion: '', // Will be calculated
     };
@@ -265,11 +288,18 @@ for (const shortName of targetPackages) {
   const pkgInfo = getPackageInfo(shortName);
 
   if (!pkgInfo) {
-    log(`❌ Error: Package '${shortName}' not found or invalid`, 'red');
-    console.log();
-    log('Available packages:');
-    allPackages.forEach((p) => console.log(`  - ${p}`));
-    process.exit(1);
+    // If processing all packages, skip packages without version files (e.g., swift)
+    // But error if a specific package was requested
+    if (packagesArg) {
+      log(`❌ Error: Package '${shortName}' not found or invalid`, 'red');
+      console.log();
+      log('Available packages:');
+      allPackages.forEach((p) => console.log(`  - ${p}`));
+      process.exit(1);
+    } else {
+      // Skip packages without version files when processing all packages
+      continue;
+    }
   }
 
   // Calculate new version
@@ -293,6 +323,7 @@ log('─────────────────────────
 console.log(`  Packages to update: ${packages.length}`);
 console.log(`  NPM packages: ${packages.filter(p => p.type === 'npm').length}`);
 console.log(`  Dart packages: ${packages.filter(p => p.type === 'dart').length}`);
+console.log(`  Kotlin packages: ${packages.filter(p => p.type === 'kotlin').length}`);
 if (isPrerelease) {
   console.log(`  Release type: Prerelease (${prereleaseType})`);
 } else {
@@ -406,6 +437,15 @@ log('─────────────────────────
         `version: ${pkg.newVersion}`
       );
       writeFileSync(pubspecPath, pubspecContent);
+    } else if (pkg.type === 'kotlin') {
+      // Update build.gradle.kts
+      const buildGradlePath = join(pkg.path, 'build.gradle.kts');
+      let buildGradleContent = readFileSync(buildGradlePath, 'utf-8');
+      buildGradleContent = buildGradleContent.replace(
+        /^version\s*=\s*["'].*?["']/m,
+        `version = "${pkg.newVersion}"`
+      );
+      writeFileSync(buildGradlePath, buildGradleContent);
     }
 
     log(`  ✓ Updated ${pkg.shortName} to ${pkg.newVersion}`, 'green');
