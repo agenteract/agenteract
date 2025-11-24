@@ -2,6 +2,9 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { getFilteredHierarchy } from './getFilteredHierarchy';
 import { getNode } from './utils/AgentRegistry';
 import { AgentCommand } from '@agenteract/core';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 // --- New Type Definition ---
 type ServerCommand = AgentCommand & { id: string };
@@ -19,50 +22,38 @@ function addLog(level: string, message: string) {
 
 // --- Platform Detection ---
 const getPlatform = (): 'android' | 'ios' | 'web' => {
-  if (typeof window !== 'undefined' && typeof document !== 'undefined') return 'web';
-  try {
-    const RN = require('react-native');
-    return RN.Platform.OS;
-  } catch {
-    return 'web';
-  }
+  return Platform.OS as 'android' | 'ios' | 'web';
 };
 
 // --- Platform & Device Detection ---
 function isAndroidEmulator(): boolean {
-  try {
-    const { Platform } = require('react-native');
-    if (Platform.OS !== 'android') return false;
+  if (Platform.OS !== 'android') return false;
 
-    // Check various indicators that this is an emulator
-    const constants = Platform.constants || {};
+  // Check various indicators that this is an emulator
+  const constants = (Platform as any).constants || {};
 
-    // Method 1: Check Brand (emulators often have 'google' or 'generic')
-    const brand = constants.Brand || '';
-    const model = constants.Model || '';
-    const fingerprint = constants.Fingerprint || '';
+  // Method 1: Check Brand (emulators often have 'google' or 'generic')
+  const brand = constants.Brand || '';
+  const model = constants.Model || '';
+  const fingerprint = constants.Fingerprint || '';
 
-    // Debug logging
-    console.log('[Agenteract] Android device info:', {
-      brand,
-      model,
-      fingerprint: fingerprint.substring(0, 50)
-    });
+  // Debug logging
+  console.log('[Agenteract] Android device info:', {
+    brand,
+    model,
+    fingerprint: fingerprint.substring(0, 50)
+  });
 
-    // Emulator indicators
-    const isEmulator =
-      brand.toLowerCase().includes('generic') ||
-      model.toLowerCase().includes('emulator') ||
-      model.toLowerCase().includes('sdk') ||
-      fingerprint.toLowerCase().includes('generic') ||
-      fingerprint.toLowerCase().includes('emulator');
+  // Emulator indicators
+  const isEmulator =
+    brand.toLowerCase().includes('generic') ||
+    model.toLowerCase().includes('emulator') ||
+    model.toLowerCase().includes('sdk') ||
+    fingerprint.toLowerCase().includes('generic') ||
+    fingerprint.toLowerCase().includes('emulator');
 
-    console.log('[Agenteract] Is emulator:', isEmulator);
-    return isEmulator;
-  } catch (error) {
-    console.warn('[Agenteract] Could not detect device type:', error);
-    return false;
-  }
+  console.log('[Agenteract] Is emulator:', isEmulator);
+  return isEmulator;
 }
 
 function getDefaultServerUrl(): string {
@@ -90,7 +81,6 @@ const STORAGE_KEY = '@agenteract:config';
 
 async function saveConfig(config: AgenteractConfig): Promise<void> {
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     console.log('[Agenteract] Config saved:', config);
   } catch (error) {
@@ -100,7 +90,6 @@ async function saveConfig(config: AgenteractConfig): Promise<void> {
 
 async function loadConfig(): Promise<AgenteractConfig | null> {
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     const stored = await AsyncStorage.getItem(STORAGE_KEY);
     if (stored) {
       const config = JSON.parse(stored);
@@ -443,23 +432,17 @@ export const AgentDebugBridge = ({
   useEffect(() => {
     if (getPlatform() === 'web') return; // Skip for web
 
-    try {
-      const Linking = require('expo-linking');
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url: string | null) => {
+      if (url) handleDeepLink(url);
+    });
 
-      // Handle initial URL (app opened via deep link)
-      Linking.getInitialURL().then((url: string | null) => {
-        if (url) handleDeepLink(url);
-      });
+    // Handle URL when app is already open
+    const subscription = Linking.addEventListener('url', (event: { url: string }) => {
+      handleDeepLink(event.url);
+    });
 
-      // Handle URL when app is already open
-      const subscription = Linking.addEventListener('url', (event: { url: string }) => {
-        handleDeepLink(event.url);
-      });
-
-      return () => subscription?.remove();
-    } catch (error) {
-      console.warn('[Agenteract] expo-linking not available, deep linking disabled');
-    }
+    return () => subscription?.remove();
   }, []);
 
   const handleDeepLink = async (url: string) => {

@@ -266,6 +266,18 @@ async function main() {
     let connectionAttempts = 0;
     const maxAttempts = 180; // wait 3 minutes for app to start
 
+    const psAndReload = async () => {
+      try {
+        const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+        info(`Expo Go processes: \n${psResult}`);
+        // app may have redscreen error / can't connect to dev server - send r command to app to reload
+        // note that this makes download updates screen flash, but updates will download
+        await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'r');
+      } catch (err) {
+        info(`Expo Go processes not found...`);
+      }
+    }
+
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
       await sleep(1000);
@@ -288,16 +300,22 @@ async function main() {
           await takeSimulatorScreenshot(successScreenshot);
 
           break;
-        } else if (hierarchy.includes('not connected')) {
+        } else if (hierarchy.includes('has no connected devices')) {
           info('Expo app not yet connected to bridge, waiting...');
+
+          if (connectionAttempts % 5 === 0) {
+            await psAndReload();
+          }
         } else {
           info(`Got response but not a valid hierarchy (${hierarchy.length} chars), retrying...`);
           info(`Response preview: ${hierarchy.substring(0, 200)}`);
+
+          console.log(`dev logs: ${await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '50')}`);
         }
       } catch (err) {
         const errMsg = String(err);
-        if (errMsg.includes('not connected')) {
-          info('Expo app not connected yet, waiting...');
+        if (errMsg.includes('has no connected devices')) {
+          info('Expo app has no connected devices yet, waiting...');
 
           // Every 5 attempts, check dev logs for progress
           if (connectionAttempts % 5 === 0) {
@@ -309,12 +327,7 @@ async function main() {
               // Ignore log errors
               console.log(`Error getting dev logs: ${logErr}`);
             }
-          }
-          try {
-            const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-            info(`Expo Go processes: \n${psResult}`);
-          } catch (err) {
-            info(`Expo Go processes not found...`);
+            await psAndReload();
           }
         } else {
           info(`Connection attempt failed: ${errMsg}`);

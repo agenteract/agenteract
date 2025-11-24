@@ -28,14 +28,24 @@ export function getReactHierarchy() {
           fiber.type?.displayName ||
           fiber.type?.name ||
           (typeof fiber.elementType === "string" ? fiber.elementType : "Unknown");
-  
-        // Extract text content from props if it's a primitive
-        const text = typeof fiber.memoizedProps?.children === 'string' ? fiber.memoizedProps.children : undefined;
-  
+
+        // Extract text content from props
+        const props = fiber.memoizedProps || {};
+        let text: string | undefined;
+        if (typeof props.children === 'string') {
+          text = props.children;
+        } else if (props.value !== undefined && props.value !== null) {
+          // For TextInput and other input elements, capture the value prop
+          text = String(props.value);
+        } else if (props.placeholder && !text) {
+          // Fallback to placeholder if no value is set
+          text = `[${props.placeholder}]`;
+        }
+
         const node: any = {
           name,
           key: fiber.key,
-          testID: fiber.memoizedProps?.testID,
+          testID: props.testID,
           text,
           children: [],
         };
@@ -126,11 +136,21 @@ export function getReactHierarchy() {
   }
   
   const node: Node = { name, key: fiber.key, children: [] };
-  
+
   const props = fiber.memoizedProps || {};
   if (props.testID) node.testID = props.testID;
   if (props.accessibilityLabel) node.accessibilityLabel = props.accessibilityLabel;
-  if (typeof props.children === "string") node.text = props.children;
+
+  // Capture text content from children or value prop (for TextInput)
+  if (typeof props.children === "string") {
+    node.text = props.children;
+  } else if (props.value !== undefined && props.value !== null) {
+    // For TextInput and other input elements, capture the value prop
+    node.text = String(props.value);
+  } else if (props.placeholder && !node.text) {
+    // Fallback to placeholder if no value is set
+    node.text = `[${props.placeholder}]`;
+  }
   
   // recurse
   if (fiber.child) {

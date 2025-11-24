@@ -331,7 +331,7 @@ async function main() {
           success('Flutter app connected and hierarchy received!');
           info(`Hierarchy preview (first 200 chars): ${hierarchy.substring(0, 200)}...`);
           break;
-        } else if (hierarchy.includes('not connected')) {
+        } else if (hierarchy.includes('has no connected devices')) {
           info('Flutter app not yet connected to bridge, waiting...');
         } else {
           info(`Got response but not a valid hierarchy (${hierarchy.length} chars), retrying...`);
@@ -339,7 +339,7 @@ async function main() {
         }
       } catch (err) {
         const errMsg = String(err);
-        if (errMsg.includes('not connected')) {
+        if (errMsg.includes('has no connected devices')) {
           info('Flutter app not connected yet, waiting...');
 
           // Every 5 attempts, check dev logs for progress

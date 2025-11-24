@@ -16,7 +16,25 @@ function traverse(node: Element): any {
     const accessibilityLabel = node.getAttribute('aria-label');
 
     let text: string | undefined;
-    if (node.childNodes.length === 1 && node.childNodes[0].nodeType === Node.TEXT_NODE) {
+
+    // For input elements, capture the current value
+    if (name === 'input' || name === 'textarea') {
+        const value = (node as HTMLInputElement | HTMLTextAreaElement).value;
+        if (value) {
+            text = value;
+        } else {
+            // Fallback to placeholder if no value
+            const placeholder = node.getAttribute('placeholder');
+            if (placeholder) {
+                text = `[${placeholder}]`;
+            }
+        }
+    } else if (name === 'select') {
+        const value = (node as HTMLSelectElement).value;
+        if (value) {
+            text = value;
+        }
+    } else if (node.childNodes.length === 1 && node.childNodes[0].nodeType === Node.TEXT_NODE) {
         text = node.childNodes[0].textContent?.trim();
     }
 

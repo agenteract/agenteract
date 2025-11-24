@@ -195,4 +195,6 @@ It should be possible to set a default device (Otherwise we need to update all A
 - [x] KMP
 - [x] Swift
 
-- [ ] Expo e2e failing - Was incorrectly finding text in logs before, rather than UI hierarchy?
+- [x] Expo e2e failing - Was incorrectly finding text in logs before, rather than UI hierarchy?
+
+- [ ] Local simulators that have token set won't be able to reconnect without clearing token - Bad for e2e
