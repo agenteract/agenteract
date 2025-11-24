@@ -77,6 +77,17 @@ async function main() {
   // Clean npm cache
   execSync('npm cache clean --force', { stdio: 'ignore' });
 
+  // Clean up any existing processes on test ports
+  if (process.platform !== 'win32') {
+    console.log('Cleaning up any existing processes on test ports...');
+    try {
+      execSync('lsof -ti:8765,8766,8790,8791 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
   // Create test directory
   mkdirSync(TEST_DIR, { recursive: true });
   process.chdir(TEST_DIR);
@@ -88,8 +99,90 @@ async function main() {
   // Install packages
   console.log(`Installing @agenteract packages from ${REGISTRY}...`);
   execSync(
-    `npm install @agenteract/core @agenteract/react @agenteract/agents --registry "${REGISTRY}"`,
+    `npm install @agenteract/core @agenteract/react @agenteract/agents @agenteract/cli @agenteract/server --registry "${REGISTRY}"`,
     { stdio: 'inherit' }
+  );
+
+  // Install optional peer dependencies for @agenteract/react
+  // These are marked as optional but the code still requires them at import time
+  console.log('Installing optional peer dependencies for @agenteract/react...');
+  execSync(
+    `npm install react@^18.0.0`,
+    { stdio: 'inherit' }
+  );
+
+  // Create mock modules for react-native and related packages
+  // These are needed because the code imports them at the top level
+  // but they're optional peer dependencies that don't work in Node.js
+  console.log('Creating mock modules for react-native dependencies...');
+  const nodeModulesPath = join(TEST_DIR, 'node_modules');
+  
+  // Mock react-native
+  const reactNativeMockPath = join(nodeModulesPath, 'react-native');
+  mkdirSync(reactNativeMockPath, { recursive: true });
+  writeFileSync(
+    join(reactNativeMockPath, 'index.js'),
+    `module.exports = {
+  Platform: { OS: 'web' },
+  Linking: {
+    getInitialURL: () => Promise.resolve(null),
+    addEventListener: () => ({ remove: () => {} }),
+    openURL: () => Promise.resolve(true),
+    canOpenURL: () => Promise.resolve(true),
+  },
+};
+`
+  );
+  writeFileSync(
+    join(reactNativeMockPath, 'package.json'),
+    JSON.stringify({ name: 'react-native', version: '0.0.0-mock' }, null, 2)
+  );
+
+  // Mock @react-native-async-storage/async-storage
+  const asyncStorageMockPath = join(nodeModulesPath, '@react-native-async-storage', 'async-storage');
+  mkdirSync(asyncStorageMockPath, { recursive: true });
+  writeFileSync(
+    join(asyncStorageMockPath, 'index.js'),
+    `// Simple in-memory storage for Node.js test environment
+const storage = new Map();
+module.exports = {
+  getItem: (key) => Promise.resolve(storage.get(key) || null),
+  setItem: (key, value) => {
+    storage.set(key, value);
+    return Promise.resolve();
+  },
+  removeItem: (key) => {
+    storage.delete(key);
+    return Promise.resolve();
+  },
+  clear: () => {
+    storage.clear();
+    return Promise.resolve();
+  },
+};
+`
+  );
+  writeFileSync(
+    join(asyncStorageMockPath, 'package.json'),
+    JSON.stringify({ name: '@react-native-async-storage/async-storage', version: '0.0.0-mock' }, null, 2)
+  );
+
+  // Mock expo-linking
+  const expoLinkingMockPath = join(nodeModulesPath, 'expo-linking');
+  mkdirSync(expoLinkingMockPath, { recursive: true });
+  writeFileSync(
+    join(expoLinkingMockPath, 'index.js'),
+    `module.exports = {
+  getInitialURL: () => Promise.resolve(null),
+  addEventListener: () => ({ remove: () => {} }),
+  openURL: () => Promise.resolve(true),
+  canOpenURL: () => Promise.resolve(true),
+};
+`
+  );
+  writeFileSync(
+    join(expoLinkingMockPath, 'package.json'),
+    JSON.stringify({ name: 'expo-linking', version: '0.0.0-mock' }, null, 2)
   );
 
   // Verify package structure after installation
@@ -226,22 +319,42 @@ console.log('✓ @agenteract/core imported via ESM');
 `
   );
 
-  // Start mock server
-  console.log(TEST_DIR);
+  // Start agenteract dev (agent server) using locally installed CLI
+  console.log('Starting agenteract dev server...');
+  const cliPath = join(TEST_DIR, 'node_modules', '.bin', 'agenteract');
+  const agentServerProcess = spawn(cliPath, ['dev'], {
+    stdio: 'inherit', // Show output for debugging
+    detached: false,
+    shell: process.platform === 'win32',
+    cwd: TEST_DIR,
+  });
+
+  // Give agent server time to start
+  console.log('Waiting for agent server to start...');
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  // Start mock server (this will connect to the agent server)
+  console.log('Starting mock app connections...');
   const mockServerPath = join(START_DIR, 'tests', 'integration', 'mock-server.ts');
-  const serverProcess = spawn('npx', ['tsx', mockServerPath], {
-    stdio: 'ignore',
+  const serverProcess = spawn('npx', ['--yes', 'tsx', mockServerPath], {
+    stdio: 'inherit', // Show output for debugging
     detached: false,
     shell: process.platform === 'win32',
   });
 
-  // Give servers time to start
+  // Give mock server time to connect
+  console.log('Waiting for mock server to connect...');
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  // Cleanup server on exit
+  // Cleanup servers on exit
   const cleanupServer = () => {
     try {
       serverProcess.kill();
+    } catch {
+      // Ignore errors
+    }
+    try {
+      agentServerProcess.kill();
     } catch {
       // Ignore errors
     }
@@ -256,11 +369,12 @@ console.log('✓ @agenteract/core imported via ESM');
     process.exit(143);
   });
 
-  // Run CLI tests
+  // Run CLI tests using locally installed packages
   console.log('Running @agenteract/agents CLI tests...');
+  const agentsCliPath = join(TEST_DIR, 'node_modules', '.bin', 'agenteract-agents');
 
   try {
-    const logs = execSync('npx @agenteract/agents logs my-project', { encoding: 'utf-8' });
+    const logs = execSync(`"${agentsCliPath}" logs my-project`, { encoding: 'utf-8', cwd: TEST_DIR });
     if (!logs.includes('agent log line 1')) {
       throw new Error('agents: logs command failed');
     }
@@ -272,7 +386,7 @@ console.log('✓ @agenteract/core imported via ESM');
   }
 
   try {
-    const devLogs = execSync('npx @agenteract/agents dev-logs expo-app', { encoding: 'utf-8' });
+    const devLogs = execSync(`"${agentsCliPath}" dev-logs expo-app`, { encoding: 'utf-8', cwd: TEST_DIR });
     if (!devLogs.includes('expo log line 1')) {
       throw new Error('agents: dev-logs expo-app command failed');
     }
@@ -284,7 +398,7 @@ console.log('✓ @agenteract/core imported via ESM');
   }
 
   try {
-    const viteLogs = execSync('npx @agenteract/agents dev-logs vite-app', { encoding: 'utf-8' });
+    const viteLogs = execSync(`"${agentsCliPath}" dev-logs vite-app`, { encoding: 'utf-8', cwd: TEST_DIR });
     if (!viteLogs.includes('vite log line 1')) {
       throw new Error('agents: dev-logs vite-app command failed');
     }
@@ -296,7 +410,7 @@ console.log('✓ @agenteract/core imported via ESM');
   }
 
   try {
-    execSync('npx @agenteract/agents cmd expo-app r', { stdio: 'pipe' });
+    execSync(`"${agentsCliPath}" cmd expo-app r`, { stdio: 'pipe', cwd: TEST_DIR });
     console.log("✓ Sent command 'r' to expo-app");
     console.log('✓ agents: cmd expo-app command works');
   } catch {
@@ -307,11 +421,11 @@ console.log('✓ @agenteract/core imported via ESM');
 
   try {
     const hierarchyPath = join(getTmpDir(), 'hierarchy.txt');
-    const execOptions: any = {};
+    const execOptions: any = { cwd: TEST_DIR };
     if (process.platform === 'win32') {
       execOptions.shell = true;
     }
-    execSync(`npx @agenteract/agents hierarchy my-project > "${hierarchyPath}"`, execOptions);
+    execSync(`"${agentsCliPath}" hierarchy my-project > "${hierarchyPath}"`, execOptions);
     const hierarchy = readFileSync(hierarchyPath, 'utf-8');
     if (!hierarchy.includes('"hierarchy":"mock"')) {
       throw new Error('agents: hierarchy command failed');
@@ -325,10 +439,10 @@ console.log('✓ @agenteract/core imported via ESM');
 
   console.log('');
   console.log('--- Console Logs ---');
-  execSync('npx @agenteract/agents logs my-project', { stdio: 'inherit' });
+  execSync(`"${agentsCliPath}" logs my-project`, { stdio: 'inherit', cwd: TEST_DIR });
 
   try {
-    execSync('npx @agenteract/agents tap my-project my-button', { stdio: 'pipe' });
+    execSync(`"${agentsCliPath}" tap my-project my-button`, { stdio: 'pipe', cwd: TEST_DIR });
     console.log('✓ agents: tap command works');
   } catch {
     console.error('❌ agents: tap command failed');
