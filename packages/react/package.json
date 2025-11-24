@@ -6,7 +6,8 @@
   "module": "./dist/esm/react/src/index.js",
   "types": "./dist/cjs/react/src/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "__mocks__"
   ],
   "repository": {
     "type": "git",
@@ -42,10 +43,18 @@
   },
   "peerDependencies": {
     "react": ">=18 <20",
-    "react-native": "*"
+    "react-native": "*",
+    "@react-native-async-storage/async-storage": "*",
+    "expo-linking": "*"
   },
   "peerDependenciesMeta": {
     "react-native": {
+      "optional": true
+    },
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "expo-linking": {
       "optional": true
     }
   },

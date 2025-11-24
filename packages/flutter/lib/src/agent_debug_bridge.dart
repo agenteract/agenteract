@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:app_links/app_links.dart';
 import 'agent_registry.dart';
 import 'hierarchy_builder.dart';
 import 'console_logger.dart';
@@ -23,12 +25,14 @@ class AgentDebugBridge extends StatefulWidget {
   final String projectName;
   final Widget child;
   final String? serverUrl;
+  final bool autoConnect;
 
   const AgentDebugBridge({
     super.key,
     required this.projectName,
     required this.child,
     this.serverUrl,
+    this.autoConnect = true,
   });
 
   @override
@@ -39,59 +43,222 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   WebSocketChannel? _channel;
   Timer? _reconnectTimer;
   bool _isConnecting = false;
+  StreamSubscription? _linkSub;
+  late AppLinks _appLinks;
 
-  String get _serverUrl {
-    if (widget.serverUrl != null) return widget.serverUrl!;
+  // Config storage
+  String? _storedHost;
+  int? _storedPort;
+  String? _storedToken;
+  String? _storedDeviceId;
+  bool _shouldConnect = false;
+  bool _configLoaded = false;
 
-    // Default URLs based on platform
+  String? get _serverUrl {
+    if (widget.serverUrl != null) return widget.serverUrl;
+
+    // Prioritize stored config
+    if (_storedHost != null && _storedPort != null) {
+      return 'ws://$_storedHost:$_storedPort';
+    }
+
+    // Return default URLs based on platform
+    // Note: We provide defaults but only auto-connect if no config is needed
     if (kIsWeb) {
       return 'ws://127.0.0.1:8765';
-    } else if (Platform.isAndroid) {
+    }
+
+    if (Platform.isAndroid) {
+      // Android emulator IP
       return 'ws://10.0.2.2:8765';
-    } else {
+    }
+
+    if (Platform.isIOS) {
+      // iOS simulator/localhost
       return 'ws://127.0.0.1:8765';
     }
+
+    return null;
   }
 
   @override
   void initState() {
     super.initState();
-    _connect();
+    _init();
+  }
+
+  Future<void> _init() async {
+    if (_configLoaded) return; // Prevent re-initialization on hot reload
+
+    // 1. Load stored config
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final host = prefs.getString('agenteract_host');
+      final port = prefs.getInt('agenteract_port');
+      final token = prefs.getString('agenteract_token');
+      final deviceId = prefs.getString('agenteract_device_id');
+
+      setState(() {
+        _storedHost = host;
+        _storedPort = port;
+        _storedToken = token;
+        _storedDeviceId = deviceId;
+        _configLoaded = true;
+
+        // Determine if we should connect
+        if (host != null && port != null) {
+          // Have saved config - connect
+          _shouldConnect = true;
+          debugPrint('[Agenteract] Using saved config: $host:$port');
+        } else {
+          // No saved config - only connect if autoConnect is enabled and we have a default URL
+          final hasDefaultUrl = _serverUrl != null;
+          _shouldConnect = widget.autoConnect && hasDefaultUrl;
+
+          if (hasDefaultUrl && _shouldConnect) {
+            debugPrint('[Agenteract] Will try connecting to default URL: $_serverUrl');
+            debugPrint('[Agenteract] On physical devices, this may fail. Use "agenteract connect" to pair.');
+          } else if (!hasDefaultUrl) {
+            debugPrint('[Agenteract] No default URL. Use "agenteract connect" to pair.');
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[Agenteract] Failed to load preferences: $e');
+      setState(() {
+        _configLoaded = true;
+        _shouldConnect = false;
+      });
+    }
+
+    // 2. Connect if appropriate
+    if (_shouldConnect) {
+      _connect();
+    }
+
+    // 3. Listen for Deep Links
+    _initDeepLinks();
+  }
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    try {
+      final initialLink = await _appLinks.getInitialLink();
+      if (initialLink != null) _handleLink(initialLink.toString());
+    } catch (e) {
+      debugPrint('AgentDebugBridge: Error getting initial link: $e');
+    }
+
+    _linkSub = _appLinks.uriLinkStream.listen((Uri? uri) {
+      if (uri != null) _handleLink(uri.toString());
+    }, onError: (err) {
+      debugPrint('AgentDebugBridge: Error in link stream: $err');
+    });
+  }
+
+  void _handleLink(String link) async {
+    try {
+      final uri = Uri.parse(link);
+      // Expecting: scheme://agenteract/config?host=...&port=...&token=...
+      // The host might be 'agenteract' or the scheme itself depending on config.
+      // We check path segments.
+      
+      if (uri.path.contains('config') || uri.host == 'config' || uri.pathSegments.contains('config')) {
+        final host = uri.queryParameters['host'];
+        final portStr = uri.queryParameters['port'];
+        final token = uri.queryParameters['token'];
+
+        if (host != null && portStr != null && token != null) {
+          debugPrint('[Agenteract] Received config via Deep Link: $host:$portStr');
+
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('agenteract_host', host);
+          await prefs.setInt('agenteract_port', int.parse(portStr));
+          await prefs.setString('agenteract_token', token);
+
+          setState(() {
+            _storedHost = host;
+            _storedPort = int.parse(portStr);
+            _storedToken = token;
+            _shouldConnect = true;
+            _configLoaded = true;
+          });
+
+          // Force Reconnect with new config
+          _disconnect();
+          _connect();
+        }
+      }
+    } catch (e) {
+      debugPrint('AgentDebugBridge: Error parsing deep link: $e');
+    }
   }
 
   @override
   void dispose() {
     _reconnectTimer?.cancel();
-    _channel?.sink.close();
+    _linkSub?.cancel();
+    _disconnect();
     super.dispose();
+  }
+  
+  void _disconnect() {
+    _channel?.sink.close();
+    _channel = null;
+    _isConnecting = false;
   }
 
   void _connect() {
     if (_isConnecting) return;
+    if (!_shouldConnect) {
+      debugPrint('[Agenteract] Auto-connect disabled. Use deep link to configure.');
+      return;
+    }
+
+    final serverUrl = _serverUrl;
+    if (serverUrl == null) {
+      debugPrint('[Agenteract] No server URL configured. Waiting for deep link...');
+      return;
+    }
+
     _isConnecting = true;
 
     try {
-      final uri = Uri.parse('$_serverUrl/${widget.projectName}');
-      debugPrint('AgentDebugBridge: Connecting to $uri');
+      // Build URL with token and deviceId if available
+      String url = '$serverUrl/${widget.projectName}';
+      final params = <String>[];
+      if (_storedToken != null) {
+        params.add('token=$_storedToken');
+      }
+      if (_storedDeviceId != null) {
+        params.add('deviceId=$_storedDeviceId');
+      }
+      if (params.isNotEmpty) {
+        url += '?${params.join('&')}';
+      }
+
+      final uri = Uri.parse(url);
+      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***').replaceAll(RegExp(r'deviceId=([^&]+)'), 'deviceId=***')}');
 
       _channel = WebSocketChannel.connect(uri);
 
       _channel!.stream.listen(
         _handleMessage,
         onError: (error) {
-          debugPrint('AgentDebugBridge WebSocket error: $error');
+          debugPrint('[Agenteract] Connection error: $error');
           _scheduleReconnect();
         },
         onDone: () {
-          debugPrint('AgentDebugBridge: Disconnected. Reconnecting...');
+          debugPrint('[Agenteract] Disconnected. Reconnecting...');
           _scheduleReconnect();
         },
       );
 
-      debugPrint('AgentDebugBridge: Connected to agent server');
+      debugPrint('[Agenteract] Connected to agent server');
       _isConnecting = false;
     } catch (e) {
-      debugPrint('AgentDebugBridge: Connection failed: $e');
+      debugPrint('[Agenteract] Connection failed: $e');
       _isConnecting = false;
       _scheduleReconnect();
     }
@@ -107,8 +274,25 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   void _handleMessage(dynamic message) {
     try {
       final data = json.decode(message as String) as Map<String, dynamic>;
+      final status = data['status'] as String?;
       final action = data['action'] as String?;
       final id = data['id'] as String?;
+
+      // Handle server-assigned device ID
+      if (status == 'connected' && data['deviceId'] != null) {
+        final deviceId = data['deviceId'] as String;
+        debugPrint('[Agenteract] Received device ID from server: $deviceId');
+
+        // Store device ID for future connections
+        SharedPreferences.getInstance().then((prefs) {
+          prefs.setString('agenteract_device_id', deviceId);
+          setState(() {
+            _storedDeviceId = deviceId;
+          });
+          debugPrint('[Agenteract] Stored device ID for future connections');
+        });
+        return;
+      }
 
       if (action == null) {
         _sendError('Missing action field', id);

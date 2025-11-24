@@ -29,6 +29,16 @@ jest.mock('fs', () => ({
   appendFileSync: jest.fn(),
 }));
 
+// Mock the config loading functions
+jest.mock('@agenteract/core/node', () => ({
+  ...jest.requireActual('@agenteract/core/node'),
+  loadRuntimeConfig: jest.fn().mockResolvedValue(null),
+  saveRuntimeConfig: jest.fn().mockResolvedValue(undefined),
+  deleteRuntimeConfig: jest.fn().mockResolvedValue(undefined),
+  generateAuthToken: jest.fn().mockReturnValue('test-token-123'),
+  resetPNPMWorkspaceCWD: jest.fn(),
+}));
+
 import { WebSocketServer } from 'ws';
 
 describe('Server Setup', () => {
@@ -45,6 +55,8 @@ describe('Server Setup', () => {
   test('should create a WebSocket server on the correct port', async () => {
     await jest.isolateModulesAsync(async () => {
       await import('./index');
+      // Wait for async initialization to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
     });
     expect(WebSocketServer).toHaveBeenCalledWith({ port: 8765, host: '0.0.0.0' });
   });
@@ -52,6 +64,8 @@ describe('Server Setup', () => {
   test('should handle new WebSocket connections', async () => {
     await jest.isolateModulesAsync(async () => {
       await import('./index');
+      // Wait for async initialization to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
     });
     expect(mockWebSocketServer.on).toHaveBeenCalledWith('connection', expect.any(Function));
   });

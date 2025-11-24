@@ -3,13 +3,13 @@
   "version": "0.0.4",
   "description": "Agent command server and runtime bridge for Agenteract",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/server/src/index.js",
+  "types": "dist/server/src/index.d.ts",
   "files": [
     "dist"
   ],
   "bin": {
-    "agenterserve": "dist/index.js"
+    "agenterserve": "dist/server/src/index.js"
   },
   "repository": {
     "type": "git",
@@ -35,6 +35,7 @@
     "test": "jest --config jest.config.cjs"
   },
   "dependencies": {
+    "@agenteract/core": "workspace:*",
     "express": "^4.19.2",
     "ws": "^8.18.0",
     "uuid": "^9.0.1"

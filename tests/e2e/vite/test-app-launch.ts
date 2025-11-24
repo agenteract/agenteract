@@ -168,15 +168,32 @@ async function main() {
     }
     success(`Workspace dependencies replaced (${replacedCount} replacements)`);
 
-    // Fix vite.config.ts to remove monorepo-specific paths
+    // Copy mock files from monorepo to temp app
+    info('Copying React Native mocks...');
+    const mocksDir = join(exampleAppDir, '__mocks__');
+    mkdirSync(mocksDir, { recursive: true });
+
+    const monorepoMocksDir = join(process.cwd(), 'packages', 'react', '__mocks__');
+    cpSync(monorepoMocksDir, mocksDir, { recursive: true });
+    success('Mocks copied');
+
+    // Fix vite.config.ts to remove monorepo-specific paths but preserve necessary aliases
     info('Fixing vite.config.ts...');
     const viteConfigPath = join(exampleAppDir, 'vite.config.ts');
     const newViteConfig = `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      'react-native': path.resolve(__dirname, '__mocks__/react-native.ts'),
+      'expo-linking': path.resolve(__dirname, '__mocks__/expo-linking.ts'),
+      '@react-native-async-storage/async-storage': path.resolve(__dirname, '__mocks__/async-storage.ts'),
+    },
+  },
 })
 `;
     writeFileSync(viteConfigPath, newViteConfig);

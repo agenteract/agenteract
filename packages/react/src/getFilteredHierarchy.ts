@@ -96,10 +96,23 @@ const isMeaningfulName = (name: string) =>
 
   // Build node
   const props = fiberNode.memoizedProps || {};
+
+  // Capture text content from children or value prop (for inputs)
+  let text: string | undefined;
+  if (typeof props.children === "string") {
+    text = props.children;
+  } else if (props.value !== undefined && props.value !== null) {
+    // For TextInput and other input elements, capture the value prop
+    text = String(props.value);
+  } else if (props.placeholder && !text) {
+    // Fallback to placeholder if no value is set
+    text = `[${props.placeholder}]`;
+  }
+
   const node: Node = {
     name,
     key: fiberNode.key,
-    text: typeof props.children === "string" ? props.children : undefined,
+    text,
     testID: props.testID ?? props["data-testid"],
     accessibilityLabel: props.accessibilityLabel ?? props["aria-label"],
     children: [],

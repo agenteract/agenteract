@@ -80,7 +80,7 @@ export async function runDevCommand(args: { config: string }) {
 
   const commands = [
     {
-      command: `${spawnBin} ${agenterServePackage} --port ${config.port}`,
+      command: `${spawnBin} ${agenterServePackage} --port ${config.port} --cwd ${rootDir}`,
       name: 'agent-server',
       cwd: rootDir,
       type: 'pty',
@@ -89,7 +89,7 @@ export async function runDevCommand(args: { config: string }) {
 
   if (config.projects.some((p: any) => p.type === 'native')) {
     commands.push({
-      command: `${spawnBin} ${agenterServePackage} --log-only`,
+      command: `${spawnBin} ${agenterServePackage} --log-only --cwd ${rootDir}`,
       name: 'log-server',
       cwd: rootDir,
       type: 'pty',

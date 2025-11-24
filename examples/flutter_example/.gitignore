@@ -43,3 +43,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# CocoaPods artifacts
+**/Podfile.lock
+**/Pods/
+
+# Flutter/Dart generated files
+**/Flutter/GeneratedPluginRegistrant.swift
+**/Flutter/Flutter-Generated.xcconfig
+**/Flutter/ephemeral/
+
+# Xcode build and workspace files (auto-generated)
+**/xcuserdata/
+**/*.xcworkspace/contents.xcworkspacedata
+**/Flutter/*.xcconfig

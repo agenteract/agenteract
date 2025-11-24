@@ -202,6 +202,106 @@ async function main() {
     await runCommand(`cd ${exampleAppDir} && flutter pub get`);
     success('Flutter dependencies installed');
 
+    // 8a. Create missing xcconfig files (they're gitignored but required by Xcode)
+    // These files are not tracked in git but are needed for the Xcode project to build
+    info('Creating missing xcconfig files...');
+    const flutterConfigDir = `${exampleAppDir}/ios/Flutter`;
+    
+    // Debug.xcconfig
+    const debugXcconfigPath = `${flutterConfigDir}/Debug.xcconfig`;
+    writeFileSync(debugXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+#include "Generated.xcconfig"
+`);
+    
+    // Release.xcconfig
+    const releaseXcconfigPath = `${flutterConfigDir}/Release.xcconfig`;
+    writeFileSync(releaseXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+#include "Generated.xcconfig"
+`);
+    
+    success('xcconfig files created');
+
+    // 8a. Install CocoaPods dependencies for iOS
+    // This is required after copying the app to a new location
+    // The Pods directory paths need to be regenerated for the new location
+    info('Installing CocoaPods dependencies...');
+    try {
+      // Check if CocoaPods is installed
+      await runCommand('which pod');
+      info('CocoaPods is installed');
+    } catch (err) {
+      error('CocoaPods is not installed. Please install it with: sudo gem install cocoapods');
+      throw new Error('CocoaPods is required for iOS builds');
+    }
+    
+    // Verify Flutter generated files exist (required by Podfile)
+    const generatedXcconfig = `${exampleAppDir}/ios/Flutter/Generated.xcconfig`;
+    try {
+      await runCommand(`test -f "${generatedXcconfig}"`);
+      info('Flutter Generated.xcconfig verified');
+    } catch (err) {
+      error('Flutter Generated.xcconfig missing - flutter pub get may have failed');
+      throw new Error('Flutter generated files missing - cannot run pod install');
+    }
+    
+    // Remove existing Pods directory to ensure clean install
+    // This is necessary because paths in Podfile.lock may be incorrect after copying
+    await runCommand(`rm -rf ${exampleAppDir}/ios/Pods ${exampleAppDir}/ios/Podfile.lock ${exampleAppDir}/ios/*.xcworkspace`);
+    
+    // Run pod deintegrate first to clean up any existing integration
+    // This helps avoid "Unable to load contents of file list" errors
+    // See: https://stackoverflow.com/questions/66194052/unable-to-load-contents-of-file-list-target-support-files-pods-target-name-po
+    try {
+      await runCommand(`cd ${exampleAppDir}/ios && pod deintegrate`);
+      info('Pod deintegration completed');
+    } catch (err) {
+      // It's okay if deintegrate fails - there might not be anything to deintegrate
+      info('Pod deintegrate skipped (no existing integration)');
+    }
+    
+    // Run pod install
+    // Note: We don't use --repo-update to avoid slow CocoaPods spec repo updates in CI
+    await runCommand(`cd ${exampleAppDir}/ios && pod install --verbose`);
+    success('CocoaPods dependencies installed');
+    
+    // Verify that the Target Support Files were created correctly
+    // This helps catch issues early before Xcode tries to build
+    const targetSupportPath = `${exampleAppDir}/ios/Pods/Target Support Files/Pods-Runner`;
+    const debugXcconfig = `${targetSupportPath}/Pods-Runner.debug.xcconfig`;
+    const releaseXcconfig = `${targetSupportPath}/Pods-Runner.release.xcconfig`;
+    const debugInputFiles = `${targetSupportPath}/Pods-Runner-frameworks-Debug-input-files.xcfilelist`;
+    const debugOutputFiles = `${targetSupportPath}/Pods-Runner-frameworks-Debug-output-files.xcfilelist`;
+    
+    try {
+      await runCommand(`test -f "${debugXcconfig}" && test -f "${releaseXcconfig}"`);
+      await runCommand(`test -f "${debugInputFiles}" && test -f "${debugOutputFiles}"`);
+      success('Target Support Files verified');
+    } catch (err) {
+      error('Target Support Files missing after pod install');
+      error('This usually means pod install failed silently');
+      error(`Expected files in: ${targetSupportPath}`);
+      
+      // List what actually exists for debugging
+      try {
+        const lsOutput = await runCommand(`ls -la "${targetSupportPath}" 2>&1 || echo "Directory does not exist"`);
+        error(`Contents of Target Support Files directory:\n${lsOutput}`);
+      } catch {
+        // Ignore if listing fails
+      }
+      
+      throw new Error('CocoaPods installation incomplete - Target Support Files missing');
+    }
+    
+    // Verify workspace was created
+    const workspacePath = `${exampleAppDir}/ios/Runner.xcworkspace`;
+    try {
+      await runCommand(`test -d "${workspacePath}"`);
+      success('Runner.xcworkspace verified');
+    } catch (err) {
+      error('Runner.xcworkspace missing after pod install');
+      throw new Error('CocoaPods installation incomplete - workspace not created');
+    }
+
     // 8b. Install @agenteract/flutter-cli in Flutter app directory
     // This is needed because dev.ts spawns npx from the project directory (cwd: projectPath)
     // Without this, npx prompts to install the package
@@ -331,7 +431,7 @@ async function main() {
           success('Flutter app connected and hierarchy received!');
           info(`Hierarchy preview (first 200 chars): ${hierarchy.substring(0, 200)}...`);
           break;
-        } else if (hierarchy.includes('not connected')) {
+        } else if (hierarchy.includes('has no connected devices')) {
           info('Flutter app not yet connected to bridge, waiting...');
         } else {
           info(`Got response but not a valid hierarchy (${hierarchy.length} chars), retrying...`);
@@ -339,7 +439,7 @@ async function main() {
         }
       } catch (err) {
         const errMsg = String(err);
-        if (errMsg.includes('not connected')) {
+        if (errMsg.includes('has no connected devices')) {
           info('Flutter app not connected yet, waiting...');
 
           // Every 5 attempts, check dev logs for progress

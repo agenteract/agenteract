@@ -17,39 +17,100 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Composable
-fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int = 8765) {
+fun AgentDebugBridge(
+    projectName: String,
+    host: String = "localhost",
+    port: Int = 8765,
+    token: String? = null,
+    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null
+) {
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(projectName) {
+        // Load saved config with error handling
+        val savedConfig = try {
+            AgentConfigManager.loadConfig()
+        } catch (e: Exception) {
+            println("[Agenteract] Failed to load config: $e")
+            null
+        }
+
+        val effectiveHost = savedConfig?.host ?: host
+        val effectivePort = savedConfig?.port ?: port
+        val effectiveToken = savedConfig?.token ?: token
+        val effectiveDeviceId = savedConfig?.deviceId
+
         val client = HttpClient {
             install(WebSockets)
         }
 
-        val json = Json { 
-            ignoreUnknownKeys = true 
+        val json = Json {
+            ignoreUnknownKeys = true
             encodeDefaults = true
         }
 
         while (isActive) {
             try {
-                AgentLogger.log("AgentDebugBridge: Connecting to ws://$host:$port/$projectName")
-                
+                // Build WebSocket path with token and deviceId if available
+                val params = mutableListOf<String>()
+                if (effectiveToken != null) params.add("token=$effectiveToken")
+                if (effectiveDeviceId != null) params.add("deviceId=$effectiveDeviceId")
+
+                val pathWithParams = if (params.isNotEmpty()) {
+                    "/$projectName?${params.joinToString("&")}"
+                } else {
+                    "/$projectName"
+                }
+
+                val maskedPath = pathWithParams
+                    .replace(Regex("token=[^&]+"), "token=***")
+                    .replace(Regex("deviceId=[^&]+"), "deviceId=***")
+                AgentLogger.log("AgentDebugBridge: Connecting to ws://$effectiveHost:$effectivePort$maskedPath")
+
                 client.webSocket(
                     method = HttpMethod.Get,
-                    host = host,
-                    port = port,
-                    path = "/$projectName"
+                    host = effectiveHost,
+                    port = effectivePort,
+                    path = pathWithParams
                 ) {
                     AgentLogger.log("AgentDebugBridge: Connected!")
-                    
+
                     // Main loop
                     for (frame in incoming) {
                         if (frame is Frame.Text) {
                             val text = frame.readText()
                             try {
+                                // Try to parse as a response first (for device ID message)
+                                val responseResult = try {
+                                    json.decodeFromString<AgentResponse>(text)
+                                } catch (e: Exception) {
+                                    null
+                                }
+
+                                // Check if this is a device ID message from server
+                                if (responseResult != null && responseResult.status == "connected" && responseResult.deviceId != null) {
+                                    val newDeviceId = responseResult.deviceId
+                                    AgentLogger.log("AgentDebugBridge: Received device ID from server: $newDeviceId")
+
+                                    // Load existing config and update with device ID
+                                    val existingConfig = try {
+                                        AgentConfigManager.loadConfig()
+                                    } catch (e: Exception) {
+                                        null
+                                    }
+
+                                    if (existingConfig != null) {
+                                        val updatedConfig = existingConfig.copy(deviceId = newDeviceId)
+                                        AgentConfigManager.saveConfig(updatedConfig)
+                                        AgentLogger.log("AgentDebugBridge: Stored device ID for future connections")
+                                    }
+                                    continue
+                                }
+
+                                // Otherwise handle as command
                                 val command = json.decodeFromString<AgentCommand>(text)
-                                handleCommand(command, json) { response ->
-                                    val responseText = json.encodeToString(response)
+                                handleCommand(command, json) { cmdResponse ->
+                                    val responseText = json.encodeToString(cmdResponse)
                                     send(responseText)
                                 }
                             } catch (e: Exception) {
@@ -62,11 +123,18 @@ fun AgentDebugBridge(projectName: String, host: String = "localhost", port: Int 
             } catch (e: Exception) {
                 AgentLogger.log("AgentDebugBridge: Connection failed: $e")
             }
-            
+
             AgentLogger.log("AgentDebugBridge: Reconnecting in 3s...")
             delay(3000)
         }
     }
+}
+
+/**
+ * Updates the stored configuration and reconnects
+ */
+fun updateAgentConfig(config: AgenteractConfig) {
+    AgentConfigManager.saveConfig(config)
 }
 
 private suspend fun handleCommand(

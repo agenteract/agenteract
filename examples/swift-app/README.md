@@ -34,15 +34,43 @@ import Agenteract
 2. Press `Cmd + R` to build and run
 3. The app should launch showing the Agenteract example UI
 
-### 3. Connect to Agent Server
+### 3. Configure URL Scheme (Required for Deep Linking)
 
-From the agenteract root directory, start the agent server:
+To enable deep link pairing:
 
-```bash
-pnpm agenterserve dev
-```
+1. In Xcode, select your project in the Project Navigator
+2. Select the `AgenteractSwiftExample` target
+3. Go to the "Info" tab
+4. Expand "URL Types"
+5. Click the "+" button to add a new URL type
+6. Set the following:
+   - **Identifier**: `com.agenteract.swift-example` (or your bundle ID)
+   - **URL Schemes**: `agenteract-swift-example`
+   - **Role**: Editor
 
-The iOS app will automatically connect to the agent server via WebSocket at `ws://127.0.0.1:8765/swift-app`.
+This allows the app to receive deep links like `agenteract-swift-example://agenteract/config?host=...&port=...&token=...`
+
+### 4. Connect to Agent Server
+
+#### Option A: Using Deep Link Pairing (Recommended for Physical Devices)
+
+1. Start the agent server from the agenteract root directory:
+   ```bash
+   pnpm agenteract dev
+   ```
+
+2. Pair your device:
+   ```bash
+   pnpm agenteract connect agenteract-swift-example
+   ```
+
+3. Scan the QR code with your device or select your simulator from the list
+
+The app will automatically save the configuration and connect.
+
+#### Option B: Localhost (Simulators Only)
+
+If running on a simulator, the app will automatically connect to `ws://127.0.0.1:8765/swift-app` (no deep linking needed).
 
 ## Architecture
 

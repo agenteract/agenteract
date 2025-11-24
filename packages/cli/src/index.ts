@@ -1,7 +1,12 @@
 #!/usr/bin/env node
+import { resetPNPMWorkspaceCWD } from '@agenteract/core/node';
+resetPNPMWorkspaceCWD();
+
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+
 import { runDevCommand } from './commands/dev.js';
+import { runConnectCommand } from './commands/connect.js';
 import { addConfig } from './config.js';
 
 yargs(hideBin(process.argv))
@@ -21,6 +26,42 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
+    'connect [scheme]',
+    'Pair a device/simulator with the running server via Deep Link',
+    (yargs) => {
+      return yargs
+        .positional('scheme', {
+          describe: 'The URL scheme of your app (e.g. "expo-app" or "myapp"). Optional if configured via add-config --scheme.',
+          type: 'string',
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (UDID/serial) to send the link to (skips interactive menu)',
+        })
+        .option('all', {
+          alias: 'a',
+          type: 'boolean',
+          description: 'Send the deep link to all detected devices',
+          default: false,
+        })
+        .option('qr-only', {
+          alias: 'q',
+          type: 'boolean',
+          description: 'Only display the QR code without attempting to open on devices',
+          default: false,
+        });
+    },
+    (argv) => {
+      runConnectCommand({
+        scheme: argv.scheme,
+        device: argv.device,
+        all: argv.all,
+        qrOnly: argv.qrOnly,
+      }).catch(console.error);
+    }
+  )
+  .command(
     'add-config <path> <name> <typeOrCommand> [port]',
     'Add a config file to the current project',
     (yargs) => {
@@ -36,10 +77,14 @@ yargs(hideBin(process.argv))
       }).positional('port', {
         describe: 'PTY bridge port (optional, defaults to 8790+)',
         type: 'number',
+      }).option('scheme', {
+        alias: 's',
+        type: 'string',
+        description: 'URL scheme for deep linking (e.g., "myapp")',
       });
     },
     (argv) => {
-      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port).catch((error) => {
+      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port, argv.scheme).catch((error) => {
         console.error(error);
       });
     }
