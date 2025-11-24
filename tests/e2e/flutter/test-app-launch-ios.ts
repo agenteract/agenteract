@@ -202,6 +202,25 @@ async function main() {
     await runCommand(`cd ${exampleAppDir} && flutter pub get`);
     success('Flutter dependencies installed');
 
+    // 8a. Create missing xcconfig files (they're gitignored but required by Xcode)
+    // These files are not tracked in git but are needed for the Xcode project to build
+    info('Creating missing xcconfig files...');
+    const flutterConfigDir = `${exampleAppDir}/ios/Flutter`;
+    
+    // Debug.xcconfig
+    const debugXcconfigPath = `${flutterConfigDir}/Debug.xcconfig`;
+    writeFileSync(debugXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
+#include "Generated.xcconfig"
+`);
+    
+    // Release.xcconfig
+    const releaseXcconfigPath = `${flutterConfigDir}/Release.xcconfig`;
+    writeFileSync(releaseXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
+#include "Generated.xcconfig"
+`);
+    
+    success('xcconfig files created');
+
     // 8a. Install CocoaPods dependencies for iOS
     // This is required after copying the app to a new location
     // The Pods directory paths need to be regenerated for the new location
@@ -392,7 +411,7 @@ async function main() {
 
     let hierarchy: string = '';
     let connectionAttempts = 0;
-    const maxAttempts = 15; // 48 * 5s = 4 minutes total
+    const maxAttempts = 12; // 48 * 5s = 4 minutes total
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
