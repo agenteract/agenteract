@@ -71,9 +71,29 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | [flutter](./packages/flutter/) | Flutter Bindings Package
 | `@agenteract/kotlin` | Kotlin Multiplatform Bindings Package
 
-## **🚀 Getting Started (Preview)**
+## **🚀 Getting Started **
 
 ## **1. Installation**
+
+### Agent Based
+
+The easiest way to get started is to let your coding agent do the work. First, create an `AGENTS.md` file:
+```bash
+npx @agenteract/agents md
+```
+
+You can also specific the name:
+```bash
+npx @agenteract/agents md CLAUDE.md
+```
+
+This appends the Agenteract instructions to your agents markdown.
+
+Next, restart your coding CLI or open a new chat tab (Cursor), then give ask it to complete the setup:
+
+"Please add Agenteract support and make sure it works."
+
+### Manual
 
 First, you'll need to install the Agenteract CLI. This tool manages the communication between the AI agent and your local development servers.
 
@@ -86,7 +106,7 @@ Next, install the appropriate package for your project.
 **For React Native (Expo):**
 
 ```bash
-npm install @agenteract/expo
+npm install @agenteract/expo @react-native-async-storage/async-storage expo-linking
 ```
 
 **For React (Vite):**

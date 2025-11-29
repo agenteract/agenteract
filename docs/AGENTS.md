@@ -30,6 +30,10 @@ The following can be installed either in the app, or at the monorepo root if app
 
 `@agenteract/agents`
 
+`@react-native-async-storage/async-storage`
+
+`expo-linking`
+
 Usage:
 ```tsx
 import { AgentDebugBridge } from '@agenteract/react';
