@@ -2,9 +2,9 @@
 
 *Let your agents interact...*
 
-**Agenteract** is an experimental bridge that lets large-language-model agents *see* and *interact* with running applications — starting with **React Native / Expo** and **Gemini CLI**.
+**Agenteract** is an experimental bridge that lets coding agents *view* and *interact* with running applications - Including React Native / Expo, React, Kotlin Multi Platform, and Swift UI. It's possible to add support for your favorite stack by replicating the existing framework implementations.
 
-It exposes the app’s internal state, view hierarchy, and actionable controls over a secure WebSocket, enabling agents (or test harnesses) to observe and trigger UI events just like a developer or user would.
+Agenteract exposes the app’s internal state, view hierarchy, and actionable controls over a secure WebSocket, enabling agents (or test harnesses) to observe and trigger UI events just like a developer or user would.
 
    <p align="center">
      <img src="demo.gif" alt="Demo" width="600">
@@ -12,13 +12,13 @@ It exposes the app’s internal state, view hierarchy, and actionable controls o
 
 ---
 
-## **✨ Why**
+## **🎯 Motivation**
 
-Most “AI agents” rely on vision or accessibility APIs to understand an app’s UI.  
- That approach is heavy, slow, and unreliable.  
- Agenteract flips the model — apps can **self-report** their structure and controls in a simple, semantic format.
+Most AI agent workflows rely on web specific testing methodoligies to achieve app interaction. Others rely on vision or accessibility APIs to understand an app’s UI.  
+  The vision approach is heavy, both are slow, and unreliable.  
+  Agenteract flips the model — apps can **self-report** their structure and controls in a simple, semantic format.
 
-Agents no longer guess what’s on screen; they can query the actual component tree and call meaningful actions.
+With Agenteract, agents no longer have to guess what’s on screen; they can query the actual component tree and call meaningful actions.
 
 ---
 
@@ -60,10 +60,8 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | ----- | ----- |
 | `@agenteract/core` | Core schema, message protocol, and bridge utilities |
 | `@agenteract/react` | React / React Native bindings (`useAgentBinding`, registry hooks) |
-| `@agenteract/expo` | Expo bridge utilities and CLI |
-| `@agenteract/vite` | Vite bridge utilities and CLI |
-| `@agenteract/flutter-cli` | Flutter bridge utilities and CLI |
 | `@agenteract/cli` | Unified command-line interface for Agenteract |
+| `@agenteract/pty` | Simple package that wraps dev servers and exposes interaction APIs via websockets |
 | `@agenteract/server` | Agent command server and runtime bridge |
 | `@agenteract/agents` | Agent instructions installer (creates AGENTS.md) |
 | `@agenteract/dom` | DOM utilities for web applications |
@@ -71,7 +69,7 @@ Agents no longer guess what’s on screen; they can query the actual component t
 | [flutter](./packages/flutter/) | Flutter Bindings Package
 | `@agenteract/kotlin` | Kotlin Multiplatform Bindings Package
 
-## **🚀 Getting Started **
+## 🚀 Getting Started
 
 ## **1. Installation**
 
@@ -106,7 +104,7 @@ Next, install the appropriate package for your project.
 **For React Native (Expo):**
 
 ```bash
-npm install @agenteract/expo @react-native-async-storage/async-storage expo-linking
+npm install @react-native-async-storage/async-storage expo-linking
 ```
 
 **For React (Vite):**
@@ -121,14 +119,10 @@ Next, install `AGENTS.md` - This will allow your coding assistant to understand 
 
 If you already have an `AGENTS.md`, our contents will be appended.
 
-```bash
-npx @agenteract/agents
-```
-
-Copy the file to a specific agent name if required:
+You can also specify the output filename.
 
 ```bash
-cp AGENTS.md GEMINI.md
+npx @agenteract/agents [FILENAME.md]
 ```
 
 Now you can reference the file for your agent in a message, or restart the CLI for it to take effect.
@@ -141,35 +135,32 @@ The command below will create an initial `agenteract.config.js`, or add entries 
 
 **New Format (Generic Dev Server):**
 ```bash
-npx @agenteract/cli add-config <path> <projectName> <command> [port]
+npx @agenteract/cli add-config <path> <projectName> <command> [port] --scheme myapp
 ```
-
 `port` is auto assigned if not provided. This is the port that Agenteract uses to communicate internally, it's not where the dev server hosts files.
+
+**Parameters:**
+- `path`: Path to the project directory
+- `projectName`: Project name as supplied to `AgentDebugBridge`
+- `command`: Dev server command (e.g., `"npm run dev"`, `"remix dev"`)
+- `port` (optional): PTY bridge port (auto-assigned if omitted)
+- `--scheme myapp`: Scheme used for QR code / deep link pairing: See [Configuring Deep Linking](#configuring-deep-linking)
+
 
 Examples:
 ```bash
+# Expo Go - Supports exp:// scheme by default, the CLI will run from CWD
+npx @agenteract/cli add-config . expo-app "npx expo" --scheme exp
+
+# The following examples specify relative paths as would be the case in a mono repo
 # Next.js app with explicit port
-npx @agenteract/cli add-config ./apps/web next-app "npm run dev"
+npx @agenteract/cli add-config ./apps/web next-app "npm run dev" --port 8791
 
 # Remix app with auto-assigned port
 npx @agenteract/cli add-config ./apps/remix remix-app "remix dev"
 
 # Custom dev server
 npx @agenteract/cli add-config ./apps/custom my-app "pnpm start:dev"
-```
-
-**Legacy Format (Still Supported):**
-```bash
-# For Expo, Vite, or Flutter projects
-npx @agenteract/cli add-config <path> <projectName> <type>
-# where type is: expo | vite | flutter | native
-```
-
-Examples:
-```bash
-npx @agenteract/cli add-config ./my-vite-app vite-app vite
-npx @agenteract/cli add-config ./my-expo-app expo-app expo
-npx @agenteract/cli add-config ./my-swift-app swift-app native
 ```
 
 Here is an example configuration for a monorepo containing multiple projects:
@@ -196,7 +187,8 @@ export default {
       devServer: {
         command: 'npx expo start',
         port: 8790,
-      }
+      },
+      "scheme": "myapp"
     },
     {
       name: 'react-app',
@@ -250,9 +242,12 @@ export default {
             -   `fileExists`: Files that must exist (e.g., `['package.json']`).
             -   `commandInPath`: Commands that must be in PATH (e.g., `'node'`, `'flutter'`).
             -   `errorHints`: Custom error messages for common issues.
+        -   `scheme`: (Optional) Scheme used for QR code / deep link pairing: See [Configuring Deep Linking](#configuring-deep-linking)
     -   `type`: (Deprecated) Legacy type field. Use `devServer` instead.
 
 **Note:** The old `type` and `ptyPort` fields are deprecated but still supported for backward compatibility. See `docs/MIGRATION_V2.md` for migration instructions.
+
+`agenteract.config.js` should not be tracked as it may be specific to your local environment.
 
 ## **4. Instrumenting Your Application**
 
@@ -262,11 +257,15 @@ To allow Agenteract to "see" and interact with your application, you need to add
 
 For **physical device testing** (React Native, Expo, Swift, Kotlin), you'll also need to configure deep linking to enable secure pairing. See platform-specific instructions below.
 
-**For React Native (Expo) - `App.tsx`:**
+**For React Native / Expo - `App.tsx`:**
+
+React Native, Expo, React all use the same import `@agenteract/react`.
+
+Previously Expo and Vite specific packages were used to provide dev server wrappers, but this is now generalized.
 
 ```tsx
-import { AgentBridge } from '@agenteract/expo';
 import { View, Text } from 'react-native';
+import { AgentDebugBridge } from '@agenteract/react';
 
 export default function App() {
   return (
@@ -274,8 +273,8 @@ export default function App() {
       {/* Your existing application */}
       <Text>Welcome to my app!</Text>
 
-      {/* Add the AgentBridge */}
-      <AgentBridge />
+      {/* Add the AgentDebugBridge */}
+      { __DEV__ && <AgentDebugBridge projectName="expo-app" /> }
     </View>
   );
 }
@@ -284,7 +283,7 @@ export default function App() {
 **For React (Vite) - `src/App.tsx`:**
 
 ```tsx
-import { AgentBridge } from '@agenteract/react';
+import { AgentDebugBridge } from '@agenteract/react';
 
 function App() {
   return (
@@ -293,7 +292,7 @@ function App() {
       <h1>Welcome to my app!</h1>
 
       {/* Add the AgentBridge */}
-      <AgentBridge />
+      { __DEV__ && <AgentDebugBridge projectName="vite-app" /> }
     </>
   );
 }
@@ -417,6 +416,8 @@ The deep link will configure your app with the server's IP address, port, and au
 - **Flutter**: See [packages/flutter/README.md](packages/flutter/README.md#deep-linking--physical-device-setup)
 - **Swift/iOS**: See [agenteract-swift README](https://github.com/agenteract/agenteract-swift#deep-linking--configuration)
 - **Kotlin/Android**: See [packages/kotlin/README.md](packages/kotlin/README.md#deep-linking--configuration)
+
+Device information is stored in `.agenteract-runtime.json`. This file should not be checked in to SCM.
 
 ### Agent Interaction
 

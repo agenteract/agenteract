@@ -4,15 +4,32 @@ You are an expert developer assistant. Your primary goal is to interact with a r
 
 You can interact with the application by using the `@agenteract/agents` CLI.
 
+## Agent vs User Responsibilities
+
+**Agent Tasks (Automated):**
+- Installing AgentDebugBridge packages
+- Adding AgentDebugBridge component to the app
+- **[EXPO PROJECTS]** Ask user about Expo Go vs prebuilds (only for Expo projects)
+- Creating `agenteract.config.js` via `add-config` command
+- Add to `.gitignore`: `agenteract.config.js`, `.agenteract-runtime.json`
+- Configuring deep linking in app manifests
+
+**User Tasks (Manual):**
+- Running `npx @agenteract/cli dev` to start the multiplexed dev server
+- Running `pnpm agenteract connect` and scanning QR codes for physical device pairing
+
+**Building and Running Apps**
+Most apps can be built and launched by the agent using dev servers or build commands. Check with the user what their preferred flow is.
+
 ## Project Detection
 
 Before interacting with the application, you must determine the project type. You can do this by inspecting the `package.json` file for dependencies like `expo` or `vite`.
 
-
 ## Installing `AgentDebugBridge`
 
 To communicate with the app, an AgentDebugBride is required. The setup method differs by app:
-Expo: 
+Expo:
+
 * AgentDebugBridge example: 
 
 https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples/expo-example/app/App.tsx
@@ -21,8 +38,6 @@ https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples
 `@agenteract/react` (`AgentDebugBridge`)
 
 The following can be installed either in the app, or at the monorepo root if applicable.
-
-`@agenteract/expo`
 
 `@agenteract/cli`
 
@@ -38,7 +53,7 @@ Usage:
 ```tsx
 import { AgentDebugBridge } from '@agenteract/react';
 // ...
-{ __DEV__ && <AgentDebugBridge projectName="myExpoApp" /> }
+{ __DEV__ && <AgentDebugBridge projectName="expo-app" /> }
 ```
 
 React: 
@@ -51,8 +66,6 @@ https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/examples
 
 The following can be installed either in the app, or at the monorepo root if applicable.
 
-`@agenteract/vite`
-
 `@agenteract/cli`
 
 `@agenteract/server`
@@ -64,7 +77,7 @@ Usage:
 ```tsx
 import { AgentDebugBridge } from '@agenteract/react';
 // ...
-{ __DEV__ && <AgentDebugBridge projectName="myReactApp" /> }
+{ __DEV__ && <AgentDebugBridge projectName="react-app" /> }
 ```
 
 Swift UI:
@@ -283,8 +296,11 @@ When adding a configuration for a native app, include the `--scheme` parameter:
 # For React Native/Expo apps
 pnpm agenteract add-config . my-app native --scheme myapp
 
-# For Expo Go
+# For Expo with Expo Go (ask user first!)
 pnpm agenteract add-config . my-app expo --scheme exp
+
+# For Expo with prebuilds (ask user first!)
+pnpm agenteract add-config . my-app expo --scheme myapp
 
 # For Swift apps
 pnpm agenteract add-config . my-app native --scheme myapp
@@ -366,7 +382,7 @@ The command below will create an initial `agenteract.config.js`, or add entries 
 
 **New Format (Generic Dev Server - Recommended):**
 ```bash
-pnpm agenteract add-config <path> <projectName> <command> [port]
+pnpm agenteract add-config <path> <projectName> <command> [port] --scheme myapp
 ```
 
 `port` is auto assigned if not provided. This is the port that Agenteract uses to communicate internally, it's not where the dev server hosts files.
@@ -377,6 +393,7 @@ pnpm agenteract add-config <path> <projectName> <command> [port]
 - `projectName`: Project name as supplied to `AgentDebugBridge`
 - `command`: Dev server command (e.g., `"npm run dev"`, `"remix dev"`)
 - `port` (optional): PTY bridge port (auto-assigned if omitted)
+- `--scheme myapp`: Scheme used for QR code / deep link pairing: See [Configuring Deep Linking](#configuring-deep-linking)
 
 **Examples:**
 ```bash
@@ -389,21 +406,6 @@ pnpm agenteract add-config ./apps/remix remix-app "remix dev"
 # Django app
 pnpm agenteract add-config ./backend django-app "python manage.py runserver"
 ```
-
-**Legacy Format (Still Supported):**
-```bash
-pnpm agenteract add-config <path> <projectName> <type>
-```
-
-Where `type` is: `expo` | `vite` | `flutter` | `native`
-
-**Examples:**
-```bash
-pnpm agenteract add-config ./my-vite-app vite-app vite
-pnpm agenteract add-config ./my-expo-app expo-app expo
-pnpm agenteract add-config ./my-swift-app swift-app native
-```
-
 **Note:** The new generic format supports any dev server command, making Agenteract framework-agnostic. Legacy types (expo/vite/flutter) are automatically migrated to the new `devServer` format with preset configurations.
 
 
@@ -414,6 +416,20 @@ The user (Not the agent) can now start their dev server.
 Use Tab to switch between apps. This enables user to launch the app and see diagnostic output. 
 
 At this point the agent should also have access to dev server logs.
+
+## Agent Setup Completion Message Template
+
+When the agent finishes setup, it should clearly tell the user:
+
+"Agenteract setup is complete! To start using it, please run:
+
+```bash
+pnpm agenteract dev
+```
+
+This will start the dev server. Once running, I'll be able to interact with your app."
+
+# Agent Tools
 
 ## Tool: Get Logs
 
@@ -489,6 +505,12 @@ pnpm agenteract-agents logs <project-name> --since 20
 ## Dev Server Commands
 
 You can send keystrokes to the dev server console using the `cmd` command:
+
+Note that the agenteract dev server must be started by the **user** - this enables the framework dev server PTYs (eg npx expo, etc.) to be shared by the user and agent.
+
+```bash
+pnpm agenteract dev
+```
 
 **Command**
 ```bash
