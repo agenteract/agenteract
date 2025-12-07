@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The unified command-line interface for Agenteract",
   "type": "module",
   "main": "dist/src/index.js",
