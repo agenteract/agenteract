@@ -79,10 +79,18 @@ interface AgenteractConfig {
 
 const STORAGE_KEY = '@agenteract:config';
 
+// Sanitize config for logging - mask token and omit undefined fields
+function sanitizeForLog(config: AgenteractConfig): object {
+  const result: Record<string, unknown> = { host: config.host, port: config.port };
+  if (config.token) result.token = '****';
+  if (config.deviceId) result.deviceId = config.deviceId;
+  return result;
+}
+
 async function saveConfig(config: AgenteractConfig): Promise<void> {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-    console.log('[Agenteract] Config saved:', config);
+    console.log('[Agenteract] Config saved:', sanitizeForLog(config));
   } catch (error) {
     console.warn('[Agenteract] Failed to save config:', error);
   }
@@ -93,7 +101,7 @@ async function loadConfig(): Promise<AgenteractConfig | null> {
     const stored = await AsyncStorage.getItem(STORAGE_KEY);
     if (stored) {
       const config = JSON.parse(stored);
-      console.log('[Agenteract] Loaded config:', config);
+      console.log('[Agenteract] Loaded config:', sanitizeForLog(config));
       return config;
     }
   } catch (error) {
@@ -487,7 +495,7 @@ export const AgentDebugBridge = ({
         setShouldConnect(true);
         configLoadedRef.current = true;
 
-        console.log('[Agenteract] Config updated from deep link:', config);
+        console.log('[Agenteract] Config updated from deep link:', sanitizeForLog(config));
 
         // Reconnect with new config
         if (socketRef.current) {
@@ -550,6 +558,54 @@ export const AgentDebugBridge = ({
 
       socket.onopen = () => {
         console.log('[Agenteract] Connected to agent server');
+
+        // Send device info to server
+        const platform = getPlatform();
+        const constants = (Platform as any).constants || {};
+
+        // Detect if this is a simulator/emulator
+        let isSimulator = platform === 'web';
+        if (platform === 'android') {
+          isSimulator = isAndroidEmulator();
+        } else if (platform === 'ios') {
+          // iOS simulators have isDevice: false or utsname.machine contains 'Simulator'
+          isSimulator = constants.isDevice === false ||
+                       constants.utsname?.machine?.includes('Simulator');
+        }
+
+        // Get device name and model based on platform
+        let deviceName: string;
+        let deviceModel: string;
+
+        if (platform === 'ios') {
+          // On iOS, use systemName and utsname.machine or default to 'iPhone'
+          const machineName = constants.utsname?.machine || 'iPhone';
+          deviceModel = machineName;
+          deviceName = machineName;
+        } else if (platform === 'android') {
+          // On Android, use Brand and Model
+          deviceModel = constants.Model || 'Android';
+          deviceName = constants.Brand ? `${constants.Brand} ${constants.Model}` : deviceModel;
+        } else {
+          // Web or other platforms
+          deviceModel = platform;
+          deviceName = platform;
+        }
+
+        const deviceInfo = {
+          status: 'deviceInfo',
+          deviceInfo: {
+            isSimulator,
+            deviceId: deviceId,
+            bundleId: projectName, // Use project name as bundle identifier
+            deviceName,
+            osVersion: Platform.Version?.toString() || constants.Release || 'Unknown',
+            deviceModel
+          }
+        };
+
+        socket.send(JSON.stringify(deviceInfo));
+        console.log('[Agenteract] Sent device info to server');
       };
 
       socket.onmessage = async (event) => {

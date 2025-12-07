@@ -1,10 +1,26 @@
-import { loadRuntimeConfig, loadConfig, findConfigRoot } from '@agenteract/core/node';
+import { loadRuntimeConfig, loadConfig, findConfigRoot, setDefaultDevice } from '@agenteract/core/node';
 import qrcode from 'qrcode-terminal';
 import { spawn, execFile } from 'child_process';
 import { networkInterfaces } from 'os';
 import { promisify } from 'util';
+import readline from 'readline';
 
 const execFileAsync = promisify(execFile);
+
+// Helper to prompt user for y/n
+async function promptYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+    });
+  });
+}
 
 interface Device {
   id: string;
@@ -197,9 +213,94 @@ export async function runConnectCommand(args: {
 
   qrcode.generate(url, { small: true });
 
+  // Track most recently connected device
+  let mostRecentDevice: { deviceId: string; info: { deviceName: string; deviceModel: string; osVersion: string; isSimulator: boolean } } | null = null;
+
+  // Poll the dev server for new device connections
+  const seenDevices = new Set<string>();
+  let pollInterval: NodeJS.Timeout | null = null;
+
+  // Get project name for polling
+  const configRoot = await findConfigRoot();
+  let projectName: string | undefined;
+  if (configRoot) {
+    try {
+      const agenteractConfig = await loadConfig(configRoot);
+      projectName = agenteractConfig.projects[0]?.name;
+    } catch (error) {
+      // Config might not exist or be invalid
+    }
+  }
+
+  // Handler for new device connections
+  const handleNewDevice = async (device: any, promptImmediately: boolean) => {
+    if (!seenDevices.has(device.deviceId) && device.deviceInfo) {
+      seenDevices.add(device.deviceId);
+      const info = device.deviceInfo;
+      const deviceType = info.isSimulator ? 'simulator' : 'device';
+      console.log(`\n📱 New ${deviceType} connected: ${info.deviceName} (${info.deviceModel}, ${info.osVersion})`);
+
+      if (promptImmediately) {
+        // In QR-only mode, prompt immediately
+        const setAsDefault = await promptYesNo('Set as default device for this project? (y/n): ');
+        if (setAsDefault && projectName) {
+          await setDefaultDevice(projectName, device.deviceId);
+          console.log(`✅ Set ${info.deviceName} as default device for project "${projectName}"`);
+        }
+      } else {
+        // In interactive mode, just show hint
+        console.log(`💡 Press 'y' to set as default device\n`);
+        mostRecentDevice = { deviceId: device.deviceId, info };
+      }
+    }
+  };
+
+  // Start polling for device connections
+  if (projectName) {
+    // Use httpPort if available, otherwise fall back to 8766
+    const httpPort = runtimeConfig.httpPort || 8766;
+
+    const pollForDevices = async (promptImmediately: boolean) => {
+      try {
+        const url = `http://localhost:${httpPort}/devices?project=${encodeURIComponent(projectName!)}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          for (const device of data.devices) {
+            await handleNewDevice(device, promptImmediately);
+          }
+        }
+      } catch (e) {
+        // Ignore polling errors (server might be temporarily unavailable)
+      }
+    };
+
+    // Initial poll
+    await pollForDevices(args.qrOnly || false);
+
+    // Set up interval
+    pollInterval = setInterval(() => pollForDevices(args.qrOnly || false), 2000);
+  }
+
+  // Cleanup polling when process exits
+  const cleanup = () => {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  };
+  process.on('exit', cleanup);
+  process.on('SIGINT', () => {
+    cleanup();
+    process.exit(0);
+  });
+
   if (args.qrOnly) {
-    console.log('\n✨ QR code generated. Scan with your device to connect.\n');
-    return;
+    console.log('\n✨ QR code generated. Scan with your device to connect.');
+    console.log('👀 Watching for new device connections...\n');
+
+    // Keep process alive to watch for connections
+    await new Promise(() => {}); // Never resolves - wait for Ctrl+C
   }
 
   // Detect available devices
@@ -264,7 +365,6 @@ export async function runConnectCommand(args: {
     console.log('  [0] Cancel\n');
 
     // Read user input
-    const readline = await import('readline');
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -279,12 +379,39 @@ export async function runConnectCommand(args: {
 
     const trimmedAnswer = answer.trim();
 
+    // Check if user pressed 'y' to set most recent device as default
+    if (trimmedAnswer === 'y' || trimmedAnswer === 'Y') {
+      if (!mostRecentDevice) {
+        console.log('\n⚠️  No new device has connected yet\n');
+        cleanup();
+        return;
+      }
+      const device = mostRecentDevice as { deviceId: string; info: { deviceName: string; deviceModel: string; osVersion: string; isSimulator: boolean } };
+      const deviceId = device.deviceId;
+      const info = device.info;
+      const configRoot = await findConfigRoot();
+      if (configRoot) {
+        const agenteractConfig = await loadConfig(configRoot);
+        const projectName = agenteractConfig.projects[0]?.name;
+        if (projectName) {
+          await setDefaultDevice(projectName, deviceId);
+          console.log(`\n✅ Set ${info.deviceName} as default device for project "${projectName}"\n`);
+        } else {
+          console.log('\n⚠️  No projects found in config to set default device\n');
+        }
+      }
+      cleanup();
+      return;
+    }
+
     // Check if it's a device ID first
     const deviceById = allDevices.find(d => d.id === trimmedAnswer);
     if (deviceById) {
       console.log(`\n📤 Sending to ${deviceById.name}...\n`);
       await openUrlOnDevice(deviceById, url);
-      console.log();
+
+      // Wait for device connection and offer to set as default
+      await waitForConnectionAndPrompt(projectName);
       return;
     }
 
@@ -293,6 +420,7 @@ export async function runConnectCommand(args: {
 
     if (choice === 0 || isNaN(choice)) {
       console.log('\n❌ Cancelled.\n');
+      cleanup();
       return;
     }
 
@@ -310,15 +438,75 @@ export async function runConnectCommand(args: {
       if (failed > 0) {
         console.log(`❌ Failed to send to ${failed} device(s)`);
       }
+
+      // Wait for device connections and offer to set as default
+      await waitForConnectionAndPrompt(projectName);
     } else if (choice >= 1 && choice <= allDevices.length) {
       const device = allDevices[choice - 1];
       console.log(`\n📤 Sending to ${device.name}...\n`);
       await openUrlOnDevice(device, url);
+
+      // Wait for device connection and offer to set as default
+      await waitForConnectionAndPrompt(projectName);
     } else {
       console.error(`\n❌ Error: Invalid choice. Please enter a number between 0 and ${allDevices.length + 1}, or a device ID.\n`);
+      cleanup();
       process.exit(1);
     }
   }
 
-  console.log();
+  // Helper function to wait for connection and prompt for default device
+  async function waitForConnectionAndPrompt(projectName: string | undefined) {
+    console.log('👀 Waiting for device to connect...');
+    console.log('💡 Press \'y\' when the device connects to set it as default, or Ctrl+C to exit\n');
+
+    // Set up readline for listening to 'y' key
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    // Enable raw mode to detect single key press
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+
+    process.stdin.on('data', async (key) => {
+      const char = key.toString();
+
+      if (char === 'y' || char === 'Y') {
+        if (!mostRecentDevice) {
+          console.log('\n⚠️  No new device has connected yet. Waiting...\n');
+          return;
+        }
+
+        const device = mostRecentDevice as { deviceId: string; info: { deviceName: string; deviceModel: string; osVersion: string; isSimulator: boolean } };
+        if (projectName) {
+          await setDefaultDevice(projectName, device.deviceId);
+          console.log(`\n✅ Set ${device.info.deviceName} as default device for project "${projectName}"\n`);
+        }
+
+        cleanup();
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.exit(0);
+      } else if (char === '\u0003') {
+        // Ctrl+C
+        cleanup();
+        rl.close();
+        if (process.stdin.isTTY) {
+          process.stdin.setRawMode(false);
+        }
+        process.exit(0);
+      }
+    });
+
+    // Keep process alive
+    await new Promise(() => {});
+  }
+
+  // Should not reach here
+  cleanup();
 }

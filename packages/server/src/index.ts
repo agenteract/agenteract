@@ -8,7 +8,7 @@ import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
-import { generateAuthToken, saveRuntimeConfig, deleteRuntimeConfig, resetPNPMWorkspaceCWD, loadRuntimeConfig } from '@agenteract/core/node';
+import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary } from '@agenteract/core/node';
 
 const isLogServer = process.argv.includes('--log-only');
 
@@ -79,6 +79,27 @@ if (isLogServer) {
     app.use(express.json());
 
     const pendingRequests = new Map<string, http.ServerResponse>();
+
+    // Mask token for logging - show only last 4 chars
+    function maskToken(token: string): string {
+        if (token.length <= 4) return '****';
+        return `****-${token.slice(-4)}`;
+    }
+
+    // Save known device info to runtime config for CLI access
+    async function updateKnownDevice(deviceId: string, info: DeviceInfoSummary): Promise<void> {
+        try {
+            const config = await loadRuntimeConfig();
+            if (config) {
+                if (!config.knownDevices) config.knownDevices = {};
+                config.knownDevices[deviceId] = info;
+                await saveRuntimeConfig(config);
+                log(`Saved device info for ${deviceId} to runtime config`);
+            }
+        } catch (e) {
+            console.error('[Device] Failed to save device info to runtime config:', e);
+        }
+    }
 
     // --- Device Info Storage ---
     interface DeviceInfo {
@@ -247,12 +268,12 @@ if (isLogServer) {
             
             if (existingConfig && existingConfig.token) {
                 AUTH_TOKEN = existingConfig.token;
-                console.log(`[Security] Loaded existing Auth Token: ${AUTH_TOKEN}`);
-                log(`Loaded existing Security Token: ${AUTH_TOKEN}`);
+                console.log(`[Security] Loaded existing Auth Token: ${maskToken(AUTH_TOKEN)}`);
+                log(`Loaded existing Security Token: ${maskToken(AUTH_TOKEN)}`);
             } else {
                 AUTH_TOKEN = generateAuthToken();
-                console.log(`[Security] Generated NEW Auth Token: ${AUTH_TOKEN}`);
-                log(`Generated NEW Security Token: ${AUTH_TOKEN}`);
+                console.log(`[Security] Generated NEW Auth Token: ${maskToken(AUTH_TOKEN)}`);
+                log(`Generated NEW Security Token: ${maskToken(AUTH_TOKEN)}`);
             }
 
             // Always save to ensure the file exists and is up to date
@@ -268,8 +289,8 @@ if (isLogServer) {
             if (!AUTH_TOKEN!) AUTH_TOKEN = generateAuthToken();
         }
 
-        log(`Security Token: ${AUTH_TOKEN}`);
-        console.log(`[Security] Auth Token generated: ${AUTH_TOKEN}`);
+        log(`Security Token: ${maskToken(AUTH_TOKEN)}`);
+        console.log(`[Security] Auth Token: ${maskToken(AUTH_TOKEN)}`);
 
         const wss = new WebSocketServer({ port: WS_PORT, host: '0.0.0.0' });
         log(`WebSocket server for apps listening on port ${WS_PORT}`);
@@ -406,6 +427,14 @@ if (isLogServer) {
                                 if (existingConnection) {
                                     existingConnection.deviceInfo = deviceInfo;
                                     console.log(`[Device] Added device info to: ${connectionKey}`);
+
+                                    // Save to runtime config for CLI access
+                                    updateKnownDevice(existingDeviceId, {
+                                        deviceName: deviceInfo.deviceName,
+                                        deviceModel: deviceInfo.deviceModel,
+                                        osVersion: deviceInfo.osVersion,
+                                        isSimulator: deviceInfo.isSimulator
+                                    });
                                 }
                             }
 
@@ -487,6 +516,17 @@ if (isLogServer) {
 
         // --- HTTP Server (for the Agent) ---
         const HTTP_PORT = args.port;
+
+        // Update runtime config with HTTP port
+        try {
+            const config = await loadRuntimeConfig();
+            if (config) {
+                config.httpPort = HTTP_PORT;
+                await saveRuntimeConfig(config);
+            }
+        } catch (e) {
+            console.error('Failed to update runtime config with HTTP port:', e);
+        }
 
         app.post('/gemini-agent', async (req, res) => {
             const command = req.body;
