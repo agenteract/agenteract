@@ -23,3 +23,20 @@ actual class ConfigStorage {
         config = null
     }
 }
+
+/**
+ * Desktop implementation of getDeviceInfo
+ */
+actual suspend fun getDeviceInfo(projectName: String, deviceId: String?): DeviceInfo {
+    val osName = System.getProperty("os.name") ?: "Unknown"
+    val osVersion = System.getProperty("os.version") ?: "Unknown"
+
+    return DeviceInfo(
+        isSimulator = false,
+        deviceId = deviceId,
+        bundleId = projectName,
+        deviceName = osName,
+        osVersion = osVersion,
+        deviceModel = "Desktop"
+    )
+}

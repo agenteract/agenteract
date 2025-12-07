@@ -58,3 +58,30 @@ actual class ConfigStorage {
 object AgenteractContext {
     var appContext: Context? = null
 }
+
+/**
+ * Android implementation of getDeviceInfo
+ */
+actual suspend fun getDeviceInfo(projectName: String, deviceId: String?): DeviceInfo {
+    val isSimulator = android.os.Build.FINGERPRINT.contains("generic") ||
+                     android.os.Build.FINGERPRINT.contains("emulator") ||
+                     android.os.Build.MODEL.contains("sdk") ||
+                     android.os.Build.MODEL.contains("Emulator")
+
+    val deviceModel = android.os.Build.MODEL
+    val deviceName = if (android.os.Build.MANUFACTURER.isNotBlank()) {
+        "${android.os.Build.MANUFACTURER} $deviceModel"
+    } else {
+        deviceModel
+    }
+    val osVersion = android.os.Build.VERSION.RELEASE
+
+    return DeviceInfo(
+        isSimulator = isSimulator,
+        deviceId = deviceId,
+        bundleId = projectName,
+        deviceName = deviceName,
+        osVersion = osVersion,
+        deviceModel = deviceModel
+    )
+}

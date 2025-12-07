@@ -40,3 +40,19 @@ data class ViewNode(
     val text: String? = null,
     val children: List<ViewNode> = emptyList()
 )
+
+@Serializable
+data class DeviceInfo(
+    val isSimulator: Boolean,
+    val deviceId: String?,
+    val bundleId: String,
+    val deviceName: String,
+    val osVersion: String,
+    val deviceModel: String
+)
+
+@Serializable
+data class DeviceInfoResponse(
+    val status: String = "deviceInfo",
+    val deviceInfo: DeviceInfo
+)
