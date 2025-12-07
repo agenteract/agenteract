@@ -3,11 +3,20 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { AgenteractConfig, DevServerConfig, ProjectConfig } from '../config-types.js';
 
+export interface DeviceInfoSummary {
+  deviceName: string;
+  deviceModel: string;
+  osVersion: string;
+  isSimulator: boolean;
+}
+
 export interface RuntimeConfig {
   host: string;
-  port: number;
+  port: number; // WebSocket port
+  httpPort?: number; // HTTP server port (for /devices, /logs, etc.)
   token: string;
   defaultDevices?: Record<string, string>; // projectName → deviceId
+  knownDevices?: Record<string, DeviceInfoSummary>; // deviceId → device info
 }
 
 export function getRuntimeConfigPath(cwd: string = process.cwd()): string {

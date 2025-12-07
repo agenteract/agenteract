@@ -28,15 +28,26 @@ expect class ConfigStorage() {
 object AgentConfigManager {
     private val storage = ConfigStorage()
 
+    private fun sanitizeConfigForLog(config: AgenteractConfig): String {
+        var result = "host: ${config.host}, port: ${config.port}"
+        if (config.token != null) {
+            result += ", token: ****"
+        }
+        if (config.deviceId != null) {
+            result += ", deviceId: ${config.deviceId}"
+        }
+        return result
+    }
+
     fun saveConfig(config: AgenteractConfig) {
         storage.save(config)
-        println("[Agenteract] Config saved: ${config.host}:${config.port}")
+        println("[Agenteract] Config saved: ${sanitizeConfigForLog(config)}")
     }
 
     fun loadConfig(): AgenteractConfig? {
         val config = storage.load()
         if (config != null) {
-            println("[Agenteract] Loaded config: ${config.host}:${config.port}")
+            println("[Agenteract] Loaded config: ${sanitizeConfigForLog(config)}")
         }
         return config
     }
@@ -46,3 +57,8 @@ object AgentConfigManager {
         println("[Agenteract] Config cleared")
     }
 }
+
+/**
+ * Get device information for the current platform
+ */
+expect suspend fun getDeviceInfo(projectName: String, deviceId: String?): DeviceInfo

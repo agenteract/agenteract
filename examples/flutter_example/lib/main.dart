@@ -18,12 +18,20 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
       home: const MyHomePage(title: 'Agenteract Flutter Demo'),
+      // Handle deep links gracefully (agenteract config links are handled by AgentDebugBridge)
+      onGenerateRoute: (settings) {
+        // If the route is an agenteract config link, just return the home page
+        // The actual deep link handling is done by AgentDebugBridge
+        return MaterialPageRoute(
+          builder: (_) => const MyHomePage(title: 'Agenteract Flutter Demo'),
+        );
+      },
     );
 
     // Wrap with AgentDebugBridge in debug mode
     if (kDebugMode) {
       return AgentDebugBridge(
-        projectName: 'flutter-app',
+        projectName: 'flutter-example',
         child: app,
       );
     }

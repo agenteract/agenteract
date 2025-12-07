@@ -64,7 +64,6 @@ fun AgentDebugBridge(
 
                 val maskedPath = pathWithParams
                     .replace(Regex("token=[^&]+"), "token=***")
-                    .replace(Regex("deviceId=[^&]+"), "deviceId=***")
                 AgentLogger.log("AgentDebugBridge: Connecting to ws://$effectiveHost:$effectivePort$maskedPath")
 
                 client.webSocket(
@@ -74,6 +73,11 @@ fun AgentDebugBridge(
                     path = pathWithParams
                 ) {
                     AgentLogger.log("AgentDebugBridge: Connected!")
+
+                    // Send device info immediately after connecting
+                    sendDeviceInfo(projectName, effectiveDeviceId, json) { deviceInfoMsg ->
+                        send(deviceInfoMsg)
+                    }
 
                     // Main loop
                     for (frame in incoming) {
@@ -135,6 +139,23 @@ fun AgentDebugBridge(
  */
 fun updateAgentConfig(config: AgenteractConfig) {
     AgentConfigManager.saveConfig(config)
+}
+
+private suspend fun sendDeviceInfo(
+    projectName: String,
+    deviceId: String?,
+    json: Json,
+    send: suspend (String) -> Unit
+) {
+    try {
+        val deviceInfo = getDeviceInfo(projectName, deviceId)
+        val response = DeviceInfoResponse(deviceInfo = deviceInfo)
+        val message = json.encodeToString(response)
+        send(message)
+        AgentLogger.log("AgentDebugBridge: Sent device info to server")
+    } catch (e: Exception) {
+        AgentLogger.log("AgentDebugBridge: Failed to send device info: $e")
+    }
 }
 
 private suspend fun handleCommand(

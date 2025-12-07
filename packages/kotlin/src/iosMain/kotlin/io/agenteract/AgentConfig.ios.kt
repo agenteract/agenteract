@@ -44,3 +44,23 @@ actual class ConfigStorage {
         private const val KEY_CONFIG = "com.agenteract.config"
     }
 }
+
+/**
+ * iOS implementation of getDeviceInfo
+ */
+actual suspend fun getDeviceInfo(projectName: String, deviceId: String?): DeviceInfo {
+    val isSimulator = platform.Foundation.NSProcessInfo.processInfo.environment["SIMULATOR_UDID"] != null
+
+    val deviceModel = platform.UIKit.UIDevice.currentDevice.model
+    val deviceName = platform.UIKit.UIDevice.currentDevice.name
+    val osVersion = platform.UIKit.UIDevice.currentDevice.systemVersion
+
+    return DeviceInfo(
+        isSimulator = isSimulator,
+        deviceId = deviceId,
+        bundleId = projectName,
+        deviceName = deviceName,
+        osVersion = osVersion,
+        deviceModel = deviceModel
+    )
+}
