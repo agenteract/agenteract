@@ -44,7 +44,7 @@ async function cleanup() {
   if (testConfigDir && agentServer && agentServer.pid) {
     try {
       info('Sending quit command to Flutter via agenteract CLI...');
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', 'q');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', 'q');
       await sleep(2000); // Wait for Flutter to quit
       success('Flutter quit command sent');
     } catch (err) {
@@ -202,25 +202,6 @@ async function main() {
     await runCommand(`cd ${exampleAppDir} && flutter pub get`);
     success('Flutter dependencies installed');
 
-    // 8a. Create missing xcconfig files (they're gitignored but required by Xcode)
-    // These files are not tracked in git but are needed for the Xcode project to build
-    info('Creating missing xcconfig files...');
-    const flutterConfigDir = `${exampleAppDir}/ios/Flutter`;
-    
-    // Debug.xcconfig
-    const debugXcconfigPath = `${flutterConfigDir}/Debug.xcconfig`;
-    writeFileSync(debugXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
-#include "Generated.xcconfig"
-`);
-    
-    // Release.xcconfig
-    const releaseXcconfigPath = `${flutterConfigDir}/Release.xcconfig`;
-    writeFileSync(releaseXcconfigPath, `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"
-#include "Generated.xcconfig"
-`);
-    
-    success('xcconfig files created');
-
     // 8a. Install CocoaPods dependencies for iOS
     // This is required after copying the app to a new location
     // The Pods directory paths need to be regenerated for the new location
@@ -320,9 +301,9 @@ async function main() {
     success('CLI packages installed from Verdaccio');
 
     // 10. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for flutter-app in /tmp...');
+    info('Creating agenteract config for flutter-example in /tmp...');
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-app 'flutter run'`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-example 'flutter run' --scheme agenteract-flutter-example`
     );
     success('Config created');
 
@@ -347,7 +328,7 @@ async function main() {
     // Check dev logs to see if Flutter is starting and handle device selection
     info('Checking Flutter dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '50');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '50');
       info('Initial Flutter dev logs:');
       console.log(devLogs);
 
@@ -382,16 +363,16 @@ async function main() {
 
           // Send the device selection
           info(`Sending device selection: ${deviceNumber}`);
-          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', deviceNumber);
+          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', deviceNumber);
           await sleep(2000); // Wait for Flutter to process the selection
 
           // Check logs again to confirm Flutter started
-          const afterSelectionLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '20');
+          const afterSelectionLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '20');
           info('Logs after device selection:');
           console.log(afterSelectionLogs);
         } else {
           info('Could not find booted simulator, defaulting to device 1');
-          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-app', '1');
+          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', '1');
           await sleep(2000);
         }
       }
@@ -419,7 +400,7 @@ async function main() {
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Flutter app is connected...`);
-        hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'flutter-app');
+        hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'flutter-example');
 
         // Check if this is an actual hierarchy (should contain widget/element info)
         // Not just an error message
@@ -445,7 +426,7 @@ async function main() {
           // Every 5 attempts, check dev logs for progress
           if (connectionAttempts % 5 === 0) {
             try {
-              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '10');
+              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '10');
               info(`Flutter dev logs (attempt ${connectionAttempts}):`);
               console.log(devLogs);
             } catch (logErr) {
@@ -457,10 +438,23 @@ async function main() {
         }
       }
 
+      // outside of CI, app may be using settings that authenticated with a different dev server, force reconnect if auth failed
+      try {
+        // const ps = await runCommand('ps aux | grep "Runner" | grep -v grep');
+        const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '30');
+        console.log(`devLogs: ${devLogs}`);
+        if (devLogs.includes('Disconnected. Reconnecting...')) {
+          info('Runner process found, reconnect all devices');
+          await runCommand(`cd ${testConfigDir} && npx @agenteract/cli connect -a`);
+        }
+      } catch (_err) {
+        console.log(`Error getting dev logs: ${_err}`);
+      }
+
       if (connectionAttempts >= maxAttempts) {
         // Get final dev logs before failing
         try {
-          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '100');
+          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '100');
           error('Final Flutter dev logs:');
           console.log(finalLogs);
         } catch (logErr) {
@@ -504,25 +498,25 @@ async function main() {
     // 14. Test tap interaction
     if (hasIncrementButton) {
       info('Testing tap interaction on increment-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-app', 'increment-button');
+      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'increment-button');
       assertContains(tapResult, 'success', 'Tap command executed successfully');
       success('Button tap successful');
 
       // 15. Verify tap was logged and counter incremented
       await sleep(500);
-      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '5');
+      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
       assertContains(logsAfterTap, 'Counter incremented to 1', 'Counter increment was logged');
       success('Button tap verified in logs');
     } else {
       info('Skipping increment-button tap test (button not in hierarchy)');
       info('Trying alternative: tap on reset-button instead...');
       try {
-        const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-app', 'reset-button');
+        const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'reset-button');
         assertContains(tapResult, 'success', 'Tap command executed successfully');
         success('Reset button tap successful');
 
         await sleep(500);
-        const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '5');
+        const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
         assertContains(logsAfterTap, 'All values reset', 'Reset was logged');
         success('Reset button tap verified in logs');
       } catch (err) {
@@ -536,7 +530,7 @@ async function main() {
     const inputResult = await runAgentCommand(
       `cwd:${testConfigDir}`,
       'input',
-      'flutter-app',
+      'flutter-example',
       'text-input',
       'Hello from E2E test'
     );
@@ -545,7 +539,7 @@ async function main() {
 
     // 17. Verify input was logged
     await sleep(500);
-    const logsAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '5');
+    const logsAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
     assertContains(logsAfterInput, 'Hello from E2E test', 'Input text was logged');
     success('Text input verified in logs');
 
@@ -554,7 +548,7 @@ async function main() {
     const longPressResult = await runAgentCommand(
       `cwd:${testConfigDir}`,
       'longPress',
-      'flutter-app',
+      'flutter-example',
       'long-press-view'
     );
     assertContains(longPressResult, 'success', 'Long press command executed successfully');
@@ -562,7 +556,7 @@ async function main() {
 
     // 19. Verify long press was logged
     await sleep(500);
-    const logsAfterLongPress = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '5');
+    const logsAfterLongPress = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
     assertContains(logsAfterLongPress, 'Long pressed', 'Long press was logged');
     success('Long press verified in logs');
 
@@ -571,7 +565,7 @@ async function main() {
     const scrollResult = await runAgentCommand(
       `cwd:${testConfigDir}`,
       'scroll',
-      'flutter-app',
+      'flutter-example',
       'horizontal-scroll',
       'right',
       '100'
@@ -584,7 +578,7 @@ async function main() {
     const swipeResult = await runAgentCommand(
       `cwd:${testConfigDir}`,
       'swipe',
-      'flutter-app',
+      'flutter-example',
       'swipeable-card',
       'left'
     );
@@ -593,20 +587,20 @@ async function main() {
 
     // 22. Verify swipe was logged
     await sleep(500);
-    const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '5');
+    const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
     assertContains(logsAfterSwipe, 'Card swiped', 'Swipe was logged');
     success('Swipe verified in logs');
 
     // 23. Get all logs to verify app is running
     info('Fetching app logs...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '20');
+    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '20');
     info('Recent logs:');
     console.log(logs);
 
     // 24. Check dev logs
     info('Checking Flutter dev server logs...');
     try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-app', '--since', '30');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '30');
       info('Flutter dev logs:');
       console.log(devLogs);
     } catch (err) {
@@ -615,7 +609,7 @@ async function main() {
 
     // ensure app logs are sent to the server
     info('Checking if app logs are sent to the server...');
-    const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-app', '--since', '30');
+    const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '30');
     assertContains(appLogs, 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
     success('App config working in hybrid mode (logging from dev server and app)');
 

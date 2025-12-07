@@ -361,7 +361,13 @@ if (isLogServer) {
             socketToDeviceId.set(ws, deviceId);
 
             const connectionKey = `${projectName}:${deviceId}`;
-            projectConnections.set(connectionKey, { socket: ws });
+
+            // Preserve existing deviceInfo if this is a reconnection
+            const existingConnection = projectConnections.get(connectionKey);
+            projectConnections.set(connectionKey, {
+                socket: ws,
+                deviceInfo: existingConnection?.deviceInfo
+            });
 
             console.log(`[Device] Registered: ${connectionKey}`);
 

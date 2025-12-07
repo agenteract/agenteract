@@ -45,6 +45,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   bool _isConnecting = false;
   StreamSubscription? _linkSub;
   late AppLinks _appLinks;
+  bool _deviceInfoSent = false;
 
   // Config storage
   String? _storedHost;
@@ -109,7 +110,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         if (host != null && port != null) {
           // Have saved config - connect
           _shouldConnect = true;
-          debugPrint('[Agenteract] Using saved config: $host:$port');
+          debugPrint('[Agenteract] Using saved config: ${_sanitizeConfigForLog(host, port, token, deviceId)}');
         } else {
           // No saved config - only connect if autoConnect is enabled and we have a default URL
           final hasDefaultUrl = _serverUrl != null;
@@ -145,7 +146,12 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
 
     try {
       final initialLink = await _appLinks.getInitialLink();
-      if (initialLink != null) _handleLink(initialLink.toString());
+      // Only process initial link if we don't already have a config
+      // This prevents re-processing old links on every app launch
+      if (initialLink != null && _storedHost == null) {
+        debugPrint('[Agenteract] Processing initial deep link');
+        _handleLink(initialLink.toString());
+      }
     } catch (e) {
       debugPrint('AgentDebugBridge: Error getting initial link: $e');
     }
@@ -170,7 +176,8 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         final token = uri.queryParameters['token'];
 
         if (host != null && portStr != null && token != null) {
-          debugPrint('[Agenteract] Received config via Deep Link: $host:$portStr');
+          final port = int.parse(portStr);
+          debugPrint('[Agenteract] Received config via Deep Link: ${_sanitizeConfigForLog(host, port, token, null)}');
 
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('agenteract_host', host);
@@ -207,6 +214,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     _channel?.sink.close();
     _channel = null;
     _isConnecting = false;
+    _deviceInfoSent = false;
   }
 
   void _connect() {
@@ -239,7 +247,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       }
 
       final uri = Uri.parse(url);
-      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***').replaceAll(RegExp(r'deviceId=([^&]+)'), 'deviceId=***')}');
+      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -247,16 +255,27 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         _handleMessage,
         onError: (error) {
           debugPrint('[Agenteract] Connection error: $error');
+          debugPrint('[Agenteract] Error type: ${error.runtimeType}');
           _scheduleReconnect();
         },
         onDone: () {
           debugPrint('[Agenteract] Disconnected. Reconnecting...');
           _scheduleReconnect();
         },
+        cancelOnError: false,
       );
 
-      debugPrint('[Agenteract] Connected to agent server');
+      debugPrint('[Agenteract] WebSocket channel created');
       _isConnecting = false;
+
+      // Send device info after a short delay to ensure WebSocket handshake is complete
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (_channel != null && !_deviceInfoSent) {
+          _deviceInfoSent = true;
+          debugPrint('[Agenteract] Sending device info');
+          _sendDeviceInfo();
+        }
+      });
     } catch (e) {
       debugPrint('[Agenteract] Connection failed: $e');
       _isConnecting = false;
@@ -273,6 +292,13 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
 
   void _handleMessage(dynamic message) {
     try {
+      // Send device info on first message (connection is confirmed)
+      if (!_deviceInfoSent) {
+        _deviceInfoSent = true;
+        debugPrint('[Agenteract] Connection confirmed, sending device info');
+        _sendDeviceInfo();
+      }
+
       final data = json.decode(message as String) as Map<String, dynamic>;
       final status = data['status'] as String?;
       final action = data['action'] as String?;
@@ -460,6 +486,95 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     } catch (e) {
       debugPrint('AgentDebugBridge: Error sending response: $e');
     }
+  }
+
+  void _sendDeviceInfo() {
+    try {
+      // Determine if running on simulator/emulator
+      bool isSimulator = false;
+      String deviceName = 'Unknown';
+      String deviceModel = 'Unknown';
+      String osVersion = 'Unknown';
+
+      if (kIsWeb) {
+        isSimulator = true;
+        deviceName = 'Web Browser';
+        deviceModel = 'web';
+        osVersion = 'Web';
+      } else if (Platform.isAndroid) {
+        // Android emulator detection - check if running on x86/x64 (emulators) or look for emulator indicators
+        final version = Platform.version;
+        isSimulator = version.contains('(') &&
+                     (version.toLowerCase().contains('emulator') ||
+                      version.toLowerCase().contains('generic') ||
+                      Platform.environment['ANDROID_PRODUCT_MODEL']?.toLowerCase().contains('sdk') == true);
+
+        deviceModel = Platform.environment['ANDROID_PRODUCT_MODEL'] ?? 'Android Device';
+        deviceName = Platform.environment['ANDROID_PRODUCT_MANUFACTURER'] != null
+            ? '${Platform.environment['ANDROID_PRODUCT_MANUFACTURER']} $deviceModel'
+            : deviceModel;
+
+        // Extract OS version from Platform.version (format: "version (build info)")
+        // Example: "3.5.4 (stable) (Tue Oct 15 08:33:00 2024 +0000) on "android_x64""
+        final match = RegExp(r'on "android[_\w]*"').firstMatch(version);
+        if (match != null) {
+          final platformStr = match.group(0)?.replaceAll('on "', '').replaceAll('"', '') ?? '';
+          osVersion = 'Android ${platformStr.contains('_') ? platformStr.split('_').last : ''}';
+        } else {
+          osVersion = 'Android';
+        }
+      } else if (Platform.isIOS) {
+        // iOS simulator detection
+        final version = Platform.version;
+
+        // Check for simulator indicators in Platform.version
+        // Note: On Apple Silicon Macs, simulators show "ios_arm64" which is the same as physical devices
+        // The only reliable way without platform channels is to assume debug mode = simulator for iOS
+        // since physical iOS devices typically can't run debug builds without developer provisioning
+        isSimulator = kDebugMode;
+
+        // Set device info
+        if (isSimulator) {
+          deviceModel = 'iPhone Simulator';
+          deviceName = 'iPhone Simulator';
+        } else {
+          deviceModel = 'iPhone';
+          deviceName = 'iPhone';
+        }
+
+        // For iOS, we can't easily get the OS version from Platform.version
+        // It shows the Dart version, not iOS version
+        osVersion = 'iOS';
+      }
+
+      final deviceInfo = {
+        'status': 'deviceInfo',
+        'deviceInfo': {
+          'isSimulator': isSimulator,
+          'deviceId': _storedDeviceId,
+          'bundleId': widget.projectName,
+          'deviceName': deviceName,
+          'osVersion': osVersion,
+          'deviceModel': deviceModel,
+        }
+      };
+
+      _channel?.sink.add(json.encode(deviceInfo));
+      debugPrint('[Agenteract] Sent device info to server');
+    } catch (e) {
+      debugPrint('[Agenteract] Failed to send device info: $e');
+    }
+  }
+
+  String _sanitizeConfigForLog(String host, int port, String? token, String? deviceId) {
+    var result = 'host: $host, port: $port';
+    if (token != null) {
+      result += ', token: ****';
+    }
+    if (deviceId != null) {
+      result += ', deviceId: $deviceId';
+    }
+    return result;
   }
 
   @override

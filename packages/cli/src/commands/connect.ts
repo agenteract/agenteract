@@ -275,10 +275,10 @@ export async function runConnectCommand(args: {
       }
     };
 
-    // Initial poll
+    // Initial poll - show already-connected devices
     await pollForDevices(args.qrOnly || false);
 
-    // Set up interval
+    // Set up interval for detecting new connections
     pollInterval = setInterval(() => pollForDevices(args.qrOnly || false), 2000);
   }
 
@@ -457,6 +457,9 @@ export async function runConnectCommand(args: {
 
   // Helper function to wait for connection and prompt for default device
   async function waitForConnectionAndPrompt(projectName: string | undefined) {
+    // Clear seen devices so reconnections are detected as "new"
+    seenDevices.clear();
+    mostRecentDevice = null;
     console.log('👀 Waiting for device to connect...');
     console.log('💡 Press \'y\' when the device connects to set it as default, or Ctrl+C to exit\n');
 
