@@ -208,12 +208,9 @@ async function main() {
     await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/expo --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
-    // 7. Create agenteract config pointing to the /tmp app
-    info('Creating agenteract config for expo-app in /tmp...');
-    // Use --localhost to ensure stable connection in CI/Simulator
-    // Use --ios to auto-launch on iOS simulator (more reliable than manual 'i' keystroke)
+    // using --wait-log-timeout 500 to simulate deprecated usage
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost'`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost' --wait-log-timeout 500`
     );
     success('Config created');
 
@@ -250,7 +247,7 @@ async function main() {
     // 9. Launch iOS app via agenteract CLI command
     info('iOS launch initiated via --ios flag in dev server command');
     // No need to send 'i' command manually anymore
-    
+
     await sleep(1000);
 
     // 10. Wait for AgentDebugBridge connection (Expo can take a while to build and launch)
@@ -288,8 +285,8 @@ async function main() {
 
         // Check if this is an actual hierarchy (should contain React Native element info)
         const isRealHierarchy = hierarchy.includes('View') ||
-                                hierarchy.includes('Text') ||
-                                hierarchy.includes('children');
+          hierarchy.includes('Text') ||
+          hierarchy.includes('children');
 
         if (hierarchy && hierarchy.length > 100 && isRealHierarchy) {
           success('Expo app connected and hierarchy received!');

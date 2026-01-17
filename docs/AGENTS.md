@@ -582,7 +582,7 @@ pnpm agenteract-agents hierarchy react-app
 ```
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 - `--filter-key` or `-k`: Filter hierarchy by property name (e.g., testID, type)
 - `--filter-value` or `-v`: Filter hierarchy by property value (used with filter-key)
@@ -609,7 +609,7 @@ pnpm agenteract-agents hierarchy react-app -k testID -v settings-panel -w 1000 -
 If multiple nodes match the filter, all matches and their children are returned. The filtering is performed client-side after fetching the full hierarchy.
 
 **Automatic Log Capture:**
-After fetching the view hierarchy, this command automatically waits (default 500ms) and captures recent console logs. This provides a complete picture of the app's current state, including any console output that occurred during rendering. The logs are displayed after the hierarchy data under a "--- Console Logs ---" separator.
+After fetching the view hierarchy, this command automatically waits and captures recent console logs. This provides a complete picture of the app's current state, including any console output that occurred during rendering. The logs are displayed after the hierarchy data under a "--- Console Logs ---" separator.
 
 Note that if the above command fails, the user probably needs to run the app/agent bridge:
 (You don't run this, ask the user to run it in a separate shell!)
@@ -639,7 +639,7 @@ pnpm agenteract-agents tap expo-app login-button
 ```
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 
 **Example with custom options:**
@@ -647,8 +647,20 @@ pnpm agenteract-agents tap expo-app login-button
 pnpm agenteract-agents tap expo-app login-button --wait 1000 --log-count 20
 ```
 
+**Configuring Default Wait Time:**
+You can configure the default wait time for all agent commands in your `agenteract.config.js`:
+```javascript
+export default {
+  port: 8766,
+  waitLogTimeout: 0,  // Set to 0 for no wait (recommended for test scripts)
+  projects: [...]
+};
+```
+
+**Note:** The default wait time will change from 500ms to 0ms in the next major version. To prepare for this change and silence deprecation warnings, explicitly set `waitLogTimeout` in your config.
+
 **Automatic Log Capture:**
-After performing the tap action, this command automatically waits (default 500ms) to allow any resulting actions to complete, then captures recent console logs. This eliminates the need for a separate round trip to check what happened after the interaction. The logs are displayed after the action completes under a "--- Console Logs ---" separator.
+After performing the tap action, this command automatically waits to allow any resulting actions to complete, then captures recent console logs. This eliminates the need for a separate round trip to check what happened after the interaction. The logs are displayed after the action completes under a "--- Console Logs ---" separator.
 
 #### `input`
 Simulates text input into a text field or input component.
@@ -660,7 +672,7 @@ pnpm agenteract-agents input expo-app username-input "john@example.com"
 ```
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 
 **Note:** The component must have an `onChange` (web) or `onChangeText` (React Native) handler registered via `createAgentBinding`.
@@ -684,7 +696,7 @@ pnpm agenteract-agents scroll expo-app main-list up
 - `amount`: Number of pixels to scroll (optional, default: 100)
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 
 **Implementation Notes:**
@@ -710,7 +722,7 @@ pnpm agenteract-agents swipe expo-app swipeable-card left fast
 - `velocity`: One of `slow`, `medium`, or `fast` (optional, default: "medium")
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 
 **Implementation:**
@@ -745,7 +757,7 @@ pnpm agenteract-agents longPress expo-app list-item-1
 ```
 
 **Optional Parameters:**
-- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: 500)
+- `--wait` or `-w`: Milliseconds to wait before fetching logs (default: configured via `waitLogTimeout` in agenteract.config.js, or 500ms if not configured)
 - `--log-count` or `-l`: Number of log entries to fetch (default: 10)
 
 **Note:** The component must have an `onContextMenu` (web) or `onLongPress` (React Native) handler registered via `createAgentBinding`.

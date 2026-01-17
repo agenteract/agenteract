@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/agents",
-  "version": "0.1.2",
+  "version": "0.1.5",
   "description": "Agent tools for Agenteract",
   "type": "module",
   "main": "dist/cli.js",
@@ -25,7 +25,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node build.js",
-    "clean": "shx rm -rf dist .tsbuildinfo*"
+    "clean": "shx rm -rf dist .tsbuildinfo*",
+    "test": "jest --config jest.config.cjs"
   },
   "bin": {
     "agenteract-agents": "dist/cli.js"
@@ -37,7 +38,11 @@
     "yargs": "^17.7.2"
   },
   "devDependencies": {
-    "@types/yargs": "^17.0.32"
+    "@types/jest": "^29.5.12",
+    "@types/yargs": "^17.0.32",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.6.0"
   },
   "license": "Apache-2.0"
 }

@@ -31,5 +31,6 @@ export interface AgenteractConfig {
     logPort?: number;
   };
   port?: number; // Deprecated: legacy server port
+  waitLogTimeout?: number; // Default wait time in milliseconds before fetching logs after agent commands (tap, input, etc.). -1: no fetch, 0: immediate fetch, >0: wait.
   projects: ProjectConfig[];
 }

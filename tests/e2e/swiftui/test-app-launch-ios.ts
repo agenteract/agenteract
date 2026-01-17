@@ -220,8 +220,9 @@ async function main() {
 
     // 10. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for swift-app in /tmp...');
+    // using --wait-log-timeout 500 to simulate deprecated usage
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native --wait-log-timeout 500`
     );
     success(`Config created in ${testConfigDir}`);
 
@@ -234,7 +235,7 @@ async function main() {
       'agenteract-dev',
       { cwd: testConfigDir }
     );
-    
+
     // build the app
     info('Building the Swift-App app...');
     const derivedDataPath = `${exampleAppDir}/build/DerivedData`;

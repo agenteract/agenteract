@@ -25,7 +25,7 @@ import {
   spawnBackground,
   sleep,
   setupCleanup,
-} from '../common/helpers.js';import { assert } from 'node:console';
+} from '../common/helpers.js'; import { assert } from 'node:console';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
@@ -214,7 +214,7 @@ async function main() {
       error('CocoaPods is not installed. Please install it with: sudo gem install cocoapods');
       throw new Error('CocoaPods is required for iOS builds');
     }
-    
+
     // Verify Flutter generated files exist (required by Podfile)
     const generatedXcconfig = `${exampleAppDir}/ios/Flutter/Generated.xcconfig`;
     try {
@@ -224,11 +224,11 @@ async function main() {
       error('Flutter Generated.xcconfig missing - flutter pub get may have failed');
       throw new Error('Flutter generated files missing - cannot run pod install');
     }
-    
+
     // Remove existing Pods directory to ensure clean install
     // This is necessary because paths in Podfile.lock may be incorrect after copying
     await runCommand(`rm -rf ${exampleAppDir}/ios/Pods ${exampleAppDir}/ios/Podfile.lock ${exampleAppDir}/ios/*.xcworkspace`);
-    
+
     // Run pod deintegrate first to clean up any existing integration
     // This helps avoid "Unable to load contents of file list" errors
     // See: https://stackoverflow.com/questions/66194052/unable-to-load-contents-of-file-list-target-support-files-pods-target-name-po
@@ -239,12 +239,12 @@ async function main() {
       // It's okay if deintegrate fails - there might not be anything to deintegrate
       info('Pod deintegrate skipped (no existing integration)');
     }
-    
+
     // Run pod install
     // Note: We don't use --repo-update to avoid slow CocoaPods spec repo updates in CI
     await runCommand(`cd ${exampleAppDir}/ios && pod install --verbose`);
     success('CocoaPods dependencies installed');
-    
+
     // Verify that the Target Support Files were created correctly
     // This helps catch issues early before Xcode tries to build
     const targetSupportPath = `${exampleAppDir}/ios/Pods/Target Support Files/Pods-Runner`;
@@ -252,7 +252,7 @@ async function main() {
     const releaseXcconfig = `${targetSupportPath}/Pods-Runner.release.xcconfig`;
     const debugInputFiles = `${targetSupportPath}/Pods-Runner-frameworks-Debug-input-files.xcfilelist`;
     const debugOutputFiles = `${targetSupportPath}/Pods-Runner-frameworks-Debug-output-files.xcfilelist`;
-    
+
     try {
       await runCommand(`test -f "${debugXcconfig}" && test -f "${releaseXcconfig}"`);
       await runCommand(`test -f "${debugInputFiles}" && test -f "${debugOutputFiles}"`);
@@ -261,7 +261,7 @@ async function main() {
       error('Target Support Files missing after pod install');
       error('This usually means pod install failed silently');
       error(`Expected files in: ${targetSupportPath}`);
-      
+
       // List what actually exists for debugging
       try {
         const lsOutput = await runCommand(`ls -la "${targetSupportPath}" 2>&1 || echo "Directory does not exist"`);
@@ -269,10 +269,10 @@ async function main() {
       } catch {
         // Ignore if listing fails
       }
-      
+
       throw new Error('CocoaPods installation incomplete - Target Support Files missing');
     }
-    
+
     // Verify workspace was created
     const workspacePath = `${exampleAppDir}/ios/Runner.xcworkspace`;
     try {
@@ -302,8 +302,9 @@ async function main() {
 
     // 10. Create agenteract config pointing to the /tmp app
     info('Creating agenteract config for flutter-example in /tmp...');
+    // using --wait-log-timeout 500 to simulate deprecated usage
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-example 'flutter run' --scheme agenteract-flutter-example`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-example 'flutter run' --scheme agenteract-flutter-example --wait-log-timeout 500`
     );
     success('Config created');
 
@@ -405,8 +406,8 @@ async function main() {
         // Check if this is an actual hierarchy (should contain widget/element info)
         // Not just an error message
         const isRealHierarchy = hierarchy.includes('Agenteract Flutter Demo') ||
-                                hierarchy.includes('MaterialApp') ||
-                                hierarchy.includes('children');
+          hierarchy.includes('MaterialApp') ||
+          hierarchy.includes('children');
 
         if (hierarchy && hierarchy.length > 100 && isRealHierarchy) {
           success('Flutter app connected and hierarchy received!');

@@ -215,7 +215,8 @@ export async function addConfig(
   name: string,
   typeOrCommand: string,
   port?: number,
-  scheme?: string
+  scheme?: string,
+  waitLogTimeout?: number
 ) {
   const configPath = path.join(rootDir, 'agenteract.config.js');
   let config: any;
@@ -229,6 +230,11 @@ export async function addConfig(
       // For other errors (like parsing), we should not proceed.
       throw error;
     }
+  }
+
+  // Set top-level waitLogTimeout if provided
+  if (waitLogTimeout !== undefined) {
+    config.waitLogTimeout = waitLogTimeout;
   }
 
   config.projects = config.projects || [];
