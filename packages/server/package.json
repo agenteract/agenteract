@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@agenteract/core": "workspace:*",
-    "express": "^4.19.2",
+    "express": "^4.22.0",
     "ws": "^8.18.0",
     "uuid": "^9.0.1"
   },
