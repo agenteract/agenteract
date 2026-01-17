@@ -211,7 +211,7 @@ importers:
         specifier: workspace:*
         version: link:../core
       node-pty:
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0
       qrcode-terminal:
         specifier: ^0.12.0
@@ -279,7 +279,7 @@ importers:
         specifier: ^4.22.0
         version: 4.22.1
       node-pty:
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0
       yargs:
         specifier: ^17.7.2
@@ -303,7 +303,7 @@ importers:
         specifier: ^4.22.0
         version: 4.22.1
       node-pty:
-        specifier: ^1.0.0
+        specifier: 1.0.0
         version: 1.0.0
       yargs:
         specifier: ^17.7.2
