@@ -7,6 +7,14 @@ export default {
   port: 8766,
 
   /**
+   * Default wait time in milliseconds before fetching logs after agent commands (tap, input, etc.).
+   * Set to -1 for immediate response (recommended for test scripts).
+   * Default: 500ms (will change to 0ms in next major version)
+   * Can be overridden per-command with --wait flag.
+   */
+  // waitLogTimeout: 0,
+
+  /**
    * An array of projects to manage.
    */
   projects: [

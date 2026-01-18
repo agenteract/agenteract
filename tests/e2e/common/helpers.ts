@@ -212,7 +212,7 @@ export async function runAgentCommand(...args: string[]): Promise<string> {
   // Escape all arguments for safe shell usage
   const escapedArgs = commandArgs.map(escapeShellArg);
 
-    // Run from the specified directory using the locally installed package
+  // Run from the specified directory using the locally installed package
   const command = `npx @agenteract/agents ${escapedArgs.join(' ')}`;
   const { stdout, stderr } = await execAsync(command, { cwd });
   if (stderr.includes('Debugger attached'))
@@ -331,7 +331,7 @@ export async function killProcess(
  */
 export function getTmpDir(): string {
   const tmp = tmpdir();
-  
+
   // On Windows, expand 8.3 short paths to full paths
   if (process.platform === 'win32') {
     try {
@@ -352,7 +352,7 @@ export function getTmpDir(): string {
       }
     }
   }
-  
+
   return tmp;
 }
 

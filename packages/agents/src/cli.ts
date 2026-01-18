@@ -20,6 +20,9 @@ import {
 // Cache for loaded config
 let cachedConfig: AgenteractConfig | null = null;
 
+// Flag to track if we've already shown the deprecation warning
+let hasShownDeprecationWarning = false;
+
 /**
  * Load config with caching
  */
@@ -62,6 +65,37 @@ async function getServerUrls() {
       viteServerUrl: 'http://localhost:8791',
       flutterServerUrl: 'http://localhost:8792',
     };
+  }
+}
+
+/**
+ * Get the default wait time from config with deprecation warning
+ * Returns the configured waitLogTimeout, or shows a warning if using the legacy 500ms default
+ */
+async function getDefaultWaitTime(): Promise<number> {
+  try {
+    const config = await getConfig();
+
+    // If waitLogTimeout is explicitly set in config, use it
+    if (config.waitLogTimeout !== undefined) {
+      return config.waitLogTimeout;
+    }
+
+    // Show deprecation warning once per session
+    if (!hasShownDeprecationWarning) {
+      console.warn('⚠️  DEPRECATION WARNING: The default wait time after agent commands will change from 500ms to 0ms in the next major version.');
+      console.warn('   To silence this warning, add "waitLogTimeout" to your agenteract.config.js:');
+      console.warn('     - Set to 500 to keep current behavior');
+      console.warn('     - Set to 0 for immediate response (recommended for test scripts)');
+      console.warn('   You can always override per-command with --wait flag.\n');
+      hasShownDeprecationWarning = true;
+    }
+
+    // Legacy default
+    return 500;
+  } catch (error) {
+    // If config can't be loaded, use legacy default without warning
+    return 500;
   }
 }
 
@@ -142,8 +176,17 @@ const handleRequestError = (error: any) => {
   }
 }
 
-const waitAndFetchLogs = async (agentServerUrl: string, project: string, waitMs: number, logCount: number) => {
-  await new Promise(resolve => setTimeout(resolve, waitMs));
+const waitAndFetchLogs = async (agentServerUrl: string, project: string, waitMs: number | undefined, logCount: number) => {
+  const actualWaitMs = waitMs !== undefined ? waitMs : await getDefaultWaitTime();
+
+  if (actualWaitMs < 0) {
+    return '';
+  }
+
+  if (actualWaitMs > 0) {
+    await new Promise(resolve => setTimeout(resolve, actualWaitMs));
+  }
+
   try {
     const response = await axios.get(`${agentServerUrl}/logs?project=${project}&since=${logCount}`);
     return response.data;
@@ -308,7 +351,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',
@@ -391,7 +433,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',
@@ -454,7 +495,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',
@@ -524,7 +564,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',
@@ -596,7 +635,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',
@@ -656,7 +694,6 @@ yargs(hideBin(process.argv))
           alias: 'w',
           type: 'number',
           description: 'Milliseconds to wait before fetching logs',
-          default: 500,
         })
         .option('log-count', {
           alias: 'l',

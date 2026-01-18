@@ -227,6 +227,13 @@ export default defineConfig({
     );
     success('Config created');
 
+    // check that config contains waitLogTimeout: -1
+    const configContents = readFileSync(join(testConfigDir, 'agenteract.config.js'), 'utf8');
+    if (!configContents.includes('"waitLogTimeout": -1')) {
+      throw new Error('Failed to set waitLogTimeout to -1');
+    }
+    success('waitLogTimeout set to -1');
+
     // 5. Start agenteract dev from test directory (starts dev servers and agent bridge)
     info('Starting agenteract dev...');
     info('This will start the Vite dev server and AgentDebugBridge');
@@ -295,6 +302,11 @@ export default defineConfig({
           // print page console logs
           info(`Hierarchy: ${hierarchy}`);
 
+          // Follow up with separate logs command to verify state (testing config waitLogTimeout: 0)
+          const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '10');
+          info('App logs:');
+          console.log(appLogs);
+
           const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
           info('Vite dev logs:');
           console.log(devLogs);
@@ -326,7 +338,8 @@ export default defineConfig({
     // 10. Test tap interaction
     info('Testing tap interaction on test-button...');
     const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'react-app', 'test-button');
-    assertContains(tapResult, 'success', 'Tap command executed successfully');
+    console.log(tapResult);
+    assertContains(tapResult, '"status":"ok"', 'Tap command executed successfully');
     success('Button tap successful');
 
     // 11. Verify tap was logged

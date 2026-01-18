@@ -81,10 +81,17 @@ yargs(hideBin(process.argv))
         alias: 's',
         type: 'string',
         description: 'URL scheme for deep linking (e.g., "myapp")',
+      }).option('wait-log-timeout', {
+        alias: 'w',
+        type: 'number',
+        description: 'Default wait time for logs after agent commands (-1: no fetch, 0: immediate, >0: ms)',
+        default: -1,
       });
     },
     (argv) => {
-      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port, argv.scheme).catch((error) => {
+      console.log(`[cli] add-config argv:`, JSON.stringify(argv));
+      const waitLogTimeout = argv['wait-log-timeout'] as number | undefined;
+      addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port, argv.scheme, waitLogTimeout).catch((error) => {
         console.error(error);
       });
     }
