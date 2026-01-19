@@ -201,6 +201,9 @@ async function executeStep(
           pollCount++;
           const logs = await ctx.getLogs();  // Get all logs, not since timestamp 30
           console.log(`[Test] Poll ${pollCount}: Got ${logs.length} logs`);
+          if (logs.length > 0) {
+            console.log(`[Test] Poll ${pollCount} last log: ${logs[logs.length - 1].message}`);
+          }
           const logText = logs.map(l => l.message).join('\n');
           
           if (logText.includes(step.logContains)) {

@@ -171,6 +171,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     }
 
     _linkSub = _appLinks.uriLinkStream.listen((Uri? uri) {
+      debugPrint('[Agenteract] uriLinkStream received: $uri');
       if (uri != null) _handleLink(uri.toString());
     }, onError: (err) {
       debugPrint('AgentDebugBridge: Error in link stream: $err');
@@ -178,9 +179,11 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   }
 
   void _handleLink(String link) async {
+    debugPrint('[Agenteract] _handleLink called with: $link');
     try {
       // Call custom deep link handler first if provided
       if (widget.onDeepLink != null) {
+        debugPrint('[Agenteract] Calling custom onDeepLink handler');
         final handled = await widget.onDeepLink!(link);
         if (handled) {
           debugPrint('[Agenteract] Deep link handled by app: $link');
@@ -189,6 +192,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       }
 
       final uri = Uri.parse(link);
+      debugPrint('[Agenteract] Parsed URI: host=${uri.host}, path=${uri.path}');
       // Expecting: scheme://agenteract/config?host=...&port=...&token=...
       // The host might be 'agenteract' or the scheme itself depending on config.
       // We check path segments.
@@ -196,6 +200,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       if (uri.path.contains('config') ||
           uri.host == 'config' ||
           uri.pathSegments.contains('config')) {
+        debugPrint('[Agenteract] Link identified as config link');
         final host = uri.queryParameters['host'];
         final portStr = uri.queryParameters['port'];
         final token = uri.queryParameters['token'];
