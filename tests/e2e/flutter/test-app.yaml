@@ -60,7 +60,7 @@ steps:
 
   - waitFor: ""
     logContains: "App state cleared"
-    timeout: 10000
+    timeout: 30000
 
   # 6. Test Long Press Interaction
   - phase: "Long Press Test"

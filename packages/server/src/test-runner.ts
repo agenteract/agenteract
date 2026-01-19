@@ -419,22 +419,46 @@ async function executeStep(
       // For now, try iOS first, then Android
       // Add 5-second timeout to prevent hanging
       const deepLinkTimeout = 5000;
+      const deviceId = ctx.device || 'booted';
       
+      console.log(`[Test] Attempting deep link: ${step.deepLink} on device: ${deviceId}`);
+      
+      let iosError: Error | null = null;
       try {
-        execSync(`xcrun simctl openurl booted "${step.deepLink}"`, { 
+        const output = execSync(`xcrun simctl openurl "${deviceId}" "${step.deepLink}"`, { 
           stdio: 'pipe',
           timeout: deepLinkTimeout 
         });
-      } catch {
-        try {
-          // Android fallback - would need app package name
-          execSync(`adb shell am start -a android.intent.action.VIEW -d "${step.deepLink}"`, { 
-            stdio: 'pipe',
-            timeout: deepLinkTimeout 
-          });
-        } catch (e) {
-          throw new Error(`Failed to open deep link on iOS or Android: ${step.deepLink}`);
+        console.log(`[Test] iOS deep link command succeeded: ${output.toString().trim()}`);
+        return {
+          step: stepIndex,
+          action,
+          target,
+          status: 'passed',
+          duration: Date.now() - startTime,
+        };
+      } catch (e) {
+        iosError = e as Error;
+        console.log(`[Test] iOS deep link failed: ${iosError.message}`);
+        if ((iosError as any).stderr) {
+          console.log(`[Test] iOS deep link stderr: ${(iosError as any).stderr.toString()}`);
         }
+      }
+
+      try {
+        console.log(`[Test] Attempting Android deep link fallback...`);
+        const output = execSync(`adb shell am start -a android.intent.action.VIEW -d "${step.deepLink}"`, { 
+          stdio: 'pipe',
+          timeout: deepLinkTimeout 
+        });
+        console.log(`[Test] Android deep link command succeeded: ${output.toString().trim()}`);
+      } catch (androidError) {
+        console.log(`[Test] Android deep link failed: ${(androidError as Error).message}`);
+        throw new Error(
+          `Failed to open deep link on both iOS and Android.\n` +
+          `iOS Error: ${iosError?.message}\n` +
+          `Android Error: ${(androidError as Error).message}`
+        );
       }
 
       return {

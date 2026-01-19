@@ -14,25 +14,28 @@ export default function App() {
   const handleDeepLink = useCallback(async (url: string): Promise<boolean> => {
     console.log('[App] Deep link received:', url);
 
-    const { hostname, queryParams } = parseURL(url);
-    console.log('[App] Parsed hostname:', hostname, 'params:', queryParams);
+    try {
+      const { hostname, queryParams } = parseURL(url);
+      console.log('[App] Parsed hostname:', hostname, 'params:', queryParams);
 
-    switch (hostname) {
-      case 'reset_state':
-        console.log('[App] Resetting app state');
-        setAppState({ username: '', count: 0 });
-        console.log('[App] App state cleared');
-        return true;
+      switch (hostname) {
+        case 'reset_state':
+          console.log('[App] Resetting app state');
+          setAppState({ username: '', count: 0 });
+          console.log('[App] App state cleared');
+          return true;
 
-      case 'reload':
-        console.log('[App] Reload requested via deep link');
-        // Note: Expo.reloadAppAsync() would require importing expo
-        // For now, just log it
-        return true;
+        case 'reload':
+          console.log('[App] Reload requested via deep link');
+          return true;
 
-      default:
-        // Let AgentDebugBridge handle it
-        return false;
+        default:
+          console.log('[App] Deep link hostname not handled by app:', hostname);
+          return false;
+      }
+    } catch (error) {
+      console.error('[App] Error parsing deep link in App.tsx:', error);
+      return false;
     }
   }, []);
 

@@ -11,21 +11,26 @@ class MyApp extends StatelessWidget {
 
   // Handle deep links from Agenteract
   Future<bool> _handleDeepLink(String url) async {
+    debugPrint('[MyApp] Deep link received: $url');
     try {
       final uri = Uri.parse(url);
+      debugPrint(
+          '[MyApp] Parsed URI: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}');
 
       // Handle reset_state deep link
       if (uri.host == 'reset_state' || uri.path.contains('reset_state')) {
+        debugPrint('[MyApp] Resetting app state via deep link');
         debugPrint('App state cleared');
         // Signal MyHomePage to reset (we'll use a ValueNotifier for this)
         _resetNotifier.value = DateTime.now().millisecondsSinceEpoch;
         return true;
       }
 
+      debugPrint('[MyApp] Deep link not handled by app');
       // Let AgentDebugBridge handle other links (like config)
       return false;
     } catch (e) {
-      debugPrint('Error handling deep link: $e');
+      debugPrint('[MyApp] Error handling deep link: $e');
       return false;
     }
   }
