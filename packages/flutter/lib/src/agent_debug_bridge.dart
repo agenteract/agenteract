@@ -146,13 +146,13 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       });
     }
 
-    // 2. Listen for Deep Links (before connecting to ensure handler is ready)
-    await _initDeepLinks();
-
-    // 3. Connect if appropriate
+    // 2. Connect if appropriate
     if (_shouldConnect) {
       _connect();
     }
+
+    // 3. Listen for Deep Links (set up listener concurrently)
+    _initDeepLinks();
   }
 
   Future<void> _initDeepLinks() async {

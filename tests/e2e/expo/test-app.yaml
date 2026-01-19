@@ -49,6 +49,9 @@ steps:
   # 5. Test Deep Link - Reset State
   - phase: "Deep Link Test"
 
+  # Give deep link handler time to initialize (async in app)  
+  - sleep: 2000
+
   - deepLink: "exp://localhost:8081/--/reset_state"
 
   - waitFor: ""
