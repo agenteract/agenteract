@@ -67,14 +67,6 @@ class ConsoleLogger {
       ),
     );
   }
-      // Call original debugPrint
-      if (_originalDebugPrint != null) {
-        _originalDebugPrint!(message, wrapWidth: wrapWidth);
-      } else {
-        print(message);
-      }
-    };
-  }
 
   void _addLog(String level, String message) {
     _logs.add(LogEntry(
