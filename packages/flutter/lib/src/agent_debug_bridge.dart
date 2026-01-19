@@ -326,6 +326,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
 
   void _handleMessage(dynamic message) {
     try {
+      debugPrint('[Agenteract] Received WebSocket message');
       // Send device info on first message (connection is confirmed)
       if (!_deviceInfoSent) {
         _deviceInfoSent = true;
@@ -337,6 +338,10 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       final status = data['status'] as String?;
       final action = data['action'] as String?;
       final id = data['id'] as String?;
+
+      if (action != null) {
+        debugPrint('[Agenteract] Handling action: $action');
+      }
 
       // Handle server-assigned device ID
       if (status == 'connected' && data['deviceId'] != null) {

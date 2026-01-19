@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// Log entry for console capture
@@ -46,6 +47,26 @@ class ConsoleLogger {
       if (message != null) {
         _addLog('log', message);
       }
+      // Call original debugPrint
+      if (_originalDebugPrint != null) {
+        _originalDebugPrint!(message, wrapWidth: wrapWidth);
+      } else {
+        // Fallback to standard print if debugPrint was null or became null
+        print(message);
+      }
+    };
+
+    // Use Zone to capture all print calls as well
+    runZoned(
+      () {},
+      zoneSpecification: ZoneSpecification(
+        print: (Zone self, ZoneDelegate parent, Zone zone, String line) {
+          _addLog('log', line);
+          parent.print(zone, line);
+        },
+      ),
+    );
+  }
       // Call original debugPrint
       if (_originalDebugPrint != null) {
         _originalDebugPrint!(message, wrapWidth: wrapWidth);
