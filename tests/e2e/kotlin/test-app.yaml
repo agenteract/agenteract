@@ -47,13 +47,14 @@ steps:
     timeout: 3000
 
   # 5. Test Deep Link (reset_state)
-  - phase: "Deep Link Test"
+  # TODO: Deep links not supported on desktop platform yet
+  # - phase: "Deep Link Test"
 
-  - deepLink: "agenteract-kmp-example://reset_state"
+  # - deepLink: "agenteract-kmp-example://reset_state"
 
-  - waitFor: ""
-    logContains: "App state cleared"
-    timeout: 3000
+  # - waitFor: ""
+  #   logContains: "App state cleared"
+  #   timeout: 3000
 
   # 6. Test Long Press Interaction
   - phase: "Long Press Test"

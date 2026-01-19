@@ -151,18 +151,23 @@ export async function publishPackages(): Promise<void> {
 
 /**
  * Escape a shell argument for safe use in shell commands
- * Wraps arguments containing spaces or special characters in single quotes
+ * Wraps arguments containing spaces or special characters appropriately for the platform
  */
 function escapeShellArg(arg: string): string {
   // If the argument doesn't contain spaces or special characters, return as-is
-  // Allow: letters, numbers, underscore, dash, dot, forward slash, colon, at sign
-  if (/^[a-zA-Z0-9_\-\.\/:\@=]+$/.test(arg)) {
+  // Allow: letters, numbers, underscore, dash, dot, forward slash, backslash, colon, at sign
+  if (/^[a-zA-Z0-9_\-\.\/\\:\@=]+$/.test(arg)) {
     return arg;
   }
 
-  // For arguments with spaces or special chars, wrap in single quotes
-  // and escape any single quotes within the argument
-  return "'" + arg.replace(/'/g, "'\\''") + "'";
+  // On Windows, use double quotes; on Unix, use single quotes
+  if (process.platform === 'win32') {
+    // Escape double quotes and backslashes for Windows
+    return '"' + arg.replace(/"/g, '\\"') + '"';
+  } else {
+    // For Unix-like systems, wrap in single quotes and escape any single quotes
+    return "'" + arg.replace(/'/g, "'\\''") + "'";
+  }
 }
 
 /**
