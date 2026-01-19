@@ -417,12 +417,21 @@ async function executeStep(
     if (isDeepLinkStep(step)) {
       // Detect platform and execute appropriate command
       // For now, try iOS first, then Android
+      // Add 5-second timeout to prevent hanging
+      const deepLinkTimeout = 5000;
+      
       try {
-        execSync(`xcrun simctl openurl booted "${step.deepLink}"`, { stdio: 'pipe' });
+        execSync(`xcrun simctl openurl booted "${step.deepLink}"`, { 
+          stdio: 'pipe',
+          timeout: deepLinkTimeout 
+        });
       } catch {
         try {
           // Android fallback - would need app package name
-          execSync(`adb shell am start -a android.intent.action.VIEW -d "${step.deepLink}"`, { stdio: 'pipe' });
+          execSync(`adb shell am start -a android.intent.action.VIEW -d "${step.deepLink}"`, { 
+            stdio: 'pipe',
+            timeout: deepLinkTimeout 
+          });
         } catch (e) {
           throw new Error(`Failed to open deep link on iOS or Android: ${step.deepLink}`);
         }
