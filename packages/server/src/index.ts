@@ -756,8 +756,15 @@ if (isLogServer) {
                         action: 'getConsoleLogs',
                         device: testDefinition.device,
                     });
-                    return (response.logs as any[]) || [];
-                } catch {
+                    const logs = (response.logs as any[]) || [];
+                    // Log the retrieved logs to server console for CI visibility
+                    console.log(`[Test] Retrieved ${logs.length} logs from app`);
+                    if (logs.length > 0) {
+                        console.log(`[Test] Latest log from app: ${logs[logs.length - 1].message}`);
+                    }
+                    return logs;
+                } catch (e) {
+                    console.error(`[Test] Failed to get logs: ${e}`);
                     return [];
                 }
             };

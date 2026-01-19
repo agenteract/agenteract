@@ -47,7 +47,11 @@ class ConsoleLogger {
         _addLog('log', message);
       }
       // Call original debugPrint
-      _originalDebugPrint?.call(message, wrapWidth: wrapWidth);
+      if (_originalDebugPrint != null) {
+        _originalDebugPrint!(message, wrapWidth: wrapWidth);
+      } else {
+        print(message);
+      }
     };
   }
 
