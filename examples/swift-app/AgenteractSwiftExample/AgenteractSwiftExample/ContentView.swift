@@ -14,6 +14,17 @@ struct ContentView: View {
     @State private var longPressCount = 0
     @State private var cardOffset: CGFloat = 0
     @State private var swipeCount = 0
+    @State private var resetTrigger = 0 // Used to trigger reset from deep link
+
+    // Reset all state
+    func resetAllState() {
+        tapCount = 0
+        inputText = ""
+        longPressCount = 0
+        swipeCount = 0
+        cardOffset = 0
+        AppLogger.info("App state cleared")
+    }
 
     var body: some View {
         ScrollView {
@@ -279,6 +290,7 @@ struct ContentView: View {
                     longPressCount = 0
                     swipeCount = 0
                     cardOffset = 0
+                    AppLogger.info("All values reset")
                 })
                 .padding()
                 .background(Color.red)
@@ -287,10 +299,22 @@ struct ContentView: View {
             }
             .padding()
         }
-        // Add the AgentDebugBridge
+        // Add the AgentDebugBridge with deep link handler
         .background(
-            AgentDebugBridge(projectName: "swift-app")
+            AgentDebugBridge(projectName: "swift-app") { url in
+                // Handle reset_state deep link
+                if url.host == "reset_state" || url.path.contains("reset_state") {
+                    resetAllState()
+                    return true
+                }
+                // Let AgentDebugBridge handle config links
+                return false
+            }
         )
+        .onChange(of: resetTrigger) { _ in
+            // This allows external triggers to reset state if needed
+            resetAllState()
+        }
     }
 }
 

@@ -792,3 +792,329 @@ import { createAgentBinding } from '@agenteract/react';
 ```
 
 You can see how this is handled by agent-server requests in `https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/packages/react/src/AgentDebugBridge.tsx`.
+
+## Tool: YAML Test Runner
+
+The YAML test runner allows you to define declarative, repeatable test flows that execute server-side. This is ideal for end-to-end testing, CI/CD pipelines, and automated verification.
+
+### Basic YAML Test Structure
+
+Create a `.yaml` file with your test steps:
+
+```yaml
+# my-test.yaml
+project: expo-app
+timeout: 10000  # default timeout for all steps
+
+steps:
+  # Wait for element to appear
+  - waitFor: login-button
+    timeout: 5000
+
+  # Tap a button
+  - tap: login-button
+
+  # Input text
+  - input: username-field
+    value: testuser
+
+  # Assert conditions
+  - assert:
+      exists: home-screen
+
+  - assert:
+      text:
+        testID: welcome-message
+        contains: Welcome
+
+  - assert:
+      logContains: "Login successful"
+
+  # Other gestures
+  - scroll: scroll-view
+    direction: down
+    amount: 200
+
+  - swipe: card-item
+    direction: left
+    velocity: fast
+
+  - longPress: menu-item
+
+  # Platform-specific operations
+  - deepLink: myapp://reset_state
+
+  # Utility steps
+  - sleep: 1000
+  - log: "Phase 1 complete"
+  - phase: "User Login Test"  # Label for grouping
+```
+
+### Running YAML Tests
+
+**Command:**
+```bash
+pnpm agenteract-agents test <test-file.yaml>
+```
+
+**Options:**
+- `--project <name>`: Override project specified in YAML file
+- `--device <id>`: Target specific device (optional)
+- `--verbose`: Show detailed step output
+- `--bail`: Stop on first failure
+
+**Example:**
+```bash
+# Run a test file
+pnpm agenteract-agents test tests/login-flow.yaml
+
+# Override project
+pnpm agenteract-agents test tests/login-flow.yaml --project my-app
+
+# Verbose output for debugging
+pnpm agenteract-agents test tests/login-flow.yaml --verbose
+```
+
+### YAML Test Step Reference
+
+#### `waitFor`
+Waits for an element to appear in the view hierarchy or for a console log message.
+
+```yaml
+# Wait for element to exist
+- waitFor: element-testID
+  timeout: 5000  # optional, defaults to test-level timeout
+
+# Wait for element with specific text
+- waitFor: element-testID
+  timeout: 5000
+  text: Welcome
+
+# Wait for console log to appear
+- waitFor: ""
+  logContains: "Login successful"
+  timeout: 3000
+```
+
+#### `tap`
+Simulates tapping an element.
+
+```yaml
+- tap: button-testID
+  wait: 500  # optional: milliseconds to wait after tap
+```
+
+#### `input`
+Simulates text input.
+
+```yaml
+- input: text-field-testID
+  value: "text to input"
+```
+
+#### `scroll`
+Scrolls a scrollable element.
+
+```yaml
+- scroll: scroll-view-testID
+  direction: down  # up, down, left, right
+  amount: 200  # pixels, optional (default: 100)
+```
+
+#### `swipe`
+Simulates a swipe gesture.
+
+```yaml
+- swipe: swipeable-card-testID
+  direction: left  # up, down, left, right
+  velocity: fast  # slow, medium, fast (optional, default: medium)
+```
+
+#### `longPress`
+Simulates a long press.
+
+```yaml
+- longPress: menu-item-testID
+```
+
+#### `deepLink`
+Opens a deep link (requires platform-specific setup).
+
+```yaml
+- deepLink: myapp://reset_state
+```
+
+**Platform implementation:**
+- **iOS Simulator**: Uses `xcrun simctl openurl`
+- **Android Emulator**: Uses `adb shell am start`
+- **Physical devices**: Opens via registered URL scheme
+
+#### `assert`
+Verifies conditions. Tests fail if assertions don't pass.
+
+```yaml
+# Assert element exists
+- assert:
+    exists: element-testID
+
+# Assert element doesn't exist
+- assert:
+    notExists: element-testID
+
+# Assert element text contains string
+- assert:
+    text:
+      testID: label-testID
+      contains: "Expected text"
+
+# Assert element text equals string
+- assert:
+    text:
+      testID: label-testID
+      equals: "Exact text"
+
+# Assert console log contains string
+- assert:
+    logContains: "Success message"
+```
+
+#### `sleep`
+Pauses execution.
+
+```yaml
+- sleep: 1000  # milliseconds
+```
+
+#### `log`
+Logs a message (visible in test output).
+
+```yaml
+- log: "Starting authentication flow"
+```
+
+#### `phase`
+Groups steps under a labeled phase (for better test organization).
+
+```yaml
+- phase: "Login Phase"
+```
+
+### Test Results
+
+The test runner returns JSON results suitable for CI/CD:
+
+```json
+{
+  "status": "passed",  // or "failed"
+  "duration": 12345,
+  "steps": [
+    {
+      "step": 1,
+      "action": "waitFor",
+      "target": "login-btn",
+      "status": "passed",
+      "duration": 234
+    },
+    {
+      "step": 2,
+      "action": "tap",
+      "target": "login-btn",
+      "status": "passed",
+      "duration": 45
+    }
+  ],
+  "logs": [...],
+  "failedAt": null  // step number if failed
+}
+```
+
+### Example Test Files
+
+**Login Flow Test:**
+```yaml
+project: expo-app
+timeout: 10000
+
+steps:
+  - phase: "Setup"
+  - waitFor: login-button
+    timeout: 5000
+
+  - phase: "Authentication"
+  - input: username-field
+    value: testuser@example.com
+  - input: password-field
+    value: testpass123
+  - tap: login-button
+
+  - phase: "Verification"
+  - waitFor: home-screen
+    timeout: 5000
+  - assert:
+      exists: welcome-message
+  - waitFor: ""
+    logContains: "Login successful"
+    timeout: 3000
+```
+
+**Gesture Test:**
+```yaml
+project: expo-app
+
+steps:
+  - phase: "Scroll Test"
+  - waitFor: scroll-view
+  - scroll: scroll-view
+    direction: down
+    amount: 300
+  - assert:
+      exists: bottom-element
+
+  - phase: "Swipe Test"
+  - waitFor: swipeable-card
+  - swipe: swipeable-card
+    direction: left
+    velocity: fast
+  - assert:
+      notExists: swipeable-card
+```
+
+**Deep Link Reset Test:**
+```yaml
+project: expo-app
+
+steps:
+  - phase: "Setup State"
+  - tap: increment-button
+  - tap: increment-button
+  - input: text-field
+    value: "Some text"
+
+  - phase: "Reset via Deep Link"
+  - deepLink: myapp://reset_state
+
+  - phase: "Verify Reset"
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+  - assert:
+      text:
+        testID: counter-value
+        equals: "0"
+  - assert:
+      text:
+        testID: text-field-display
+        contains: "Input value: "
+```
+
+### Best Practices
+
+1. **Use phases** to organize test steps logically
+2. **Use `waitFor` with timeouts** instead of arbitrary `sleep` delays
+   - Wait for elements: `waitFor: element-testID` + `timeout: 5000`
+   - Wait for logs: `waitFor: ""` + `logContains: "message"` + `timeout: 3000`
+3. **Use specific assertions** to verify expected behavior
+4. **Keep tests focused** - one test per user flow
+5. **Use meaningful testIDs** that describe the element's purpose
+6. **Test reset states** using deep links between test phases
+7. **Set reasonable timeouts** - achievable under normal conditions, but not so long that failures take forever

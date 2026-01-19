@@ -2,11 +2,25 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { createAgentBinding } from '@agenteract/react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View, PanResponder } from 'react-native';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
-export default function HomeScreen() {
-  const [username, setUsername] = useState('');
+interface AppState {
+  username: string;
+  count: number;
+}
+
+interface HomeScreenProps {
+  appState: AppState;
+  setAppState: React.Dispatch<React.SetStateAction<AppState>>;
+}
+
+export default function HomeScreen({ appState, setAppState }: HomeScreenProps) {
   const [cardPosition, setCardPosition] = useState(0);
+
+  // Sync local username state with app state
+  useEffect(() => {
+    console.log('[HomeScreen] App state updated:', appState);
+  }, [appState]);
 
   // Create a PanResponder for the swipeable card
   const panResponder = useRef(
@@ -31,21 +45,24 @@ export default function HomeScreen() {
       <ThemedText type="title">Home</ThemedText>
         <Pressable {...createAgentBinding({
             testID: 'test-button',
-            onPress: () => console.log('Simulate button pressed'),
+            onPress: () => {
+              console.log('Simulate button pressed');
+              setAppState(prev => ({ ...prev, count: prev.count + 1 }));
+            },
           })}
         >
-          <ThemedText>Simulate Target</ThemedText>
+          <ThemedText>Simulate Target (Count: {appState.count})</ThemedText>
         </Pressable>
 
         <View style={styles.textInputContainer}>
           <TextInput
           // onChangeText={(text) => {console.log('Simulate text input:', text); setUsername(text);}}
           placeholder="Enter username"
-          value={username}
+          value={appState.username}
           style={styles.textInput}
           {...createAgentBinding({
             testID: 'username-input',
-            onChangeText: (text) => setUsername(text),
+            onChangeText: (text) => setAppState(prev => ({ ...prev, username: text })),
           })}
            />
         </View>

@@ -1,3 +1,5 @@
+package io.agenteract.kmp_example
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -28,6 +30,7 @@ import androidx.compose.material.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,10 +47,24 @@ import androidx.compose.ui.unit.sp
 import io.agenteract.AgentDebugBridge
 import io.agenteract.agent
 import io.agenteract.AgentLogger
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+
+// Shared reset trigger that works across platforms
+object AppResetTrigger {
+    val trigger = MutableStateFlow(0L)
+    
+    fun reset() {
+        trigger.value = System.currentTimeMillis()
+    }
+}
 
 @Composable
 fun App() {
+    // Initialize the Agent Debug Bridge at the top level, outside of MaterialTheme
+    // This prevents it from being recreated when state changes occur
+    AgentDebugBridge(projectName = "kmp-app")
+    
     MaterialTheme {
         var counter by remember { mutableStateOf(0) }
         var inputText by remember { mutableStateOf("") }
@@ -57,18 +74,38 @@ fun App() {
         
         val coroutineScope = rememberCoroutineScope()
         
+        val verticalScrollState = rememberScrollState()
+        val horizontalListState = rememberLazyListState()
+        val verticalListState = rememberLazyListState()
+        
         fun log(message: String) {
             coroutineScope.launch {
                 AgentLogger.log(message)
             }
         }
         
-        val verticalScrollState = rememberScrollState()
-        val horizontalListState = rememberLazyListState()
-        val verticalListState = rememberLazyListState()
+        fun resetAll() {
+            counter = 0
+            inputText = ""
+            longPressCount = 0
+            swipeCount = 0
+            lastSwipeDirection = ""
+            coroutineScope.launch {
+                horizontalListState.scrollToItem(0)
+            }
+            log("All values reset")
+        }
 
-        // Initialize the Agent Debug Bridge
-        AgentDebugBridge(projectName = "kmp-app")
+        // Listen for reset trigger from deep links
+        LaunchedEffect(Unit) {
+            var isFirst = true
+            AppResetTrigger.trigger.collect { timestamp ->
+                if (timestamp > 0 && !isFirst) {
+                    resetAll()
+                }
+                isFirst = false
+            }
+        }
 
         Scaffold(
             topBar = {
@@ -302,32 +339,12 @@ fun App() {
                 // Reset Button
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Button(
-                        onClick = {
-                            counter = 0
-                            inputText = ""
-                            longPressCount = 0
-                            swipeCount = 0
-                            lastSwipeDirection = ""
-                            coroutineScope.launch {
-                                horizontalListState.scrollToItem(0)
-                            }
-                            log("All values reset")
-                        },
+                        onClick = { resetAll() },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color.Red, contentColor = Color.White),
                         modifier = Modifier.agent(
                             testID = "reset-button",
                             type = "Button",
-                            onTap = {
-                                counter = 0
-                                inputText = ""
-                                longPressCount = 0
-                                swipeCount = 0
-                                lastSwipeDirection = ""
-                                coroutineScope.launch {
-                                    horizontalListState.scrollToItem(0)
-                                }
-                                log("All values reset")
-                            }
+                            onTap = { resetAll() }
                         )
                     ) {
                         Text("Reset All")

@@ -12,6 +12,7 @@
 
 import { ChildProcess } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import {
   info,
   success,
@@ -336,121 +337,30 @@ async function main() {
     // 13. Verify we have a valid hierarchy
     info('Verifying UI hierarchy...');
 
-    // Check for essential elements (be flexible - some might not be visible initially)
-    const hasCounterValue = hierarchy.includes('tap-count-text');
-    const hasTextInput = hierarchy.includes('text-input');
-    const hasIncrementButton = hierarchy.includes('tap-button');
-
-    if (hasCounterValue) {
-      success('✓ Found tap-count-text in hierarchy');
-    } else {
-      error('tap-count-text not found in hierarchy');
-      throw new Error('tap-count-text not found in hierarchy');
-    }
-
-    if (hasTextInput) {
-      success('✓ Found text-input in hierarchy');
-    } else {
-      error('text-input not found in hierarchy');
-      throw new Error('text-input not found in hierarchy');
-    }
-
-    if (hasIncrementButton) {
-      success('✓ Found increment-button in hierarchy');
-    } else {
-      error('increment-button not found in hierarchy (FloatingActionButton may not be visible in initial hierarchy)');
-      throw new Error('increment-button not found in hierarchy');
-    }
+    // Basic check - just verify we got a hierarchy
+    assertContains(hierarchy, 'tap-button', 'UI contains tap button');
 
     success('UI hierarchy fetched successfully');
 
-    // 14. Test tap interaction
-    if (hasIncrementButton) {
-      info('Testing tap interaction on increment-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'swift-app', 'tap-button');
-      // note that this success doesn't mean the tap was successful, we need to check the console logs
-      // assertContains(tapResult, 'success', 'Tap command executed successfully');
-      assertContains(tapResult, 'Counter incremented to 1', 'Counter increment was logged');
-      success('Button tap verified in logs');
+    // 14. Run YAML test suite
+    info('Running YAML test suite...');
+    const testFilePath = join(process.cwd(), 'tests', 'e2e', 'swiftui', 'test-app.yaml');
+    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+
+    // Parse JSON result
+    const result = JSON.parse(testResult);
+
+    // Log the full result for debugging
+    info('Test Result:');
+    console.log(JSON.stringify(result, null, 2));
+
+    // Verify test passed
+    if (result.status !== 'passed') {
+      error(`Test failed at step ${result.failedAt}: ${result.error}`);
+      throw new Error(`YAML test failed: ${result.error}`);
     }
 
-    // 16. Test input interaction
-    info('Testing input interaction on text-input...');
-    const inputResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'input',
-      'swift-app',
-      'text-input',
-      'Hello from E2E test'
-    );
-    assertContains(inputResult, 'success', 'Input command executed successfully');
-    success('Text input successful');
-
-    // 17. Verify input was logged
-    await sleep(500);
-    const logsAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'swift-app', '--since', '5');
-    assertContains(logsAfterInput, 'Hello from E2E test', 'Input text was logged');
-    success('Text input verified in logs');
-
-    // 18. Test long press interaction
-    info('Testing long press interaction on long-press-view...');
-    const longPressResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'longPress',
-      'swift-app',
-      'long-press-view'
-    );
-    assertContains(longPressResult, 'success', 'Long press command executed successfully');
-    success('Long press successful');
-
-    // 19. Verify long press was logged
-    await sleep(500);
-    const logsAfterLongPress = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'swift-app', '--since', '5');
-    assertContains(logsAfterLongPress, 'Long pressed', 'Long press was logged');
-    success('Long press verified in logs');
-
-    // 20. Test scroll interaction
-    info('Testing scroll interaction on horizontal-scroll...');
-    const scrollResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'scroll',
-      'swift-app',
-      'horizontal-scroll',
-      'right',
-      '100'
-    );
-    assertContains(scrollResult, 'success', 'Scroll command executed successfully');
-    success('Scroll successful');
-
-    // 21. Test swipe interaction
-    info('Testing swipe interaction on swipeable-card...');
-    const swipeResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'swipe',
-      'swift-app',
-      'swipeable-card',
-      'left'
-    );
-    assertContains(swipeResult, 'success', 'Swipe command executed successfully');
-    success('Swipe successful');
-
-    // 22. Verify swipe was logged
-    await sleep(500);
-    const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'swift-app', '--since', '5');
-    assertContains(logsAfterSwipe, 'Card swiped', 'Swipe was logged');
-    success('Swipe verified in logs');
-
-    // 23. Check dev logs
-    info('Checking Swift-App dev server logs...');
-    try {
-      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'swift-app', '--since', '30');
-      info('Swift-App dev logs:');
-      console.log(devLogs);
-    } catch (err) {
-      error(`Failed to get dev logs: ${err}`);
-    }
-
-    success('✅ All tests passed!');
+    success(`✅ YAML test passed! (${result.steps.length} steps in ${result.duration}ms)`);
 
   } catch (err) {
     error(`Test failed: ${err}`);

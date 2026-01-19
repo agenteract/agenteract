@@ -12,6 +12,7 @@
 
 import { ChildProcess } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import {
   info,
   success,
@@ -25,7 +26,7 @@ import {
   spawnBackground,
   sleep,
   setupCleanup,
-} from '../common/helpers.js'; import { assert } from 'node:console';
+} from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
@@ -471,126 +472,27 @@ async function main() {
     // Basic assertions - verify app loaded correctly
     assertContains(hierarchy, 'Agenteract Flutter Demo', 'UI contains app title');
 
-    // Check for essential elements (be flexible - some might not be visible initially)
-    const hasCounterValue = hierarchy.includes('counter-value');
-    const hasTextInput = hierarchy.includes('text-input');
-    const hasIncrementButton = hierarchy.includes('increment-button');
-
-    if (hasCounterValue) {
-      success('✓ Found counter-value in hierarchy');
-    } else {
-      info('⚠ counter-value not found in hierarchy');
-    }
-
-    if (hasTextInput) {
-      success('✓ Found text-input in hierarchy');
-    } else {
-      info('⚠ text-input not found in hierarchy');
-    }
-
-    if (hasIncrementButton) {
-      success('✓ Found increment-button in hierarchy');
-    } else {
-      info('⚠ increment-button not found in hierarchy (FloatingActionButton may not be visible in initial hierarchy)');
-    }
-
     success('UI hierarchy fetched successfully');
 
-    // 14. Test tap interaction
-    if (hasIncrementButton) {
-      info('Testing tap interaction on increment-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'increment-button');
-      assertContains(tapResult, 'success', 'Tap command executed successfully');
-      success('Button tap successful');
+    // 14. Run YAML test suite
+    info('Running YAML test suite...');
+    const testFilePath = join(process.cwd(), 'tests', 'e2e', 'flutter', 'test-app.yaml');
+    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
 
-      // 15. Verify tap was logged and counter incremented
-      await sleep(500);
-      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-      assertContains(logsAfterTap, 'Counter incremented to 1', 'Counter increment was logged');
-      success('Button tap verified in logs');
-    } else {
-      info('Skipping increment-button tap test (button not in hierarchy)');
-      info('Trying alternative: tap on reset-button instead...');
-      try {
-        const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'reset-button');
-        assertContains(tapResult, 'success', 'Tap command executed successfully');
-        success('Reset button tap successful');
+    // Parse JSON result
+    const result = JSON.parse(testResult);
 
-        await sleep(500);
-        const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-        assertContains(logsAfterTap, 'All values reset', 'Reset was logged');
-        success('Reset button tap verified in logs');
-      } catch (err) {
-        info(`Alternative tap test also failed: ${err}`);
-        info('Continuing with other tests...');
-      }
+    // Log the full result for debugging
+    info('Test Result:');
+    console.log(JSON.stringify(result, null, 2));
+
+    // Verify test passed
+    if (result.status !== 'passed') {
+      error(`Test failed at step ${result.failedAt}: ${result.error}`);
+      throw new Error(`YAML test failed: ${result.error}`);
     }
 
-    // 16. Test input interaction
-    info('Testing input interaction on text-input...');
-    const inputResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'input',
-      'flutter-example',
-      'text-input',
-      'Hello from E2E test'
-    );
-    assertContains(inputResult, 'success', 'Input command executed successfully');
-    success('Text input successful');
-
-    // 17. Verify input was logged
-    await sleep(500);
-    const logsAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterInput, 'Hello from E2E test', 'Input text was logged');
-    success('Text input verified in logs');
-
-    // 18. Test long press interaction
-    info('Testing long press interaction on long-press-view...');
-    const longPressResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'longPress',
-      'flutter-example',
-      'long-press-view'
-    );
-    assertContains(longPressResult, 'success', 'Long press command executed successfully');
-    success('Long press successful');
-
-    // 19. Verify long press was logged
-    await sleep(500);
-    const logsAfterLongPress = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterLongPress, 'Long pressed', 'Long press was logged');
-    success('Long press verified in logs');
-
-    // 20. Test scroll interaction
-    info('Testing scroll interaction on horizontal-scroll...');
-    const scrollResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'scroll',
-      'flutter-example',
-      'horizontal-scroll',
-      'right',
-      '100'
-    );
-    assertContains(scrollResult, 'success', 'Scroll command executed successfully');
-    success('Scroll successful');
-
-    // 21. Test swipe interaction
-    info('Testing swipe interaction on swipeable-card...');
-    const swipeResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'swipe',
-      'flutter-example',
-      'swipeable-card',
-      'left'
-    );
-    assertContains(swipeResult, 'success', 'Swipe command executed successfully');
-    success('Swipe successful');
-
-    // 22. Verify swipe was logged
-    await sleep(500);
-    const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterSwipe, 'Card swiped', 'Swipe was logged');
-    success('Swipe verified in logs');
+    success(`✅ YAML test passed! (${result.steps.length} steps in ${result.duration}ms)`);
 
     // 23. Get all logs to verify app is running
     info('Fetching app logs...');

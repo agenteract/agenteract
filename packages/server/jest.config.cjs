@@ -5,5 +5,6 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/', '/dist/'],
   moduleNameMapper: {
     '^express$': '<rootDir>/../../node_modules/express',
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
 };

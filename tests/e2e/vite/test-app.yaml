@@ -1,0 +1,25 @@
+# Vite App E2E Test
+# Tests UI hierarchy fetching and tap interactions
+
+project: react-app
+timeout: 30000
+
+steps:
+  # 1. Wait for app to be connected and ready
+  - waitFor: test-button
+    timeout: 60000
+
+  # 2. Verify UI loaded correctly
+  - assert:
+      exists: test-button
+
+  - assert:
+      exists: username-input
+
+  # 3. Test tap interaction
+  - tap: test-button
+    wait: 500
+
+  # 4. Verify tap was logged
+  - assert:
+      logContains: "Simulate button pressed"
