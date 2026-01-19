@@ -1,0 +1,65 @@
+# Expo iOS App E2E Test
+# Tests UI hierarchy fetching and interactions
+
+project: expo-app
+timeout: 30000
+
+steps:
+  # 1. Wait for app to be connected and ready
+  - waitFor: test-button
+    timeout: 60000
+
+  # 2. Verify initial UI loaded correctly
+  - assert:
+      exists: test-button
+
+  - assert:
+      exists: username-input
+
+  - assert:
+      exists: swipeable-card
+
+  - assert:
+      exists: horizontal-scroll
+
+  - assert:
+      exists: main-list
+
+  # 3. Test Tap Interaction
+  - phase: "Tap Test"
+
+  - tap: test-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Simulate button pressed"
+    timeout: 3000
+
+  # 4. Test Input Interaction
+  - phase: "Input Test"
+
+  - input: username-input
+    value: "Hello from E2E test"
+    
+  - sleep: 500
+
+  # Input is verified by checking hierarchy for the value
+  # (Note: Expo example doesn't log input changes)
+
+  # 5. Test Deep Link - Reset State
+  - phase: "Deep Link Test"
+
+  - deepLink: "exp://localhost:8081/--/reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 6. Test Scroll Interaction
+  - phase: "Scroll Test"
+
+  - scroll: horizontal-scroll
+    direction: right
+    amount: 100
+
+  - sleep: 500

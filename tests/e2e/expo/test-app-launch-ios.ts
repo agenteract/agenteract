@@ -12,6 +12,7 @@
 
 import { ChildProcess } from 'child_process';
 import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import {
   info,
   success,
@@ -360,117 +361,29 @@ async function main() {
     // Basic assertion - verify app loaded
     assertContains(hierarchy, 'View', 'UI contains React Native View elements');
 
-    // Check for specific elements in hierarchy
-    const hasTestButton = hierarchy.includes('test-button');
-    const hasUsernameInput = hierarchy.includes('username-input');
-    const hasSwipeableCard = hierarchy.includes('swipeable-card');
-    const hasHorizontalScroll = hierarchy.includes('horizontal-scroll');
+    success('Expo app connected and UI hierarchy loaded');
 
-    if (hasTestButton) {
-      success('✓ Found test-button in hierarchy');
-    } else {
-      info('⚠ test-button not found in hierarchy');
+    // 12. Run YAML test suite
+    info('Running YAML test suite...');
+    const testFilePath = join(process.cwd(), 'tests', 'e2e', 'expo', 'test-app.yaml');
+    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+
+    // Parse JSON result
+    const result = JSON.parse(testResult);
+
+    // Log the full result for debugging
+    info('Test Result:');
+    console.log(JSON.stringify(result, null, 2));
+
+    // Verify test passed
+    if (result.status !== 'passed') {
+      error(`Test failed at step ${result.failedAt}: ${result.error}`);
+      throw new Error(`YAML test failed: ${result.error}`);
     }
 
-    if (hasUsernameInput) {
-      success('✓ Found username-input in hierarchy');
-    } else {
-      info('⚠ username-input not found in hierarchy');
-    }
+    success(`✅ YAML test passed! (${result.steps.length} steps in ${result.duration}ms)`);
 
-    if (hasSwipeableCard) {
-      success('✓ Found swipeable-card in hierarchy');
-    } else {
-      info('⚠ swipeable-card not found in hierarchy');
-    }
-
-    if (hasHorizontalScroll) {
-      success('✓ Found horizontal-scroll in hierarchy');
-    } else {
-      info('⚠ horizontal-scroll not found in hierarchy');
-    }
-
-    success('UI hierarchy fetched successfully');
-
-    // 12. Test tap interaction
-    if (hasTestButton) {
-      info('Testing tap interaction on test-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'expo-app', 'test-button');
-      assertContains(tapResult, 'success', 'Tap command executed successfully');
-      success('Button tap successful');
-
-      // 13. Verify tap was logged
-      await sleep(500);
-      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
-      assertContains(logsAfterTap, 'Simulate button pressed', 'Button press was logged');
-      success('Button tap verified in logs');
-    } else {
-      info('Skipping test-button tap test (button not in hierarchy)');
-    }
-
-    // 14. Test input interaction
-    if (hasUsernameInput) {
-      info('Testing input interaction on username-input...');
-      const inputResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'input',
-        'expo-app',
-        'username-input',
-        'Hello from E2E test'
-      );
-      assertContains(inputResult, 'success', 'Input command executed successfully');
-      success('Text input successful');
-
-      // 15. Verify input was processed (Note: Expo example doesn't log input, but sets state)
-      // We can verify by fetching hierarchy and checking if the input has the value
-      await sleep(500);
-      const hierarchyAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'expo-app');
-      assertContains(hierarchyAfterInput, 'Hello from E2E test', 'Input text appears in hierarchy');
-      success('Text input verified in hierarchy');
-    } else {
-      info('Skipping username-input test (input not in hierarchy)');
-    }
-
-    // 16. Test scroll interaction
-    if (hasHorizontalScroll) {
-      info('Testing scroll interaction on horizontal-scroll...');
-      const scrollResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'scroll',
-        'expo-app',
-        'horizontal-scroll',
-        'right',
-        '100'
-      );
-      assertContains(scrollResult, 'success', 'Scroll command executed successfully');
-      success('Scroll successful');
-    } else {
-      info('Skipping horizontal-scroll test (scroll view not in hierarchy)');
-    }
-
-    // 17. Test swipe interaction
-    if (hasSwipeableCard) {
-      info('Testing swipe interaction on swipeable-card...');
-      const swipeResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'swipe',
-        'expo-app',
-        'swipeable-card',
-        'left'
-      );
-      assertContains(swipeResult, 'success', 'Swipe command executed successfully');
-      success('Swipe successful');
-
-      // 18. Verify swipe was logged
-      await sleep(500);
-      const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
-      assertContains(logsAfterSwipe, 'Agent swipe detected', 'Swipe was logged');
-      success('Swipe verified in logs');
-    } else {
-      info('Skipping swipeable-card test (card not in hierarchy)');
-    }
-
-    // 19. Get all logs to verify app is running
+    // Get all logs to verify app is running
     info('Fetching app logs...');
     const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '20');
     info('Recent logs:');

@@ -1,0 +1,88 @@
+# Flutter iOS App E2E Test
+# Tests UI hierarchy fetching and interactions
+
+project: flutter-example
+timeout: 30000
+
+steps:
+  # 1. Wait for app to be connected and ready
+  - waitFor: increment-button
+    timeout: 60000
+
+  # 2. Verify initial UI loaded correctly
+  - assert:
+      exists: increment-button
+
+  - assert:
+      exists: text-input
+
+  - assert:
+      exists: long-press-view
+
+  - assert:
+      exists: swipeable-card
+
+  - assert:
+      exists: horizontal-scroll
+
+  # 3. Test Tap Interaction (Increment Counter)
+  - phase: "Tap Test"
+
+  - tap: increment-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  - assert:
+      text:
+        testID: counter-value
+        equals: "1"
+
+  # 4. Test Input Interaction
+  - phase: "Input Test"
+  
+  - input: text-input
+    value: "Hello from E2E test"
+
+  - waitFor: ""
+    logContains: "Hello from E2E test"
+    timeout: 3000
+
+  # 5. Test Deep Link (reset_state)
+  - phase: "Deep Link Test"
+
+  - deepLink: "agenteract-flutter-example://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 6. Test Long Press Interaction
+  - phase: "Long Press Test"
+
+  - longPress: long-press-view
+
+  - waitFor: ""
+    logContains: "Long pressed"
+    timeout: 3000
+
+  # 7. Test Scroll Interaction
+  - phase: "Scroll Test"
+
+  - scroll: horizontal-scroll
+    direction: right
+    amount: 100
+
+  - sleep: 500
+
+  # 8. Test Swipe Interaction
+  - phase: "Swipe Test"
+
+  - swipe: swipeable-card
+    direction: left
+
+  - waitFor: ""
+    logContains: "Card swiped"
+    timeout: 3000

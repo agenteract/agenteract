@@ -14,7 +14,7 @@ Map<String, dynamic> _buildElementHierarchy(Element element) {
 
   // Check if this element has a registered test ID
   String? testID;
-  if (widget.key is ValueKey) {
+  if (widget.key != null) {
     // Check if this key is in our registry
     for (final id in getAllTestIDs()) {
       final agentNode = getAgentNode(id);

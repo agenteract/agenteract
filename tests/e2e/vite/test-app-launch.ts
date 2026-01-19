@@ -25,7 +25,6 @@ import {
   publishPackages,
   runCommand,
   runAgentCommand,
-  assertContains,
   spawnBackground,
   killProcess,
   waitFor,
@@ -292,6 +291,7 @@ export default defineConfig({
       throw new Error('React app failed to render');
     }
 
+    // Wait for app to be ready by checking hierarchy
     let hierarchy: string | null = null;
 
     await waitFor(
@@ -299,7 +299,6 @@ export default defineConfig({
         try {
           hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
           info(`page content: ` + await page.content());
-          // print page console logs
           info(`Hierarchy: ${hierarchy}`);
 
           // Follow up with separate logs command to verify state (testing config waitLogTimeout: 0)
@@ -326,33 +325,27 @@ export default defineConfig({
       throw new Error('Unexpected error: hierarchy not found');
     }
 
-    // 9. Get hierarchy and verify UI loaded
-    info('Fetching UI hierarchy...');
+    success('Vite dev server started and app loaded');
 
-    // Basic assertions - verify app loaded correctly
-    assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');
-    assertContains(hierarchy, 'test-button', 'UI contains test button');
-    assertContains(hierarchy, 'username-input', 'UI contains username input');
-    success('UI hierarchy fetched successfully');
+    // 9. Run YAML test
+    info('Running YAML test suite...');
+    const testFilePath = join(process.cwd(), 'tests', 'e2e', 'vite', 'test-app.yaml');
+    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
 
-    // 10. Test tap interaction
-    info('Testing tap interaction on test-button...');
-    const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'react-app', 'test-button');
-    console.log(tapResult);
-    assertContains(tapResult, '"status":"ok"', 'Tap command executed successfully');
-    success('Button tap successful');
+    // Parse JSON result
+    const result = JSON.parse(testResult);
 
-    // 11. Verify tap was logged
-    await sleep(500); // Give app time to log the tap
-    const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '5');
-    assertContains(logsAfterTap, 'Simulate button pressed', 'Button press was logged');
-    success('Button tap verified in logs');
+    // Log the full result for debugging
+    info('Test Result:');
+    console.log(JSON.stringify(result, null, 2));
 
-    // 12. Get all logs to verify app is running
-    info('Fetching app logs...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '15');
-    info('Recent logs:');
-    console.log(logs);
+    // Verify test passed
+    if (result.status !== 'passed') {
+      error(`Test failed at step ${result.failedAt}: ${result.error}`);
+      throw new Error(`YAML test failed: ${result.error}`);
+    }
+
+    success(`✅ YAML test passed! (${result.steps.length} steps in ${result.duration}ms)`);
 
     success('✅ All tests passed!');
 

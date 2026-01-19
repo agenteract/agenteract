@@ -10,6 +10,12 @@ import android.net.Uri
  */
 object DeepLinkHandler {
     /**
+     * Custom deep link handler callback
+     * Return true if the deep link was handled, false to let DeepLinkHandler process it
+     */
+    var customHandler: ((Uri) -> Boolean)? = null
+
+    /**
      * Parse an Intent for Agenteract configuration deep link
      *
      * @param intent The Intent to parse (usually from Activity.onNewIntent or onCreate)
@@ -21,6 +27,16 @@ object DeepLinkHandler {
         }
 
         val uri = intent.data ?: return null
+        
+        // Call custom handler first if provided
+        if (customHandler != null) {
+            val handled = customHandler?.invoke(uri) ?: false
+            if (handled) {
+                println("[Agenteract] Deep link handled by app: $uri")
+                return null
+            }
+        }
+        
         return parseUri(uri)
     }
 

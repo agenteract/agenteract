@@ -385,10 +385,12 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
 // --- AgentDebugBridge Component ---
 export const AgentDebugBridge = ({
   projectName,
-  autoConnect = true
+  autoConnect = true,
+  onDeepLink
 }: {
   projectName: string;
   autoConnect?: boolean;
+  onDeepLink?: (url: string) => Promise<boolean> | boolean;
 }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -451,11 +453,20 @@ export const AgentDebugBridge = ({
     });
 
     return () => subscription?.remove();
-  }, []);
+  }, [onDeepLink]);
 
   const handleDeepLink = async (url: string) => {
     try {
       console.log('[Agenteract] Received deep link:', url);
+
+      // First, check if app has a custom deep link handler
+      if (onDeepLink) {
+        const handled = await Promise.resolve(onDeepLink(url));
+        if (handled) {
+          console.log('[Agenteract] Deep link handled by app');
+          return;
+        }
+      }
 
       // Parse URL - supports both exp://*/agenteract/config and custom schemes
       // Examples:

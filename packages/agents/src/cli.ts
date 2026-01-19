@@ -3,6 +3,7 @@ import yargs from 'yargs';
 
 import { hideBin } from 'yargs/helpers';
 import axios from 'axios';
+import YAML from 'yaml';
 
 import fs from 'fs';
 import path from 'path';
@@ -842,6 +843,108 @@ yargs(hideBin(process.argv))
         } else {
           console.error('An unknown error occurred');
         }
+      }
+    }
+  )
+  .command(
+    'test <file>',
+    'Run a YAML test file',
+    (yargs) => {
+      return yargs
+        .positional('file', {
+          describe: 'Path to YAML test file',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('project', {
+          alias: 'p',
+          type: 'string',
+          description: 'Override project name from test file',
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Override device from test file',
+        })
+        .option('verbose', {
+          alias: 'v',
+          type: 'boolean',
+          description: 'Show detailed step output',
+          default: false,
+        })
+        .option('bail', {
+          alias: 'b',
+          type: 'boolean',
+          description: 'Stop on first failure (default behavior)',
+          default: true,
+        });
+    },
+    async (argv) => {
+      try {
+        // Read and parse YAML file
+        const testFilePath = path.resolve(process.cwd(), argv.file);
+        if (!fs.existsSync(testFilePath)) {
+          console.error(`Error: Test file not found: ${testFilePath}`);
+          process.exit(1);
+        }
+
+        const yamlContent = fs.readFileSync(testFilePath, 'utf8');
+        const testDefinition = YAML.parse(yamlContent);
+
+        // Apply CLI overrides
+        if (argv.project) {
+          testDefinition.project = argv.project;
+        }
+        if (argv.device) {
+          testDefinition.device = argv.device;
+        }
+
+        // Validate required fields
+        if (!testDefinition.project) {
+          console.error('Error: Test definition must include a "project" field');
+          process.exit(1);
+        }
+        if (!testDefinition.steps || !Array.isArray(testDefinition.steps)) {
+          console.error('Error: Test definition must include a "steps" array');
+          process.exit(1);
+        }
+
+        if (argv.verbose) {
+          console.log(`Running test: ${argv.file}`);
+          console.log(`Project: ${testDefinition.project}`);
+          console.log(`Steps: ${testDefinition.steps.length}`);
+          if (testDefinition.device) {
+            console.log(`Device: ${testDefinition.device}`);
+          }
+          console.log('');
+        }
+
+        // Send test definition to server
+        const { agentServerUrl } = await getServerUrls();
+        const response = await axios.post(`${agentServerUrl}/test-run`, testDefinition);
+        const result = response.data;
+
+        // Output JSON for CI tools
+        console.log(JSON.stringify(result, null, 2));
+
+        // Show summary if verbose
+        if (argv.verbose) {
+          console.log('');
+          console.log('='.repeat(60));
+          console.log(`Test ${result.status === 'passed' ? 'PASSED' : 'FAILED'}`);
+          console.log(`Duration: ${result.duration}ms`);
+          console.log(`Steps: ${result.steps.filter((s: any) => s.status === 'passed').length}/${result.steps.length} passed`);
+          if (result.failedAt) {
+            console.log(`Failed at step: ${result.failedAt}`);
+          }
+          console.log('='.repeat(60));
+        }
+
+        // Exit with appropriate code
+        process.exit(result.status === 'passed' ? 0 : 1);
+      } catch (error) {
+        handleRequestError(error);
+        process.exit(1);
       }
     }
   )

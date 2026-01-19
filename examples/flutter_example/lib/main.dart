@@ -9,6 +9,27 @@ void main() {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  // Handle deep links from Agenteract
+  Future<bool> _handleDeepLink(String url) async {
+    try {
+      final uri = Uri.parse(url);
+
+      // Handle reset_state deep link
+      if (uri.host == 'reset_state' || uri.path.contains('reset_state')) {
+        debugPrint('App state cleared');
+        // Signal MyHomePage to reset (we'll use a ValueNotifier for this)
+        _resetNotifier.value = DateTime.now().millisecondsSinceEpoch;
+        return true;
+      }
+
+      // Let AgentDebugBridge handle other links (like config)
+      return false;
+    } catch (e) {
+      debugPrint('Error handling deep link: $e');
+      return false;
+    }
+  }
+
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
@@ -32,12 +53,16 @@ class MyApp extends StatelessWidget {
     if (kDebugMode) {
       return AgentDebugBridge(
         projectName: 'flutter-example',
+        onDeepLink: _handleDeepLink,
         child: app,
       );
     }
     return app;
   }
 }
+
+// Global notifier for reset events
+final _resetNotifier = ValueNotifier<int>(0);
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -72,10 +97,18 @@ class _MyHomePageState extends State<MyHomePage> {
     // Track scroll position for agent commands
     _horizontalScrollController.trackForAgent('horizontal-scroll');
     _verticalScrollController.trackForAgent('main-list');
+
+    // Listen for reset events from deep links
+    _resetNotifier.addListener(_onReset);
+  }
+
+  void _onReset() {
+    _resetAll();
   }
 
   @override
   void dispose() {
+    _resetNotifier.removeListener(_onReset);
     _textController.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();

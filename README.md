@@ -558,6 +558,220 @@ To run the tests for a specific package, use the `--filter` flag:
 pnpm --filter @agenteract/react test
 ```
 
+### **YAML Test Runner**
+
+Agenteract includes a declarative YAML test runner for end-to-end testing. Tests execute server-side within the Agenteract dev server (see [`packages/server/src/test-runner.ts`](packages/server/src/test-runner.ts)), eliminating round-trips and making tests fast and reliable.
+
+#### Quick Start
+
+Create a test file (`tests/login-flow.yaml`):
+
+```yaml
+project: expo-app
+timeout: 10000  # default timeout for waitFor steps
+
+steps:
+  - phase: "Setup"
+  - waitFor: login-button
+    timeout: 5000  # wait up to 5s for element
+
+  - phase: "Authentication"
+  - input: username-field
+    value: testuser@example.com
+  - input: password-field
+    value: testpass123
+  - tap: login-button
+
+  - phase: "Verification"
+  - waitFor: home-screen
+    timeout: 5000
+  - assert:
+      exists: welcome-message
+  - assert:
+      logContains: "Login successful"
+```
+
+Run the test:
+
+```bash
+npx @agenteract/agents test tests/login-flow.yaml
+```
+
+#### Test Step Reference
+
+**Basic Interactions:**
+- `tap: element-testID` - Simulate tap/click on element
+- `input: field-testID` + `value: "text"` - Enter text into input field
+- `longPress: element-testID` - Long press/hold gesture
+
+**Gestures:**
+- `scroll: scroll-view-testID` + `direction: down` + `amount: 200` - Scroll element
+- `swipe: card-testID` + `direction: left` + `velocity: fast` - Swipe gesture
+
+**Waiting & Timing:**
+- `waitFor: element-testID` + `timeout: 5000` - Wait for element to appear
+- `waitFor: ""` + `logContains: "message"` + `timeout: 3000` - Wait for console log
+- `sleep: 1000` - Pause execution (use sparingly - prefer `waitFor` with timeouts)
+
+**Assertions:**
+```yaml
+# Element exists
+- assert:
+    exists: element-testID
+
+# Element doesn't exist  
+- assert:
+    notExists: element-testID
+
+# Text content checks
+- assert:
+    text:
+      testID: label-testID
+      contains: "Expected"  # or use 'equals' for exact match
+
+# Console log verification
+- assert:
+    logContains: "Success message"
+```
+
+**Platform-Specific:**
+- `deepLink: myapp://reset_state` - Open deep link (iOS simulator/Android emulator)
+
+**Organization:**
+- `phase: "Phase Name"` - Label sections for better test output
+- `log: "Message"` - Log informational messages
+
+#### Best Practices
+
+**✅ DO:** Use `waitFor` with reasonable timeouts
+```yaml
+# Good - wait up to 5s for element
+- waitFor: login-button
+  timeout: 5000
+- tap: login-button
+
+# Good - wait up to 3s for console log
+- tap: submit-button
+- waitFor: ""
+  logContains: "Login successful"
+  timeout: 3000
+```
+
+**❌ DON'T:** Use arbitrary `sleep` delays
+```yaml
+# Bad - arbitrary wait, test runs slow even when element appears quickly
+- tap: login-button
+- sleep: 3000  # How long is enough? Too short = flaky, too long = slow
+- waitFor: home-screen
+```
+
+**Timeout Guidelines:**
+- Set timeouts long enough to be achievable under normal conditions
+- Not so long that test failures take forever to report
+- Typical range: 3-10 seconds for most UI transitions
+- Longer (20-30s) for network operations or complex rendering
+
+#### Example Tests
+
+**Gesture Test:**
+```yaml
+project: expo-app
+
+steps:
+  - phase: "Scroll Test"
+  - waitFor: scroll-view
+    timeout: 5000
+  - scroll: scroll-view
+    direction: down
+    amount: 300
+  - assert:
+      exists: bottom-element
+
+  - phase: "Swipe Test"  
+  - waitFor: swipeable-card
+    timeout: 3000
+  - swipe: swipeable-card
+    direction: left
+    velocity: fast
+  - assert:
+      notExists: swipeable-card
+```
+
+**Deep Link Test:**
+```yaml
+project: expo-app
+
+steps:
+  - phase: "Setup State"
+  - tap: increment-button
+  - tap: increment-button
+  - input: text-field
+    value: "Some text"
+
+  - phase: "Reset via Deep Link"
+  - deepLink: myapp://reset_state
+  
+  - phase: "Verify Reset"
+  - waitFor: counter-value
+    timeout: 3000
+  - assert:
+      text:
+        testID: counter-value
+        equals: "0"
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+```
+
+#### CI/CD Integration
+
+**GitHub Actions:**
+```yaml
+name: E2E Tests
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Start Agenteract
+        run: npx @agenteract/cli dev &
+
+      - name: Run tests
+        run: |
+          npx @agenteract/agents test tests/login.yaml
+          npx @agenteract/agents test tests/navigation.yaml
+```
+
+#### Test Results
+
+Tests return JSON results for CI/CD parsing:
+
+```json
+{
+  "status": "passed",
+  "duration": 12345,
+  "steps": [
+    {
+      "step": 1,
+      "action": "waitFor",
+      "target": "login-btn",
+      "status": "passed",
+      "duration": 234
+    }
+  ],
+  "failedAt": null
+}
+```
+
 ### **Continuous Integration**
 
 Tests are run automatically on every push and pull request to the `main` branch using GitHub Actions.

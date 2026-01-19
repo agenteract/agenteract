@@ -9,6 +9,8 @@ import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
 import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary } from '@agenteract/core/node';
+import { runTest } from './test-runner.js';
+import type { TestDefinition } from './test-types.js';
 
 const isLogServer = process.argv.includes('--log-only');
 
@@ -405,10 +407,19 @@ if (isLogServer) {
             pendingDeviceInfo.set(projectName, ws);
 
             ws.on('message', (message: Buffer) => {
-                console.log(`[DEBUG] Received raw message from "${projectName}": ${message.toString()}`);
-                log(`Received message from "${projectName}": ${message.toString()}`);
                 try {
                     const response = JSON.parse(message.toString());
+                    
+                    // Only log non-hierarchy messages to reduce spam
+                    // Hierarchy responses are typically very large (>10KB), so skip logging them
+                    const isHierarchyResponse = response.hierarchy !== undefined;
+                    const isLargeMessage = message.length > 10000;
+                    if (!isHierarchyResponse && !isLargeMessage) {
+                        console.log(`[DEBUG] Received raw message from "${projectName}": ${message.toString()}`);
+                        log(`Received message from "${projectName}": ${message.toString()}`);
+                    } else {
+                        console.log(`[DEBUG] Received hierarchy response from "${projectName}" (${message.length} bytes, SUPPRESSED)`);
+                    }
 
                     // Check if this is device info
                     if (response.status === 'deviceInfo' && response.deviceInfo) {
@@ -465,7 +476,11 @@ if (isLogServer) {
 
                     // Handle command responses
                     if (response.id && pendingRequests.has(response.id)) {
-                        console.log(`[DEBUG] Received response from ${projectName}, id: ${response.id}, status: ${response.status}`);
+                        // Only log non-hierarchy responses to reduce spam
+                        const isHierarchyResponse = response.hierarchy !== undefined;
+                        if (!isHierarchyResponse) {
+                            console.log(`[DEBUG] Received response from ${projectName}, id: ${response.id}, status: ${response.status}`);
+                        }
                         const res = pendingRequests.get(response.id)!;
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify(response));
@@ -668,6 +683,102 @@ if (isLogServer) {
                 defaultDevice: defaultDeviceId,
                 totalConnected: devices.length
             });
+        });
+
+        // --- Test Runner Endpoint ---
+        app.post('/test-run', async (req, res) => {
+            const testDefinition = req.body as TestDefinition;
+
+            if (!testDefinition.project) {
+                return res.status(400).json({ error: 'Test definition must include a "project" field.' });
+            }
+
+            if (!testDefinition.steps || !Array.isArray(testDefinition.steps)) {
+                return res.status(400).json({ error: 'Test definition must include a "steps" array.' });
+            }
+
+            log(`Starting test run for project "${testDefinition.project}" with ${testDefinition.steps.length} steps`);
+
+            // Helper to send command and wait for response
+            const sendCommand = async (command: Record<string, unknown>): Promise<Record<string, unknown>> => {
+                const projectName = command.project as string;
+                const requestedDevice = command.device as string | undefined;
+
+                const result = await resolveDeviceConnection(projectName, requestedDevice);
+                if ('error' in result) {
+                    throw new Error(result.error);
+                }
+
+                const { connection } = result;
+                const id = uuidv4();
+                command.id = id;
+
+                return new Promise((resolve, reject) => {
+                    const timeout = setTimeout(() => {
+                        pendingRequests.delete(id);
+                        reject(new Error('Timed out waiting for response from app'));
+                    }, 10000);
+
+                    // Create a fake response object to capture the result
+                    const fakeRes = {
+                        writeHead: () => {},
+                        end: (data: string) => {
+                            clearTimeout(timeout);
+                            pendingRequests.delete(id);
+                            try {
+                                resolve(JSON.parse(data));
+                            } catch {
+                                resolve({ status: 'ok' });
+                            }
+                        }
+                    } as unknown as http.ServerResponse;
+
+                    pendingRequests.set(id, fakeRes);
+                    connection.socket.send(JSON.stringify(command));
+                });
+            };
+
+            // Helper to get hierarchy
+            const getHierarchy = async () => {
+                const response = await sendCommand({
+                    project: testDefinition.project,
+                    action: 'getViewHierarchy',
+                    device: testDefinition.device,
+                });
+                return response.hierarchy as any || null;
+            };
+
+            // Helper to get logs
+            const getLogs = async (since: number = 50) => {
+                try {
+                    const response = await sendCommand({
+                        project: testDefinition.project,
+                        action: 'getConsoleLogs',
+                        device: testDefinition.device,
+                    });
+                    return (response.logs as any[]) || [];
+                } catch {
+                    return [];
+                }
+            };
+
+            try {
+                const result = await runTest(testDefinition, {
+                    sendCommand,
+                    getHierarchy,
+                    getLogs,
+                    log: (message: string) => {
+                        console.log(`[Test] ${message}`);
+                    },
+                });
+
+                res.json(result);
+            } catch (error) {
+                res.status(500).json({
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
         });
 
         app.listen(HTTP_PORT, '0.0.0.0', () => {

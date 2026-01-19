@@ -1,0 +1,95 @@
+# Kotlin KMP App E2E Test
+# Tests UI hierarchy fetching and various interactions
+
+project: kmp-app
+timeout: 30000
+
+steps:
+  # 1. Wait for app to be connected and ready
+  - waitFor: increment-button
+    timeout: 60000
+
+  # 2. Verify initial UI loaded correctly
+  - assert:
+      exists: increment-button
+
+  - assert:
+      exists: text-input
+
+  - assert:
+      exists: long-press-view
+
+  - assert:
+      exists: swipeable-card
+
+  - assert:
+      exists: horizontal-scroll
+
+  # 3. Test Tap Interaction (Increment Counter)
+  - phase: "Tap Test"
+
+  - tap: increment-button
+    wait: 500
+
+  # Verify counter incremented to 1
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  # 4. Test Input Interaction
+  - phase: "Input Test"
+  
+  - input: text-input
+    value: "Hello KMP"
+
+  - waitFor: ""
+    logContains: "Input changed: Hello KMP"
+    timeout: 3000
+
+  # 5. Test Deep Link (reset_state)
+  - phase: "Deep Link Test"
+
+  - deepLink: "agenteract-kmp-example://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 6. Test Long Press Interaction
+  - phase: "Long Press Test"
+
+  - longPress: long-press-view
+
+  - waitFor: ""
+    logContains: "Long pressed! Count: 1"
+    timeout: 3000
+
+  # 7. Test Swipe Interaction
+  - phase: "Swipe Test"
+
+  - swipe: swipeable-card
+    direction: left
+
+  - waitFor: ""
+    logContains: "Card swiped left"
+    timeout: 3000
+
+  # 8. Test Scroll Interaction
+  - phase: "Scroll Test"
+
+  - scroll: horizontal-scroll
+    direction: right
+    amount: 100
+
+  - waitFor: ""
+    logContains: "Scrolled right by 100.0"
+    timeout: 3000
+
+  # 9. Reset All
+  - phase: "Reset Test"
+
+  - tap: reset-button
+
+  - waitFor: ""
+    logContains: "All values reset"
+    timeout: 3000

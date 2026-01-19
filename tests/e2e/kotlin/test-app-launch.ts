@@ -41,7 +41,7 @@ async function cleanup() {
 
     if (platform === 'android') {
         try {
-            await runCommand('adb shell am force-stop io.agenteract.kmp_example', 'Stop Android App');
+            await runCommand('adb shell am force-stop io.agenteract.kmp_example');
         } catch (e) { /* ignore */ }
     }
 
@@ -143,20 +143,30 @@ async function main() {
 
             // Ensure an emulator or device is running
             info('Checking for connected Android devices/emulators...');
-            await runCommand('adb devices', 'Verify ADB devices');
+            await runCommand('adb devices');
 
             // 1. Install the debug APK
             info(`Running ./gradlew installDebug in ${exampleAppDir}`);
             await runCommand(`cd "${exampleAppDir}" && ./gradlew installDebug`);
             success('✅ Android app installed successfully!');
 
-            // 2. Launch the app using adb
+            // // 1. Install the debug APK directly via ADB (more reliable than gradle)
+            // info(`Installing APK via ADB...`);
+            // const apkPath = join(exampleAppDir, 'build/outputs/apk/debug/kmp-example-debug.apk');
+            // await runCommand(`adb install -r "${apkPath}"`);
+            // success('✅ Android app installed successfully!');
+
+            // // 2. Clear app data to ensure fresh state (no old tokens)
+            // info('Clearing app data...');
+            // await runCommand('adb shell pm clear io.agenteract.kmp_example');
+
+            // 3. Launch the app using adb
             const androidAppId = 'io.agenteract.kmp_example'; // From build.gradle.kts
             const mainActivity = '.MainActivity'; // Common main activity name
 
             // ADB Reverse for AgentDebugBridge connection
             info('Setting up adb reverse port forwarding (8765 -> 8765)...');
-            await runCommand('adb reverse tcp:8765 tcp:8765', 'ADB Reverse');
+            await runCommand('adb reverse tcp:8765 tcp:8765');
 
             info(`Launching Android app: ${androidAppId}/${mainActivity}`);
             appProcess = spawnBackground(
@@ -168,91 +178,16 @@ async function main() {
             success('✅ Android app launched successfully!');
         }
 
-        // 7. Wait for Connection & Hierarchy
-        info('Waiting for app to connect and report hierarchy...');
-
-        // Helper to extract the main JSON object from agenteract CLI output, prioritizing by expected type
-        const extractFullJsonFromCliOutput = (output: string, expectedType: 'command' | 'hierarchy' | 'logs'): any => {
-            const lines = output.split('\n');
-            let bestMatch: any = null;
-
-            for (const line of lines) {
-                let jsonString = line;
-                // Remove common CLI prefixes
-                const rawMessagePrefix = 'Received raw message from "kmp-app": ';
-                const infoPrefix = 'ℹ️ Hierarchy received: ';
-                const debugPrefix = '[agenteract-dev] [DEBUG] ';
-
-                if (line.includes(rawMessagePrefix)) {
-                    jsonString = line.substring(line.indexOf(rawMessagePrefix) + rawMessagePrefix.length).trim();
-                } else if (line.includes(infoPrefix)) {
-                    jsonString = line.substring(line.indexOf(infoPrefix) + infoPrefix.length).trim();
-                } else if (line.includes(debugPrefix)) {
-                    const jsonStart = line.indexOf('{');
-                    const jsonEnd = line.lastIndexOf('}');
-                    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-                        jsonString = line.substring(jsonStart, jsonEnd + 1).trim();
-                    } else {
-                        continue; // No JSON in this debug line
-                    }
-                }
-
-                if (jsonString.startsWith('{') && jsonString.endsWith('}')) {
-                    try {
-                        const parsedJson = JSON.parse(jsonString);
-                        // Prioritize based on expected type
-                        if (expectedType === 'command' && parsedJson.status === 'ok' && parsedJson.hierarchy === null && parsedJson.logs === null) {
-                            return parsedJson; // Exact match for a command response
-                        } else if (expectedType === 'hierarchy' && parsedJson.hierarchy !== null && parsedJson.status === 'success') {
-                            bestMatch = parsedJson; // Keep as best hierarchy match so far
-                        } else if (expectedType === 'logs' && parsedJson.logs !== null && parsedJson.status === 'success') {
-                            bestMatch = parsedJson; // Keep as best logs match so far
-                        }
-                        // If we found a perfect match for hierarchy/logs, return immediately
-                        // This prevents it from being overridden by a less specific match later
-                        if (bestMatch && (
-                            (expectedType === 'hierarchy' && bestMatch.hierarchy !== null) ||
-                            (expectedType === 'logs' && bestMatch.logs !== null)
-                        )) {
-                            return bestMatch;
-                        }
-
-                    } catch (e) {
-                        // Not valid JSON, continue
-                    }
-                }
-            }
-            return bestMatch; // Return the best match if no exact command match was found
-        };
-
-
-        const verifyInLogs = async (message: string): Promise<void> => {
-            const logsOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'kmp-app', '--since', '20');
-            const logs = JSON.parse(logsOutput).logs;
-            const log = logs.find((log: any) => log.message.includes(message));
-            if (!log) throw new Error(`${message} log not found in logs: ${logsOutput}`);
-            success(`${message} verified in logs`);
-        };
-
-        let fullResponse: any = null;
-        let hierarchy: any = null;
+        // 7. Wait for app to connect
+        info('Waiting for app to connect to agent server...');
 
         await waitFor(
             async () => {
                 try {
+                    // Just check if we can get any hierarchy response
                     const rawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'kmp-app');
-                    fullResponse = extractFullJsonFromCliOutput(rawOutput, 'hierarchy'); // Pass 'hierarchy' type
-
-                    if (!fullResponse || fullResponse.status !== 'success' || !fullResponse.hierarchy) {
-                        return false;
-                    }
-                    hierarchy = fullResponse.hierarchy;
-
-                    // Check for AgentRegistry and a button with a testID
-                    const jsonString = JSON.stringify(hierarchy);
-                    return jsonString.includes('AgentRegistry') && jsonString.includes('"testID":"increment-button"');
+                    return rawOutput.includes('increment-button');
                 } catch (err) {
-                    // info(`Error in waitFor: ${err}`);
                     return false;
                 }
             },
@@ -261,132 +196,27 @@ async function main() {
             2000
         );
 
-        if (!hierarchy) {
-            throw new Error('Failed to get initial hierarchy from KMP app');
+        success('KMP app connected and initial hierarchy loaded');
+
+        // 8. Run YAML test suite
+        info('Running YAML test suite...');
+        const testFilePath = join(process.cwd(), 'tests', 'e2e', 'kotlin', 'test-app.yaml');
+        const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+
+        // Parse JSON result
+        const result = JSON.parse(testResult);
+
+        // Log the full result for debugging
+        info('Test Result:');
+        console.log(JSON.stringify(result, null, 2));
+
+        // Verify test passed
+        if (result.status !== 'passed') {
+            error(`Test failed at step ${result.failedAt}: ${result.error}`);
+            throw new Error(`YAML test failed: ${result.error}`);
         }
 
-        // 8. Verify initial UI loaded correctly
-        const initialHierarchyJsonString = JSON.stringify(hierarchy);
-        assertContains(initialHierarchyJsonString, '"testID":"increment-button"', 'Initial UI contains increment button');
-        assertContains(initialHierarchyJsonString, '"testID":"text-input"', 'Initial UI contains text input');
-        assertContains(initialHierarchyJsonString, '"testID":"long-press-view"', 'Initial UI contains long press view');
-        assertContains(initialHierarchyJsonString, '"testID":"swipeable-card"', 'Initial UI contains swipeable card');
-        assertContains(initialHierarchyJsonString, '"testID":"horizontal-scroll"', 'Initial UI contains horizontal scroll');
-        success('Initial UI hierarchy fetched and verified successfully');
-
-        // 9. Test Tap Interaction (Increment Counter)
-        info('Testing tap interaction on increment-button...');
-        const tapRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'kmp-app', 'increment-button');
-        const tapResponse = extractFullJsonFromCliOutput(tapRawOutput, 'command'); // Pass 'command' type
-        if (!tapResponse || tapResponse.status !== 'ok') {
-            throw new Error(`Tap command failed: ${tapRawOutput}`);
-        }
-        success('Button tap command sent');
-
-        await sleep(500);
-
-        // Verify counter incremented in hierarchy
-        const hierarchyAfterTapRaw = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'kmp-app');
-        const fullResponseAfterTap = extractFullJsonFromCliOutput(hierarchyAfterTapRaw, 'hierarchy'); // Pass 'hierarchy' type
-        if (!fullResponseAfterTap || fullResponseAfterTap.status !== 'success' || !fullResponseAfterTap.hierarchy) {
-            throw new Error(`Failed to get hierarchy after tap: ${hierarchyAfterTapRaw}`);
-        }
-        const hierarchyAfterTap = fullResponseAfterTap.hierarchy;
-        const hierarchyAfterTapJsonString = JSON.stringify(hierarchyAfterTap);
-
-        assertContains(hierarchyAfterTapJsonString, '"testID":"counter-value"', 'Hierarchy contains counter-value');
-        assertContains(hierarchyAfterTapJsonString, '"text":"1"', 'Counter incremented to 1 in hierarchy');
-        success('Counter increment verified in hierarchy');
-
-        await verifyInLogs('Counter incremented to 1');
-
-
-        // 10. Test Input Interaction
-        info('Testing input interaction on text-input...');
-        const inputRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'input', 'kmp-app', 'text-input', 'Hello KMP');
-        const inputResponse = extractFullJsonFromCliOutput(inputRawOutput, 'command'); // Pass 'command' type
-        if (!inputResponse || inputResponse.status !== 'ok') {
-            throw new Error(`Input command failed: ${inputRawOutput}`);
-        }
-        success('Input command sent');
-
-        await sleep(500);
-
-        const hierarchyAfterInputRaw = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'kmp-app');
-        const fullResponseAfterInput = extractFullJsonFromCliOutput(hierarchyAfterInputRaw, 'hierarchy'); // Pass 'hierarchy' type
-        if (!fullResponseAfterInput || fullResponseAfterInput.status !== 'success' || !fullResponseAfterInput.hierarchy) {
-            throw new Error(`Failed to get hierarchy after input: ${hierarchyAfterInputRaw}`);
-        }
-        const hierarchyAfterInput = fullResponseAfterInput.hierarchy;
-        const hierarchyAfterInputJsonString = JSON.stringify(hierarchyAfterInput);
-
-        assertContains(hierarchyAfterInputJsonString, '"testID":"input-display-text"', 'Hierarchy contains input-display-text');
-        assertContains(hierarchyAfterInputJsonString, '"text":"Input value: Hello KMP"', 'UI updated with input text in hierarchy');
-
-        await verifyInLogs('Input changed: Hello KMP');
-
-
-        // 11. Test Long Press Interaction
-        info('Testing long press interaction on long-press-view...');
-        const longPressRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'longPress', 'kmp-app', 'long-press-view');
-        const longPressResponse = extractFullJsonFromCliOutput(longPressRawOutput, 'command'); // Pass 'command' type
-        if (!longPressResponse || longPressResponse.status !== 'ok') {
-            throw new Error(`Long press command failed: ${longPressRawOutput}`);
-        }
-        success('Long press command sent');
-
-        await sleep(500);
-        const hierarchyAfterLongPressRaw = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'kmp-app');
-        const fullResponseAfterLongPress = extractFullJsonFromCliOutput(hierarchyAfterLongPressRaw, 'hierarchy'); // Pass 'hierarchy' type
-        if (!fullResponseAfterLongPress || fullResponseAfterLongPress.status !== 'success' || !fullResponseAfterLongPress.hierarchy) {
-            throw new Error(`Failed to get hierarchy after long press: ${hierarchyAfterLongPressRaw}`);
-        }
-        const hierarchyAfterLongPress = fullResponseAfterLongPress.hierarchy;
-        const hierarchyAfterLongPressJsonString = JSON.stringify(hierarchyAfterLongPress);
-
-        assertContains(hierarchyAfterLongPressJsonString, '"testID":"long-press-count-text"', 'Hierarchy contains long-press-count-text');
-        assertContains(hierarchyAfterLongPressJsonString, '"text":"Long press count: 1"', 'UI updated after long press in hierarchy');
-
-        await verifyInLogs('Long pressed! Count: 1');
-
-        // 12. Test Swipe Interaction
-        info('Testing swipe interaction on swipeable-card...');
-        const swipeRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'swipe', 'kmp-app', 'swipeable-card', 'left');
-        const swipeResponse = extractFullJsonFromCliOutput(swipeRawOutput, 'command'); // Pass 'command' type
-        if (!swipeResponse || swipeResponse.status !== 'ok') {
-            throw new Error(`Swipe command failed: ${swipeRawOutput}`);
-        }
-        success('Swipe command sent');
-
-        await sleep(500);
-        await verifyInLogs('Card swiped left');
-
-        // 13. Test Scroll Interaction
-        info('Testing scroll interaction on horizontal-scroll...');
-        const scrollRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'scroll', 'kmp-app', 'horizontal-scroll', 'right', '100');
-        const scrollResponse = extractFullJsonFromCliOutput(scrollRawOutput, 'command'); // Pass 'command' type
-        if (!scrollResponse || scrollResponse.status !== 'ok') {
-            throw new Error(`Scroll command failed: ${scrollRawOutput}`);
-        }
-        success('Scroll command sent');
-
-        await sleep(500);
-        await verifyInLogs('Scrolled right by 100.0');
-
-        // 14. Reset All
-        info('Testing reset button...');
-        const resetRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'kmp-app', 'reset-button');
-        const resetResponse = extractFullJsonFromCliOutput(resetRawOutput, 'command'); // Pass 'command' type
-        if (!resetResponse || resetResponse.status !== 'ok') {
-            throw new Error(`Reset command failed: ${resetRawOutput}`);
-        }
-        success('Reset command sent');
-
-        await sleep(500);
-
-        await verifyInLogs('All values reset');
-
-        success('✅ Kotlin Full Suite E2E Test Passed!');
+        success(`✅ YAML test passed! (${result.steps.length} steps in ${result.duration}ms)`);
 
     } catch (err) {
         error(`Test failed: ${err}`);
