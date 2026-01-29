@@ -102,7 +102,7 @@ async function main() {
         info(`Configuring agenteract for app at: ${exampleAppDir}`);
         // using --wait-log-timeout 500 to simulate deprecated usage
         await runCommand(
-            `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" kmp-app "native" --wait-log-timeout 500`
+            `cd "${testConfigDir}" && npx @agenteract/cli add-config "${exampleAppDir}" kmp-app "native" --scheme agenteract-kmp-example --wait-log-timeout 500`
         );
 
         // 5. Start Agent Server
