@@ -9,13 +9,10 @@
  * 4. UI hierarchy can be fetched
  */
 
-import { ChildProcess, exec as execCallback } from 'child_process';
-import { promisify } from 'util';
-import puppeteer, { Browser } from 'puppeteer';
+import { ChildProcess } from 'child_process';
 import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 
-const exec = promisify(execCallback);
 import {
   info,
   success,
@@ -27,28 +24,21 @@ import {
   runAgentCommand,
   spawnBackground,
   killProcess,
-  waitFor,
   sleep,
   setupCleanup,
   getTmpDir,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
-let browser: Browser | null = null;
 let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
 
-  if (browser) {
-    try {
-      await browser.close();
-      info('Browser closed');
-    } catch (err) {
-      // Ignore browser cleanup errors
-    }
-  }
+  // Browser is now managed by YAML test (launch/stop steps)
+  // The YAML test should have called stopApp which closes the browser,
+  // but if cleanup is called due to error, we need a fallback
 
   if (agentServer) {
     await killProcess(agentServer, 'Agenteract dev');
@@ -88,6 +78,15 @@ async function main() {
       try {
         await runCommand('lsof -ti:8765,8766,8790,8791,8792,5173 | xargs kill -9 2>/dev/null || true');
         await sleep(2000); // Give processes time to die
+      } catch (err) {
+        // Ignore cleanup errors
+      }
+
+      // Also clean up any orphaned puppeteer processes from previous failed test runs
+      info('Cleaning up any orphaned puppeteer/Chrome processes...');
+      try {
+        await runCommand('pkill -f "puppeteer_dev_chrome_profile" 2>/dev/null || true');
+        await sleep(1000);
       } catch (err) {
         // Ignore cleanup errors
       }
@@ -216,7 +215,8 @@ export default defineConfig({
     mkdirSync(testConfigDir, { recursive: true });
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
     // install packages so latest are used with npx
-    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
+    // Add puppeteer as it's a peer dependency for web launching
+    await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty puppeteer --registry http://localhost:4873`);
     success('CLI packages installed from Verdaccio');
 
     // 5. Create agenteract config pointing to the temp app
@@ -246,86 +246,21 @@ export default defineConfig({
     // Give servers time to start
     await sleep(5000);
 
-    // Check dev logs to see what port Vite is running on
+    // Wait for Vite dev server to be ready
+    info('Waiting for Vite dev server to start...');
+    await sleep(10000); // Give Vite time to compile and start
+
+    // Check dev logs to confirm server is running
     info('Checking Vite dev server logs...');
     try {
-      await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
+      const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
+      info('Vite dev logs:');
+      console.log(devLogs);
     } catch (err) {
       error(`Failed to get dev logs: ${err}`);
     }
 
-    // 6. Launch headless browser with Puppeteer
-    info('Launching headless browser...');
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-web-security', // Allow module loading in headless mode
-        '--disable-features=IsolateOrigins,site-per-process',
-      ],
-    });
-
-    const page = await browser.newPage();
-
-    info('Opening http://localhost:5173 in headless browser...');
-    await page.goto('http://localhost:5173', {
-      waitUntil: 'networkidle0',
-      timeout: 60000,
-    });
-    success('Browser navigation complete');
-
-    // Wait for React to actually render
-    info('Waiting for React app to render...');
-    try {
-      await page.waitForFunction(
-        () => {
-          const root = document.getElementById('root');
-          return root && root.children.length > 0;
-        },
-        { timeout: 30000 }
-      );
-      success('React app rendered');
-    } catch (err) {
-      error('React app did not render within 30 seconds');
-      throw new Error('React app failed to render');
-    }
-
-    // Wait for app to be ready by checking hierarchy
-    let hierarchy: string | null = null;
-
-    await waitFor(
-      async () => {
-        try {
-          hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
-          info(`page content: ` + await page.content());
-          info(`Hierarchy: ${hierarchy}`);
-
-          // Follow up with separate logs command to verify state (testing config waitLogTimeout: 0)
-          const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '10');
-          info('App logs:');
-          console.log(appLogs);
-
-          const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'react-app', '--since', '50');
-          info('Vite dev logs:');
-          console.log(devLogs);
-
-          return hierarchy?.includes('Agenteract Web Demo');
-        } catch (err) {
-          error(`Error getting hierarchy: ${err}`);
-          return false;
-        }
-      },
-      'Vite dev server to start',
-      300000,
-      5000
-    );
-
-    if (!hierarchy) {
-      throw new Error('Unexpected error: hierarchy not found');
-    }
-
-    success('Vite dev server started and app loaded');
+    success('Vite dev server started - YAML test will handle browser launch');
 
     // 9. Run YAML test
     info('Running YAML test suite...');
@@ -353,7 +288,7 @@ export default defineConfig({
     error(`Test failed: ${err}`);
     process.exit(1);
   } finally {
-    // await cleanup();
+    await cleanup();
     process.exit(0);
   }
 }

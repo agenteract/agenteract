@@ -635,7 +635,46 @@ npx @agenteract/agents test tests/login-flow.yaml
 ```
 
 **Platform-Specific:**
-- `deepLink: myapp://reset_state` - Open deep link (iOS simulator/Android emulator)
+- `agentLink: agenteract://reset_state` - Send agentLink to app via WebSocket
+- `pair: simulator/emulator/physical` + `platform: ios/android` - Test deep link pairing
+
+**Pairing (`pair` step):**
+
+Tests deep link pairing by sending configuration deep links to simulators/emulators. This verifies that apps can receive and process pairing deep links correctly.
+
+```yaml
+# Pair with iOS simulator
+- pair: simulator
+  platform: ios
+  timeout: 5000
+
+# Pair with Android emulator
+- pair: emulator
+  platform: android
+  timeout: 5000
+
+# Physical device (requires manual QR scan via 'pnpm agenteract connect')
+- pair: physical
+  platform: ios  # or android
+  timeout: 10000
+```
+
+**Parameters:**
+- `pair`: Device type - `simulator`, `emulator`, or `physical`
+- `platform`: Target platform - `ios` or `android` (optional for `physical`)
+- `timeout`: Wait time after sending deep link (default: 5000ms)
+
+**How it works:**
+1. Generates a pairing deep link using the project's configured scheme
+2. For simulators/emulators: Automatically sends deep link via `xcrun simctl` or `adb`
+3. For physical devices: Logs the URL (user must scan QR code via `pnpm agenteract connect`)
+4. Waits for the app to process the deep link and establish connection
+
+**Use cases:**
+- Testing that deep link pairing works correctly in CI/CD
+- Verifying app handles configuration parameters
+- Automating simulator/emulator pairing in test flows
+- E2E tests that require fresh app pairing
 
 **Organization:**
 - `phase: "Phase Name"` - Label sections for better test output
@@ -708,8 +747,8 @@ steps:
   - input: text-field
     value: "Some text"
 
-  - phase: "Reset via Deep Link"
-  - deepLink: myapp://reset_state
+  - phase: "Reset via AgentLink"
+  - agentLink: agenteract://reset_state
   
   - phase: "Verify Reset"
   - waitFor: counter-value
@@ -721,6 +760,26 @@ steps:
   - waitFor: ""
     logContains: "App state cleared"
     timeout: 3000
+```
+
+**Pairing Test:**
+```yaml
+project: expo-app
+
+steps:
+  - phase: "Test Deep Link Pairing"
+  # Pair with iOS simulator
+  - pair: simulator
+    platform: ios
+    timeout: 5000
+  
+  - phase: "Wait for Connection"
+  - waitFor: login-button
+    timeout: 10000
+  
+  - phase: "Verify App Connected"
+  - assert:
+      exists: login-button
 ```
 
 #### CI/CD Integration

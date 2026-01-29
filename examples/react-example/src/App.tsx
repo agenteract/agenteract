@@ -1,5 +1,5 @@
 import { createAgentBinding } from '@agenteract/react';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './App.css';
 
 function App() {
@@ -7,6 +7,18 @@ function App() {
   const [cardPosition, setCardPosition] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
+
+  // Listen for reset events from agentLink
+  useEffect(() => {
+    const handleReset = () => {
+      console.log('[App] Handling reset event');
+      setUsername('');
+      setCardPosition(0);
+    };
+    
+    window.addEventListener('agenteract:reset', handleReset);
+    return () => window.removeEventListener('agenteract:reset', handleReset);
+  }, []);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;

@@ -1,25 +1,119 @@
 # Vite App E2E Test
-# Tests UI hierarchy fetching and tap interactions
+# Tests app lifecycle, UI hierarchy fetching, interactions, and agentLink functionality
 
 project: react-app
 timeout: 30000
 
 steps:
-  # 1. Wait for app to be connected and ready
-  - waitFor: test-button
+  # 1. Launch browser
+  - phase: "Launch Browser"
+  - launch: app
+    waitForReady: true
     timeout: 60000
 
   # 2. Verify UI loaded correctly
+  - phase: "Verify Initial UI"
   - assert:
       exists: test-button
 
   - assert:
       exists: username-input
 
+  - assert:
+      exists: swipeable-card
+
+  - assert:
+      exists: horizontal-scroll
+
   # 3. Test tap interaction
+  - phase: "Test Tap Interaction"
   - tap: test-button
     wait: 500
 
-  # 4. Verify tap was logged
   - assert:
       logContains: "Simulate button pressed"
+
+  # 4. Test input interaction
+  - phase: "Test Input Interaction"
+  - input: username-input
+    value: "TestUser123"
+
+  - sleep: 300
+
+  # 5. Test AgentLink - Reset State (Example 1)
+  - phase: "AgentLink Test - Reset State"
+  
+  - agentLink: "agenteract://reset_state"
+    timeout: 3000
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 5000
+
+  # 6. Verify state was actually reset
+  - phase: "Verify State Reset"
+  - sleep: 500
+
+  # Input should be cleared after reset
+  # (We can verify by checking logs or re-interacting)
+
+  # 7. Test multiple interactions to set state again
+  - phase: "Set State Again"
+  - input: username-input
+    value: "AnotherUser"
+  
+  - tap: test-button
+
+  # 8. Test AgentLink - Navigate Action (Example 2)
+  - phase: "AgentLink Test - Navigate"
+  
+  - agentLink: "agenteract://navigate?screen=settings"
+    timeout: 3000
+
+  - waitFor: ""
+    logContains: "Navigate to screen: settings"
+    timeout: 5000
+
+  # 9. Test App Lifecycle - Stop and Restart
+  - phase: "Test App Lifecycle - Stop"
+  
+  - stop: app
+
+  - phase: "Test App Lifecycle - Relaunch"
+  
+  - launch: app
+    waitForReady: true
+    timeout: 60000
+
+  # 10. Wait for app to reach test screen
+  - phase: "Verify App Reached Test Screen"
+  
+  - waitFor: test-button
+    timeout: 10000
+
+  - assert:
+      exists: test-button
+
+  - assert:
+      exists: username-input
+
+  # 11. Test one more interaction after restart
+  - phase: "Test After Restart"
+  
+  - tap: test-button
+
+  - assert:
+      logContains: "Simulate button pressed"
+
+  # 12. Final AgentLink test to confirm it still works
+  - phase: "Final AgentLink Test"
+  
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 5000
+
+  # 13. Final cleanup
+  - phase: "Final Cleanup"
+  - stop: app

@@ -47,32 +47,19 @@ import androidx.compose.ui.unit.sp
 import io.agenteract.AgentDebugBridge
 import io.agenteract.agent
 import io.agenteract.AgentLogger
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-
-// Shared reset trigger that works across platforms
-object AppResetTrigger {
-    val trigger = MutableStateFlow(0L)
-    
-    fun reset() {
-        trigger.value = System.currentTimeMillis()
-    }
-}
 
 @Composable
 fun App() {
-    // Initialize the Agent Debug Bridge at the top level, outside of MaterialTheme
-    // This prevents it from being recreated when state changes occur
-    AgentDebugBridge(projectName = "kmp-app")
-    
     MaterialTheme {
+        val coroutineScope = rememberCoroutineScope()
+        
+        // State management
         var counter by remember { mutableStateOf(0) }
         var inputText by remember { mutableStateOf("") }
         var longPressCount by remember { mutableStateOf(0) }
         var swipeCount by remember { mutableStateOf(0) }
         var lastSwipeDirection by remember { mutableStateOf("") }
-        
-        val coroutineScope = rememberCoroutineScope()
         
         val verticalScrollState = rememberScrollState()
         val horizontalListState = rememberLazyListState()
@@ -96,16 +83,23 @@ fun App() {
             log("All values reset")
         }
 
-        // Listen for reset trigger from deep links
-        LaunchedEffect(Unit) {
-            var isFirst = true
-            AppResetTrigger.trigger.collect { timestamp ->
-                if (timestamp > 0 && !isFirst) {
-                    resetAll()
+        // Initialize the Agent Debug Bridge
+        AgentDebugBridge(
+            projectName = "kmp-app",
+            onAgentLink = { url ->
+                // Parse agentLink URL by hostname
+                // For example: agenteract://reset_state
+                val hostname = url.substringAfter("://").substringBefore("?").substringBefore("/")
+                when (hostname) {
+                    "reset_state" -> {
+                        resetAll()
+                        coroutineScope.launch {
+                            AgentLogger.log("App state cleared")
+                        }
+                    }
                 }
-                isFirst = false
             }
-        }
+        )
 
         Scaffold(
             topBar = {

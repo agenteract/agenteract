@@ -842,7 +842,7 @@ steps:
   - longPress: menu-item
 
   # Platform-specific operations
-  - deepLink: myapp://reset_state
+  - agentLink: agenteract://reset_state
 
   # Utility steps
   - sleep: 1000
@@ -937,17 +937,142 @@ Simulates a long press.
 - longPress: menu-item-testID
 ```
 
-#### `deepLink`
-Opens a deep link (requires platform-specific setup).
+#### `agentLink`
+
+Sends an agentLink to the app via the AgentDebugBridge WebSocket connection. AgentLinks use simple hostname-based routing with the `agenteract://` scheme.
 
 ```yaml
-- deepLink: myapp://reset_state
+# Reset app state
+- agentLink: agenteract://reset_state
+
+# Navigate to a screen
+- agentLink: agenteract://navigate?screen=settings
+
+# Trigger any custom action
+- agentLink: agenteract://reload
 ```
 
-**Platform implementation:**
-- **iOS Simulator**: Uses `xcrun simctl openurl`
-- **Android Emulator**: Uses `adb shell am start`
-- **Physical devices**: Opens via registered URL scheme
+**How it works:**
+- The URL is sent directly to the connected app via WebSocket
+- Your app's `onAgentLink` handler receives the URL
+- Parse the hostname (e.g., `reset_state`) to determine the action
+- Query parameters are available for additional data
+
+**Example handler (React/Expo):**
+```tsx
+<AgentDebugBridge 
+  projectName="expo-app" 
+  onAgentLink={async (url: string) => {
+    const { hostname, queryParams } = parseURL(url);
+    switch (hostname) {
+      case 'reset_state':
+        resetAppState();
+        return true;
+      case 'navigate':
+        navigate(queryParams.screen);
+        return true;
+      default:
+        return false;
+    }
+  }} 
+/>
+```
+
+**URL Format:**
+- Use the standard `agenteract://` scheme across all platforms
+- The hostname identifies the action: `agenteract://reset_state`
+- Add query params for data: `agenteract://navigate?screen=settings&tab=profile`
+
+**Note:** Unlike deep linking for pairing, agentLink works via the existing WebSocket connection, so no platform-specific URL scheme configuration is needed.
+
+#### `pair`
+
+Tests deep link pairing functionality by sending a configuration deep link to the app. This verifies that your app can correctly receive and process pairing deep links containing server connection information.
+
+**Important Distinction:**
+- **Deep linking (this step)**: Used ONLY for initial pairing - sends connection info (server IP, port, auth token) to the app
+- **AgentLink (separate step)**: Used for app commands after pairing - sends commands like `reset_state` via the established WebSocket connection
+
+```yaml
+# Pair with iOS simulator
+- pair: simulator
+  platform: ios
+  timeout: 5000
+
+# Pair with Android emulator
+- pair: emulator
+  platform: android
+  timeout: 5000
+
+# Physical device (requires manual QR scan)
+- pair: physical
+  platform: ios  # or android
+  timeout: 10000
+```
+
+**Parameters:**
+- `pair`: Device type - `simulator`, `emulator`, or `physical`
+- `platform`: Target platform - `ios` or `android` (optional for `physical`)
+- `timeout`: Wait time after sending deep link (default: 5000ms)
+
+**How it works:**
+1. Generates a pairing deep link using the project's configured `--scheme` (from `agenteract.config.js`)
+2. Deep link contains server connection info: `yourapp://agenteract/config?host=localhost&port=8765&token=abc123`
+3. For simulators/emulators: Automatically sends deep link via platform tools (`xcrun simctl openurl` or `adb shell am start`)
+4. For physical devices: Displays the URL (user must manually scan QR code via `pnpm agenteract connect`)
+5. App receives deep link, extracts connection info, and connects to the Agenteract server
+6. Connection config is persisted to device storage (AsyncStorage, SharedPreferences, UserDefaults)
+7. Waits for the specified timeout to allow connection to establish
+
+**Use cases:**
+- **E2E testing of pairing flow**: Verify app correctly handles pairing deep links
+- **CI/CD automation**: Automatically pair simulators/emulators before running tests
+- **Testing fresh app installs**: Simulate first-time pairing experience
+- **Multi-device testing**: Automate pairing of multiple devices in sequence
+
+**Example: Complete Pairing Test**
+```yaml
+project: expo-app
+timeout: 10000
+
+steps:
+  - phase: "Test Pairing Flow"
+  
+  # Send pairing deep link to simulator
+  - pair: simulator
+    platform: ios
+    timeout: 5000
+  
+  # Verify app connected successfully
+  - waitFor: ""
+    logContains: "Connected to Agenteract server"
+    timeout: 3000
+  
+  # Verify app can receive commands (uses WebSocket, not deep links)
+  - agentLink: agenteract://reset_state
+  
+  # Verify reset worked
+  - assert:
+      logContains: "App state cleared"
+```
+
+**Platform Requirements:**
+
+Before using the `pair` step, ensure your app is configured for deep linking:
+
+- **React Native/Expo**: See [Physical Device Setup](#physical-device-setup) for `Info.plist` and `AndroidManifest.xml` configuration
+- **Flutter**: Requires `app_links` package and platform-specific configuration
+- **Swift**: Requires URL scheme in `Info.plist`
+- **Kotlin/Android**: Requires intent filter in `AndroidManifest.xml`
+
+**Troubleshooting:**
+
+If pairing fails:
+1. Check that `--scheme` was provided when running `add-config` (e.g., `--scheme myapp`)
+2. Verify the app's deep link configuration matches the scheme
+3. For simulators/emulators: Ensure device is running and unlocked
+4. For physical devices: Use `pnpm agenteract connect` to generate a QR code
+5. Check app logs for deep link handling errors: `pnpm agenteract-agents logs <project> --since 20`
 
 #### `assert`
 Verifies conditions. Tests fail if assertions don't pass.
@@ -1079,7 +1204,7 @@ steps:
       notExists: swipeable-card
 ```
 
-**Deep Link Reset Test:**
+**AgentLink Reset Test:**
 ```yaml
 project: expo-app
 
@@ -1090,8 +1215,8 @@ steps:
   - input: text-field
     value: "Some text"
 
-  - phase: "Reset via Deep Link"
-  - deepLink: myapp://reset_state
+  - phase: "Reset via AgentLink"
+  - agentLink: agenteract://reset_state
 
   - phase: "Verify Reset"
   - waitFor: ""

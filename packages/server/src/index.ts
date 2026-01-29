@@ -8,7 +8,7 @@ import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
 
-import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary } from '@agenteract/core/node';
+import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary, loadConfig, findConfigRoot } from '@agenteract/core/node';
 import { runTest } from './test-runner.js';
 import type { TestDefinition } from './test-types.js';
 
@@ -771,10 +771,31 @@ if (isLogServer) {
             };
 
             try {
+                // Load config to get project path and lifecycle config
+                let projectPath: string | undefined;
+                let lifecycleConfig: any | undefined;
+                try {
+                    const configRoot = await findConfigRoot();
+                    if (configRoot) {
+                        const config = await loadConfig(configRoot);
+                        const project = config.projects.find(p => p.name === testDefinition.project);
+                        if (project) {
+                            projectPath = path.isAbsolute(project.path)
+                                ? project.path
+                                : path.join(configRoot, project.path);
+                            lifecycleConfig = project.lifecycle;
+                        }
+                    }
+                } catch (error) {
+                    console.warn(`[Test] Could not load project path: ${error}`);
+                }
+
                 const result = await runTest(testDefinition, {
                     sendCommand,
                     getHierarchy,
                     getLogs,
+                    projectPath,
+                    lifecycleConfig,
                     log: (message: string) => {
                         console.log(`[Test] ${message}`);
                     },

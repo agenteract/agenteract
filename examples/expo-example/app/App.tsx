@@ -11,7 +11,7 @@ export default function App() {
   const colorScheme = useColorScheme();
   const [appState, setAppState] = useState({ username: '', count: 0 });
 
-  const handleDeepLink = useCallback(async (url: string): Promise<boolean> => {
+  const handleAgentLink = useCallback(async (url: string): Promise<boolean> => {
     console.log('[App] Deep link received:', url);
 
     try {
@@ -26,7 +26,7 @@ export default function App() {
           return true;
 
         case 'reload':
-          console.log('[App] Reload requested via deep link');
+          console.log('[App] Reload requested via agent link');
           return true;
 
         default:
@@ -34,7 +34,7 @@ export default function App() {
           return false;
       }
     } catch (error) {
-      console.error('[App] Error parsing deep link in App.tsx:', error);
+      console.error('[App] Error parsing agent link in App.tsx:', error);
       return false;
     }
   }, []);
@@ -43,7 +43,7 @@ export default function App() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <HomeScreen appState={appState} setAppState={setAppState} />
       <StatusBar style="auto" />
-      { __DEV__ && <AgentDebugBridge projectName="expo-app" onDeepLink={handleDeepLink} /> }
+      { __DEV__ && <AgentDebugBridge projectName="expo-app" onAgentLink={handleAgentLink} /> }
     </ThemeProvider>
   );
 }

@@ -80,13 +80,42 @@ export interface PhaseStep {
   phase: string;
 }
 
-export interface DeepLinkStep {
-  deepLink: string;
-}
-
 export interface CustomStep {
   custom: string;
   args?: Record<string, unknown>;
+}
+
+export interface LaunchStep {
+  launch: 'app';
+  device?: string;
+  timeout?: number;
+  waitForReady?: boolean;
+}
+
+export interface StopStep {
+  stop: 'app' | 'kill';
+  timeout?: number;
+}
+
+export interface SetupStep {
+  setup: 'install' | 'reinstall' | 'clearData';
+  platform?: 'ios' | 'android';
+}
+
+export interface BuildStep {
+  build: 'debug' | 'release' | string;
+  platform?: 'ios' | 'android' | 'desktop' | 'web';
+}
+
+export interface AgentLinkStep {
+  agentLink: string;
+  timeout?: number;
+}
+
+export interface PairStep {
+  pair: 'simulator' | 'emulator' | 'physical';
+  platform?: 'ios' | 'android';
+  timeout?: number;
 }
 
 export type Step =
@@ -100,7 +129,12 @@ export type Step =
   | SleepStep
   | LogStep
   | PhaseStep
-  | DeepLinkStep
+  | LaunchStep
+  | StopStep
+  | SetupStep
+  | BuildStep
+  | AgentLinkStep
+  | PairStep
   | CustomStep;
 
 // Test definition
@@ -121,6 +155,7 @@ export interface StepResult {
   duration: number;
   error?: string;
   condition?: string;
+  stepDefinition?: Step; // Include the original step definition for debugging
 }
 
 // Test result
@@ -143,7 +178,7 @@ export function isInputStep(step: Step): step is InputStep {
 }
 
 export function isWaitForStep(step: Step): step is WaitForStep {
-  return 'waitFor' in step;
+  return 'waitFor' in step && (step as any).waitFor !== undefined;
 }
 
 export function isAssertStep(step: Step): step is AssertStep {
@@ -174,12 +209,32 @@ export function isPhaseStep(step: Step): step is PhaseStep {
   return 'phase' in step;
 }
 
-export function isDeepLinkStep(step: Step): step is DeepLinkStep {
-  return 'deepLink' in step;
-}
-
 export function isCustomStep(step: Step): step is CustomStep {
   return 'custom' in step;
+}
+
+export function isLaunchStep(step: Step): step is LaunchStep {
+  return 'launch' in step;
+}
+
+export function isStopStep(step: Step): step is StopStep {
+  return 'stop' in step;
+}
+
+export function isSetupStep(step: Step): step is SetupStep {
+  return 'setup' in step;
+}
+
+export function isBuildStep(step: Step): step is BuildStep {
+  return 'build' in step;
+}
+
+export function isAgentLinkStep(step: Step): step is AgentLinkStep {
+  return 'agentLink' in step;
+}
+
+export function isPairStep(step: Step): step is PairStep {
+  return 'pair' in step;
 }
 
 // Get action name from step
@@ -194,7 +249,12 @@ export function getStepAction(step: Step): string {
   if (isSleepStep(step)) return 'sleep';
   if (isLogStep(step)) return 'log';
   if (isPhaseStep(step)) return 'phase';
-  if (isDeepLinkStep(step)) return 'deepLink';
+  if (isLaunchStep(step)) return 'launch';
+  if (isStopStep(step)) return 'stop';
+  if (isSetupStep(step)) return 'setup';
+  if (isBuildStep(step)) return 'build';
+  if (isAgentLinkStep(step)) return 'agentLink';
+  if (isPairStep(step)) return 'pair';
   if (isCustomStep(step)) return 'custom';
   return 'unknown';
 }
@@ -207,7 +267,12 @@ export function getStepTarget(step: Step): string | undefined {
   if (isScrollStep(step)) return step.scroll;
   if (isSwipeStep(step)) return step.swipe;
   if (isLongPressStep(step)) return step.longPress;
-  if (isDeepLinkStep(step)) return step.deepLink;
+  if (isLaunchStep(step)) return step.launch;
+  if (isStopStep(step)) return step.stop;
+  if (isSetupStep(step)) return step.setup;
+  if (isBuildStep(step)) return step.build;
+  if (isAgentLinkStep(step)) return step.agentLink;
+  if (isPairStep(step)) return step.pair;
   if (isCustomStep(step)) return step.custom;
   return undefined;
 }

@@ -349,7 +349,7 @@ export function simulateSwipe(
 
 
 // --- Command Handler ---
-const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
+const handleCommand = async (cmd: ServerCommand, socket: WebSocket, onAgentLink?: (url: string) => Promise<boolean> | boolean) => {
   if (typeof cmd !== 'object' || !('action' in cmd)) {
     console.log(`Warning: command missing 'action' field: ${JSON.stringify(cmd)}`);
     // Send a generic error back if the command is malformed
@@ -374,11 +374,25 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
     case "swipe":
       success = simulateSwipe(cmd.testID, cmd.direction, cmd.velocity);
       break;
+    case "agentLink":
+      if (onAgentLink) {
+        try {
+          const result = await onAgentLink(cmd.payload);
+          success = result === true;
+        } catch (error) {
+          console.warn('[Agenteract] agentLink handler error:', error);
+          success = false;
+        }
+      } else {
+        console.warn('[Agenteract] agentLink received but no onAgentLink handler provided');
+        success = false;
+      }
+      break;
     default:
       socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}`, id: cmd.id }));
       return;
   }
-  
+
   socket.send(JSON.stringify({ status: success ? "ok" : "error", action: cmd.action, id: cmd.id }));
 };
 
@@ -386,11 +400,11 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
 export const AgentDebugBridge = ({
   projectName,
   autoConnect = true,
-  onDeepLink
+  onAgentLink
 }: {
   projectName: string;
   autoConnect?: boolean;
-  onDeepLink?: (url: string) => Promise<boolean> | boolean;
+  onAgentLink?: (url: string) => Promise<boolean> | boolean;
 }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -442,28 +456,28 @@ export const AgentDebugBridge = ({
   useEffect(() => {
     if (getPlatform() === 'web') return; // Skip for web
 
-    // Handle initial URL (app opened via deep link)
+    // Handle initial URL (app opened via agent link)
     Linking.getInitialURL().then((url: string | null) => {
-      if (url) handleDeepLink(url);
+      if (url) handleAgentLink(url);
     });
 
     // Handle URL when app is already open
     const subscription = Linking.addEventListener('url', (event: { url: string }) => {
-      handleDeepLink(event.url);
+      handleAgentLink(event.url);
     });
 
     return () => subscription?.remove();
-  }, [onDeepLink]);
+  }, [onAgentLink]);
 
-  const handleDeepLink = async (url: string) => {
+  const handleAgentLink = async (url: string) => {
     try {
-      console.log('[Agenteract] Received deep link:', url);
+      console.log('[Agenteract] Received agent link:', url);
 
-      // First, check if app has a custom deep link handler
-      if (onDeepLink) {
-        const handled = await Promise.resolve(onDeepLink(url));
+      // First, check if app has a custom agent link handler
+      if (onAgentLink) {
+        const handled = await Promise.resolve(onAgentLink(url));
         if (handled) {
-          console.log('[Agenteract] Deep link handled by app');
+          console.log('[Agenteract] Agent link handled by app');
           return;
         }
       }
@@ -651,7 +665,7 @@ export const AgentDebugBridge = ({
           } else if (command.action === 'getConsoleLogs') {
             socket.send(JSON.stringify({ status: 'success', logs: logBuffer, id: command.id }));
           } else {
-            await handleCommand(command, socket);
+            await handleCommand(command, socket, onAgentLink);
           }
         } catch (error) {
           console.warn('[Agenteract] Command error:', error);
@@ -677,7 +691,7 @@ export const AgentDebugBridge = ({
       console.log('[Agenteract] Failed to create WebSocket:', error);
       socketRef.current = null;
     }
-  }, [projectName, serverUrl, authToken, deviceId, shouldConnect]);
+  }, [projectName, serverUrl, authToken, deviceId, shouldConnect, onAgentLink]);
 
   useEffect(() => {
     connect();

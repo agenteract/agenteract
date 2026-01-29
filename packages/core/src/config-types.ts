@@ -22,6 +22,16 @@ export interface ProjectConfig {
   devServer?: DevServerConfig;
   // Optional: URL scheme for deep linking (e.g., 'myapp')
   scheme?: string;
+  // Optional: app lifecycle configuration overrides
+  lifecycle?: {
+    bundleId?: {
+      ios?: string;
+      android?: string;
+    };
+    mainActivity?: string;
+    launchTimeout?: number;
+    requiresInstall?: boolean;
+  };
 }
 
 export interface AgenteractConfig {

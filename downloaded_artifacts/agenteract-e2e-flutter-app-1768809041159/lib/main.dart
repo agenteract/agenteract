@@ -10,12 +10,13 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   // Handle deep links from Agenteract
-  Future<bool> _handleDeepLink(String url) async {
+  Future<bool> _handleAgentLink(String url) async {
     debugPrint('[MyApp] Deep link received: $url');
     try {
       final uri = Uri.parse(url);
       debugPrint(
-          '[MyApp] Parsed URI: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}');
+        '[MyApp] Parsed URI: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}',
+      );
 
       // Handle reset_state deep link
       if (uri.host == 'reset_state' || uri.path.contains('reset_state')) {
@@ -58,7 +59,7 @@ class MyApp extends StatelessWidget {
     if (kDebugMode) {
       return AgentDebugBridge(
         projectName: 'flutter-example',
-        onDeepLink: _handleDeepLink,
+        onAgentLink: _handleAgentLink,
         child: app,
       );
     }
@@ -165,8 +166,9 @@ class _MyHomePageState extends State<MyHomePage> {
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ).withAgent('tap-example-title'),
                   const SizedBox(height: 10),
-                  const Text('You have pushed the button this many times:')
-                      .withAgent('counter-label'),
+                  const Text(
+                    'You have pushed the button this many times:',
+                  ).withAgent('counter-label'),
                   Text(
                     '$_counter',
                     style: Theme.of(context).textTheme.headlineMedium,
@@ -214,8 +216,9 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                   const SizedBox(height: 10),
-                  Text('Input value: ${_textController.text}')
-                      .withAgent('input-display-text'),
+                  Text(
+                    'Input value: ${_textController.text}',
+                  ).withAgent('input-display-text'),
                 ],
               ),
             ),
@@ -259,8 +262,9 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                   ),
                   const SizedBox(height: 10),
-                  Text('Long press count: $_longPressCount')
-                      .withAgent('long-press-count-text'),
+                  Text(
+                    'Long press count: $_longPressCount',
+                  ).withAgent('long-press-count-text'),
                 ],
               ),
             ),
@@ -288,80 +292,85 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(height: 10),
                   Transform.translate(
                     offset: Offset(_cardOffset, 0),
-                    child: Container(
-                      height: 100,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Colors.green, Colors.blue],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text(
-                              'Swipe me!',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
+                    child:
+                        Container(
+                          height: 100,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Colors.green, Colors.blue],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                            Text(
-                              'Swipe count: $_swipeCount',
-                              style: const TextStyle(
-                                color: Color.fromRGBO(255, 255, 255, 0.8),
-                                fontSize: 12,
-                              ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Text(
+                                  'Swipe me!',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'Swipe count: $_swipeCount',
+                                  style: const TextStyle(
+                                    color: Color.fromRGBO(255, 255, 255, 0.8),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    ).withAgent(
-                      'swipeable-card',
-                      onSwipe: (direction, velocity) {
-                        setState(() {
-                          _swipeCount++;
-                        });
-                        debugPrint(
-                            'Card swiped $direction with velocity $velocity. Count: $_swipeCount');
-
-                        // Animate the card based on direction
-                        double distance;
-                        switch (velocity) {
-                          case 'fast':
-                            distance = 200;
-                            break;
-                          case 'medium':
-                            distance = 100;
-                            break;
-                          default:
-                            distance = 50;
-                        }
-
-                        setState(() {
-                          if (direction == 'left') {
-                            _cardOffset = -distance;
-                          } else if (direction == 'right') {
-                            _cardOffset = distance;
-                          } else {
-                            _cardOffset = 0;
-                          }
-                        });
-
-                        // Reset after animation
-                        Future.delayed(const Duration(milliseconds: 500), () {
-                          if (mounted) {
+                          ),
+                        ).withAgent(
+                          'swipeable-card',
+                          onSwipe: (direction, velocity) {
                             setState(() {
-                              _cardOffset = 0;
+                              _swipeCount++;
                             });
-                          }
-                        });
-                      },
-                    ),
+                            debugPrint(
+                              'Card swiped $direction with velocity $velocity. Count: $_swipeCount',
+                            );
+
+                            // Animate the card based on direction
+                            double distance;
+                            switch (velocity) {
+                              case 'fast':
+                                distance = 200;
+                                break;
+                              case 'medium':
+                                distance = 100;
+                                break;
+                              default:
+                                distance = 50;
+                            }
+
+                            setState(() {
+                              if (direction == 'left') {
+                                _cardOffset = -distance;
+                              } else if (direction == 'right') {
+                                _cardOffset = distance;
+                              } else {
+                                _cardOffset = 0;
+                              }
+                            });
+
+                            // Reset after animation
+                            Future.delayed(
+                              const Duration(milliseconds: 500),
+                              () {
+                                if (mounted) {
+                                  setState(() {
+                                    _cardOffset = 0;
+                                  });
+                                }
+                              },
+                            );
+                          },
+                        ),
                   ),
                 ],
               ),
@@ -385,58 +394,60 @@ class _MyHomePageState extends State<MyHomePage> {
                   const SizedBox(height: 10),
                   SizedBox(
                     height: 90,
-                    child: ListView.builder(
-                      controller: _horizontalScrollController,
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 20,
-                      itemBuilder: (context, index) {
-                        return Container(
-                          width: 120,
-                          margin: const EdgeInsets.only(right: 15),
-                          decoration: BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Center(
-                            child: Text(
-                              'Item ${index + 1}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                    child:
+                        ListView.builder(
+                          controller: _horizontalScrollController,
+                          scrollDirection: Axis.horizontal,
+                          itemCount: 20,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              width: 120,
+                              margin: const EdgeInsets.only(right: 15),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    ).withAgent(
-                      'horizontal-scroll',
-                      onScroll: (direction, amount) {
-                        final currentPosition =
-                            _horizontalScrollController.offset;
-                        double newPosition;
+                              child: Center(
+                                child: Text(
+                                  'Item ${index + 1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ).withAgent(
+                          'horizontal-scroll',
+                          onScroll: (direction, amount) {
+                            final currentPosition =
+                                _horizontalScrollController.offset;
+                            double newPosition;
 
-                        switch (direction) {
-                          case 'left':
-                            newPosition = currentPosition - amount;
-                            break;
-                          case 'right':
-                            newPosition = currentPosition + amount;
-                            break;
-                          default:
-                            return;
-                        }
+                            switch (direction) {
+                              case 'left':
+                                newPosition = currentPosition - amount;
+                                break;
+                              case 'right':
+                                newPosition = currentPosition + amount;
+                                break;
+                              default:
+                                return;
+                            }
 
-                        _horizontalScrollController.animateTo(
-                          newPosition.clamp(
-                            0.0,
-                            _horizontalScrollController
-                                .position.maxScrollExtent,
-                          ),
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                    ),
+                            _horizontalScrollController.animateTo(
+                              newPosition.clamp(
+                                0.0,
+                                _horizontalScrollController
+                                    .position
+                                    .maxScrollExtent,
+                              ),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
+                        ),
                   ),
                 ],
               ),
@@ -469,52 +480,55 @@ class _MyHomePageState extends State<MyHomePage> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: ListView.builder(
-                      controller: _verticalScrollController,
-                      itemCount: 50,
-                      itemBuilder: (context, index) {
-                        return Container(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 8,
-                            horizontal: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            color: index % 2 == 0
-                                ? Colors.white
-                                : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text('List item ${index + 1}'),
-                        );
-                      },
-                    ).withAgent(
-                      'main-list',
-                      onScroll: (direction, amount) {
-                        final currentPosition =
-                            _verticalScrollController.offset;
-                        double newPosition;
+                    child:
+                        ListView.builder(
+                          controller: _verticalScrollController,
+                          itemCount: 50,
+                          itemBuilder: (context, index) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: index % 2 == 0
+                                    ? Colors.white
+                                    : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text('List item ${index + 1}'),
+                            );
+                          },
+                        ).withAgent(
+                          'main-list',
+                          onScroll: (direction, amount) {
+                            final currentPosition =
+                                _verticalScrollController.offset;
+                            double newPosition;
 
-                        switch (direction) {
-                          case 'up':
-                            newPosition = currentPosition - amount;
-                            break;
-                          case 'down':
-                            newPosition = currentPosition + amount;
-                            break;
-                          default:
-                            return;
-                        }
+                            switch (direction) {
+                              case 'up':
+                                newPosition = currentPosition - amount;
+                                break;
+                              case 'down':
+                                newPosition = currentPosition + amount;
+                                break;
+                              default:
+                                return;
+                            }
 
-                        _verticalScrollController.animateTo(
-                          newPosition.clamp(
-                            0.0,
-                            _verticalScrollController.position.maxScrollExtent,
-                          ),
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeInOut,
-                        );
-                      },
-                    ),
+                            _verticalScrollController.animateTo(
+                              newPosition.clamp(
+                                0.0,
+                                _verticalScrollController
+                                    .position
+                                    .maxScrollExtent,
+                              ),
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          },
+                        ),
                   ),
                 ],
               ),

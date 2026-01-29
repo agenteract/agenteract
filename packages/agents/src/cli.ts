@@ -925,10 +925,11 @@ yargs(hideBin(process.argv))
         const result = response.data;
 
         // Output JSON for CI tools
-        console.log(JSON.stringify(result, null, 2));
+        const output = JSON.stringify(result, null, 2);
 
         // Show summary if verbose
         if (argv.verbose) {
+          console.log(output);
           console.log('');
           console.log('='.repeat(60));
           console.log(`Test ${result.status === 'passed' ? 'PASSED' : 'FAILED'}`);
@@ -938,10 +939,18 @@ yargs(hideBin(process.argv))
             console.log(`Failed at step: ${result.failedAt}`);
           }
           console.log('='.repeat(60));
+        } else {
+          // wait for write() callback to complete - large buffers can cause truncation
+          await new Promise<void>(resolve =>
+            process.stdout.write(output + '\n', (e) => {
+              if (e) {
+                console.error('Error writing output:', e);
+                process.exit(1);
+              }
+              resolve();
+              process.exit(result.status === 'passed' ? 0 : 1);
+            }));
         }
-
-        // Exit with appropriate code
-        process.exit(result.status === 'passed' ? 0 : 1);
       } catch (error) {
         handleRequestError(error);
         process.exit(1);

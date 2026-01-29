@@ -22,7 +22,12 @@ import {
   isSleepStep,
   isLogStep,
   isPhaseStep,
-  isDeepLinkStep,
+  isLaunchStep,
+  isStopStep,
+  isSetupStep,
+  isBuildStep,
+  isAgentLinkStep,
+  isPairStep,
   isCustomStep,
   getStepAction,
   getStepTarget,
@@ -31,6 +36,19 @@ import {
   AssertTextCondition,
   AssertLogCondition,
 } from './test-types.js';
+import {
+  detectPlatform,
+  PlatformInfo,
+  resolveBundleIds,
+  BundleInfo,
+  selectDevice,
+  Device,
+  launchApp,
+  stopApp,
+  buildApp,
+  performSetup,
+  LaunchResult,
+} from '@agenteract/core/node';
 
 // Hierarchy node from app
 interface HierarchyNode {
@@ -53,11 +71,27 @@ type GetLogsFn = (since?: number) => Promise<Array<{ level: string; message: str
 export interface TestRunnerContext {
   project: string;
   device?: string;
+  projectPath?: string;
+  lifecycleConfig?: {
+    bundleId?: {
+      ios?: string;
+      android?: string;
+    };
+    mainActivity?: string;
+    launchTimeout?: number;
+    requiresInstall?: boolean;
+  };
   sendCommand: SendCommandFn;
   getHierarchy: GetHierarchyFn;
   getLogs: GetLogsFn;
   defaultTimeout: number;
   log: (message: string) => void;
+  lifecycleState?: {
+    platform?: PlatformInfo;
+    bundleInfo?: BundleInfo;
+    selectedDevice?: Device;
+    launchResult?: LaunchResult;
+  };
 }
 
 /**
@@ -134,7 +168,10 @@ async function executeStep(
   const action = getStepAction(step);
   const target = getStepTarget(step);
 
+  // Format step for logging
+  const stepStr = JSON.stringify(step, null, 2).split('\n').map(line => `  ${line}`).join('\n');
   console.log(`[Test] Step ${stepIndex}: ${action} ${target ? `(${target})` : ''}`);
+  console.log(`[Test] Step definition:\n${stepStr}`);
 
   try {
     // Handle each step type
@@ -156,6 +193,7 @@ async function executeStep(
         target,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -185,6 +223,7 @@ async function executeStep(
         target,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -322,6 +361,7 @@ async function executeStep(
         condition: conditionStr,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -341,6 +381,7 @@ async function executeStep(
         target,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -360,6 +401,7 @@ async function executeStep(
         target,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -377,6 +419,7 @@ async function executeStep(
         target,
         status: 'passed',
         duration: Date.now() - startTime,
+        stepDefinition: step,
       };
     }
 
@@ -417,57 +460,292 @@ async function executeStep(
       };
     }
 
-    if (isDeepLinkStep(step)) {
-      // Detect platform and execute appropriate command
-      // For now, try iOS first, then Android
-      // Add 5-second timeout to prevent hanging
-      const deepLinkTimeout = 5000;
-      const deviceId = ctx.device || 'booted';
-      
-      console.log(`[Test] Attempting deep link: ${step.deepLink} on device: ${deviceId}`);
-      
-      let iosError: Error | null = null;
-      try {
-        const output = execSync(`xcrun simctl openurl "${deviceId}" "${step.deepLink}"`, { 
-          stdio: 'pipe',
-          timeout: deepLinkTimeout 
-        });
-        console.log(`[Test] iOS deep link command succeeded: ${output.toString().trim()}`);
-        return {
-          step: stepIndex,
-          action,
-          target,
-          status: 'passed',
-          duration: Date.now() - startTime,
-        };
-      } catch (e) {
-        iosError = e as Error;
-        console.log(`[Test] iOS deep link failed: ${iosError.message}`);
-        if ((iosError as any).stderr) {
-          console.log(`[Test] iOS deep link stderr: ${(iosError as any).stderr.toString()}`);
-        }
+    if (isLaunchStep(step)) {
+      if (!ctx.projectPath) {
+        throw new Error('Project path is required for launch step');
       }
 
-      try {
-        console.log(`[Test] Attempting Android deep link fallback...`);
-        const output = execSync(`adb shell am start -a android.intent.action.VIEW -d "${step.deepLink}"`, { 
-          stdio: 'pipe',
-          timeout: deepLinkTimeout 
-        });
-        console.log(`[Test] Android deep link command succeeded: ${output.toString().trim()}`);
-      } catch (androidError) {
-        console.log(`[Test] Android deep link failed: ${(androidError as Error).message}`);
-        throw new Error(
-          `Failed to open deep link on both iOS and Android.\n` +
-          `iOS Error: ${iosError?.message}\n` +
-          `Android Error: ${(androidError as Error).message}`
-        );
+      // 1. Detect platform
+      const platformInfo = await detectPlatform(ctx.projectPath);
+      console.log(`[Test] Detected platform: ${platformInfo.type}`);
+
+      // 2. Extract bundle IDs
+      const bundleInfo = await resolveBundleIds(ctx.projectPath, platformInfo.type, ctx.lifecycleConfig);
+      console.log(`[Test] Bundle IDs:`, bundleInfo);
+
+      // 3. Select device
+      const platformForDevice = platformInfo.type.includes('android')
+        ? 'android'
+        : platformInfo.type === 'kmp-desktop'
+        ? 'desktop'
+        : platformInfo.type === 'vite'
+        ? 'web'
+        : 'ios';
+
+      const device = await selectDevice(step.device || ctx.device, platformForDevice);
+
+      if (!device) {
+        throw new Error(`No device available for platform ${platformInfo.type}`);
+      }
+
+      console.log(`[Test] Selected device:`, device);
+
+      // 4. Launch app
+      const launchResult = await launchApp(
+        platformInfo.type,
+        device,
+        bundleInfo,
+        ctx.projectPath,
+        { timeout: step.timeout, waitForReady: step.waitForReady }
+      );
+
+      console.log(`[Test] App launched successfully`);
+
+      // 5. Store state for cleanup
+      ctx.lifecycleState = {
+        platform: platformInfo,
+        bundleInfo,
+        selectedDevice: device || undefined,
+        launchResult,
+      };
+
+      // 6. Wait for connection if requested
+      if (step.waitForReady !== false) {
+        const connectionTimeout = step.timeout || 60000;
+        const pollInterval = 1000;
+        const startWait = Date.now();
+
+        console.log(`[Test] Waiting for app connection (timeout: ${connectionTimeout}ms)...`);
+
+        while (Date.now() - startWait < connectionTimeout) {
+          try {
+            const hierarchy = await ctx.getHierarchy();
+            if (hierarchy) {
+              console.log(`[Test] App connected successfully`);
+              break;
+            }
+          } catch (error) {
+            // App not connected yet
+          }
+
+          if (Date.now() - startWait >= connectionTimeout) {
+            throw new Error(`Timeout waiting for app connection (${connectionTimeout}ms)`);
+          }
+
+          await sleep(pollInterval);
+        }
       }
 
       return {
         step: stepIndex,
         action,
         target,
+        status: 'passed',
+        duration: Date.now() - startTime,
+        stepDefinition: step,
+      };
+    }
+
+    if (isStopStep(step)) {
+      if (!ctx.lifecycleState || !ctx.lifecycleState.platform || !ctx.lifecycleState.bundleInfo) {
+        throw new Error('No app is running. Use launch step first.');
+      }
+
+      const force = step.stop === 'kill';
+      await stopApp(
+        ctx.lifecycleState.platform.type,
+        ctx.lifecycleState.selectedDevice || null,
+        ctx.lifecycleState.bundleInfo,
+        ctx.lifecycleState.launchResult,
+        force
+      );
+
+      console.log(`[Test] App stopped (${force ? 'force' : 'graceful'})`);
+
+      return {
+        step: stepIndex,
+        action,
+        target,
+        status: 'passed',
+        duration: Date.now() - startTime,
+        stepDefinition: step,
+      };
+    }
+
+    if (isSetupStep(step)) {
+      if (!ctx.projectPath) {
+        throw new Error('Project path is required for setup step');
+      }
+
+      if (!ctx.lifecycleState) {
+        // Initialize lifecycle state if not already done
+        const platformInfo = await detectPlatform(ctx.projectPath);
+        const bundleInfo = await resolveBundleIds(ctx.projectPath, platformInfo.type, ctx.lifecycleConfig);
+        const platformForDevice = platformInfo.type.includes('android')
+          ? 'android'
+          : platformInfo.type === 'kmp-desktop'
+          ? 'desktop'
+          : platformInfo.type === 'vite'
+          ? 'web'
+          : 'ios';
+        const device = await selectDevice(ctx.device, platformForDevice);
+
+        ctx.lifecycleState = {
+          platform: platformInfo,
+          bundleInfo,
+          selectedDevice: device || undefined,
+        };
+      }
+
+      await performSetup(
+        ctx.projectPath,
+        ctx.lifecycleState.platform!.type,
+        ctx.lifecycleState.selectedDevice || null,
+        ctx.lifecycleState.bundleInfo!,
+        { action: step.setup, platform: step.platform }
+      );
+
+      console.log(`[Test] Setup completed: ${step.setup}`);
+
+      return {
+        step: stepIndex,
+        action,
+        target: step.setup,
+        status: 'passed',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (isBuildStep(step)) {
+      if (!ctx.projectPath) {
+        throw new Error('Project path is required for build step');
+      }
+
+      if (!ctx.lifecycleState) {
+        const platformInfo = await detectPlatform(ctx.projectPath);
+        ctx.lifecycleState = { platform: platformInfo };
+      }
+
+      await buildApp(
+        ctx.projectPath,
+        ctx.lifecycleState.platform!.type,
+        { configuration: step.build, platform: step.platform }
+      );
+
+      console.log(`[Test] Build completed: ${step.build}`);
+
+      return {
+        step: stepIndex,
+        action,
+        target: step.build,
+        status: 'passed',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (isAgentLinkStep(step)) {
+      // Send agentLink payload via AgentDebugBridge
+      await ctx.sendCommand({
+        project: ctx.project,
+        action: 'agentLink',
+        payload: step.agentLink,
+        device: ctx.device,
+      });
+
+      // Optional: wait for response if timeout specified
+      if (step.timeout) {
+        await sleep(step.timeout);
+      }
+
+      console.log(`[Test] AgentLink sent: ${step.agentLink}`);
+
+      return {
+        step: stepIndex,
+        action,
+        target: step.agentLink,
+        status: 'passed',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    if (isPairStep(step)) {
+      // Generate and send pairing deep link to simulator/emulator
+      // This tests deep link pairing for app initialization
+      
+      const { loadConfig, loadRuntimeConfig, findConfigRoot } = await import('@agenteract/core/node');
+      
+      // Load runtime config to get server details
+      const runtimeConfig = await loadRuntimeConfig(ctx.projectPath || process.cwd());
+      if (!runtimeConfig) {
+        throw new Error('Runtime config not found. Is the Agenteract dev server running?');
+      }
+
+      // Load project config to get scheme
+      const configRoot = await findConfigRoot(ctx.projectPath || process.cwd());
+      if (!configRoot) {
+        throw new Error('Could not find agenteract.config.js');
+      }
+
+      const agenteractConfig = await loadConfig(configRoot);
+      const project = agenteractConfig.projects.find(p => p.name === ctx.project);
+      if (!project || !project.scheme) {
+        throw new Error(`Project "${ctx.project}" not found or has no scheme configured`);
+      }
+
+      const scheme = project.scheme;
+      
+      // Determine host based on device type
+      // For simulators/emulators, use localhost
+      // For physical devices, we'd need to use the machine's IP address
+      const host = step.pair === 'physical' ? 'REQUIRES_MACHINE_IP' : 'localhost';
+      
+      // Generate pairing deep link
+      let pairingUrl: string;
+      if (scheme === 'exp' || scheme === 'exps') {
+        // Expo Go format
+        const expoPort = 8081;
+        pairingUrl = `${scheme}://${host}:${expoPort}/--/agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
+      } else {
+        // Standard deep link format
+        pairingUrl = `${scheme}://agenteract/config?host=${host}&port=${runtimeConfig.port}&token=${runtimeConfig.token}`;
+      }
+
+      console.log(`[Test] Pairing with ${step.pair} device using deep link: ${pairingUrl}`);
+
+      // Send deep link to device based on platform
+      if (step.platform === 'ios' && step.pair === 'simulator') {
+        try {
+          // Use xcrun simctl openurl to send deep link to iOS Simulator
+          execSync(`xcrun simctl openurl booted "${pairingUrl}"`, { stdio: 'inherit' });
+          console.log(`[Test] Sent pairing deep link to iOS Simulator`);
+        } catch (error) {
+          throw new Error(`Failed to send deep link to iOS Simulator: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } else if (step.platform === 'android' && step.pair === 'emulator') {
+        try {
+          // Use adb to send deep link to Android Emulator
+          execSync(`adb shell am start -a android.intent.action.VIEW -d "${pairingUrl}"`, { stdio: 'inherit' });
+          console.log(`[Test] Sent pairing deep link to Android Emulator`);
+        } catch (error) {
+          throw new Error(`Failed to send deep link to Android Emulator: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      } else if (step.pair === 'physical') {
+        // For physical devices, we just log the URL - user needs to scan QR code manually
+        console.log(`[Test] Physical device pairing URL generated. User must scan QR code.`);
+        console.log(`[Test] URL: ${pairingUrl}`);
+      } else {
+        throw new Error(`Unsupported pairing configuration: platform=${step.platform}, type=${step.pair}`);
+      }
+
+      // Wait for connection (give app time to process deep link and connect)
+      const waitTime = step.timeout || 5000;
+      console.log(`[Test] Waiting ${waitTime}ms for app to pair...`);
+      await sleep(waitTime);
+
+      return {
+        step: stepIndex,
+        action,
+        target: `${step.pair}-${step.platform || 'auto'}`,
         status: 'passed',
         duration: Date.now() - startTime,
       };
@@ -480,13 +758,19 @@ async function executeStep(
 
     throw new Error(`Unknown step type: ${action}`);
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[Test] ❌ Step ${stepIndex} FAILED: ${action} ${target ? `(${target})` : ''}`);
+    console.error(`[Test] Error: ${errorMessage}`);
+    console.error(`[Test] Failed step definition:\n${JSON.stringify(step, null, 2)}`);
+    
     return {
       step: stepIndex,
       action,
       target,
       status: 'failed',
       duration: Date.now() - startTime,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
+      stepDefinition: step,
     };
   }
 }
@@ -509,48 +793,92 @@ export async function runTest(
     defaultTimeout: definition.timeout || 10000,
   };
 
-  for (let i = 0; i < definition.steps.length; i++) {
-    const step = definition.steps[i];
-    const result = await executeStep(step, i + 1, fullCtx);
-    results.push(result);
+  try {
+    for (let i = 0; i < definition.steps.length; i++) {
+      const step = definition.steps[i];
+      const result = await executeStep(step, i + 1, fullCtx);
+      results.push(result);
 
-    if (result.status === 'failed') {
-      // Stop on first failure
-      // Mark remaining steps as skipped
-      for (let j = i + 1; j < definition.steps.length; j++) {
-        results.push({
-          step: j + 1,
-          action: getStepAction(definition.steps[j]),
-          target: getStepTarget(definition.steps[j]),
-          status: 'skipped',
-          duration: 0,
-        });
+      if (result.status === 'failed') {
+        // Stop on first failure
+        console.error(`\n[Test] ═══════════════════════════════════════════════════════`);
+        console.error(`[Test] TEST FAILED AT STEP ${i + 1}/${definition.steps.length}`);
+        console.error(`[Test] ═══════════════════════════════════════════════════════`);
+        console.error(`[Test] Action: ${result.action} ${result.target ? `(${result.target})` : ''}`);
+        console.error(`[Test] Error: ${result.error}`);
+        console.error(`[Test] Step definition:\n${JSON.stringify(result.stepDefinition, null, 2)}`);
+        console.error(`[Test] ═══════════════════════════════════════════════════════\n`);
+        
+        // Mark remaining steps as skipped
+        for (let j = i + 1; j < definition.steps.length; j++) {
+          results.push({
+            step: j + 1,
+            action: getStepAction(definition.steps[j]),
+            target: getStepTarget(definition.steps[j]),
+            status: 'skipped',
+            duration: 0,
+            stepDefinition: definition.steps[j],
+          });
+        }
+
+        // Collect recent logs for debugging
+        try {
+          const recentLogs = await fullCtx.getLogs(50);
+          logs.push(...recentLogs);
+        } catch {
+          // Ignore log collection errors
+        }
+
+        return {
+          status: 'failed',
+          duration: Date.now() - startTime,
+          steps: results,
+          logs,
+          failedAt: i + 1,
+          error: result.error,
+        };
       }
+    }
 
-      // Collect recent logs for debugging
+    // All steps passed
+    console.log(`\n[Test] ═══════════════════════════════════════════════════════`);
+    console.log(`[Test] ✅ ALL TESTS PASSED`);
+    console.log(`[Test] ═══════════════════════════════════════════════════════`);
+    console.log(`[Test] Total steps: ${results.length}`);
+    console.log(`[Test] Duration: ${Date.now() - startTime}ms`);
+    console.log(`[Test] ═══════════════════════════════════════════════════════\n`);
+
+    return {
+      status: 'passed',
+      duration: Date.now() - startTime,
+      steps: results,
+    };
+  } finally {
+    // Cleanup: Ensure browser/app is stopped if test launched it
+    if (fullCtx.lifecycleState?.launchResult) {
       try {
-        const recentLogs = await fullCtx.getLogs(50);
-        logs.push(...recentLogs);
-      } catch {
-        // Ignore log collection errors
+        console.log('[Test] Cleaning up launched app/browser...');
+        const { loadConfig, findConfigRoot } = await import('@agenteract/core/node');
+        const configRoot = await findConfigRoot(fullCtx.projectPath || process.cwd());
+        if (configRoot) {
+          const config = await loadConfig(configRoot);
+          const project = config.projects.find(p => p.name === definition.project);
+          if (project && fullCtx.lifecycleState.platform && fullCtx.lifecycleState.bundleInfo) {
+            await stopApp(
+              fullCtx.lifecycleState.platform.type,
+              fullCtx.lifecycleState.selectedDevice || null,
+              fullCtx.lifecycleState.bundleInfo,
+              fullCtx.lifecycleState.launchResult,
+              false
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`[Test] Error during cleanup: ${err}`);
+        // Don't throw - we're cleaning up
       }
-
-      return {
-        status: 'failed',
-        duration: Date.now() - startTime,
-        steps: results,
-        logs,
-        failedAt: i + 1,
-        error: result.error,
-      };
     }
   }
-
-  return {
-    status: 'passed',
-    duration: Date.now() - startTime,
-    steps: results,
-  };
 }
 
 function sleep(ms: number): Promise<void> {

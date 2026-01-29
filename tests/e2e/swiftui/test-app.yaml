@@ -1,15 +1,23 @@
 # Swift iOS App E2E Test
-# Tests UI hierarchy fetching and interactions
+# Tests UI hierarchy fetching, interactions, agentLink functionality, and state management
 
 project: swift-app
 timeout: 30000
 
 steps:
+  # 0. Test Deep Link Pairing (simulator)
+  - phase: "Test Deep Link Pairing"
+  - pair: simulator
+    platform: ios
+    timeout: 5000
+
   # 1. Wait for app to be connected and ready
+  - phase: "Wait for App Connection"
   - waitFor: tap-button
     timeout: 60000
 
   # 2. Verify initial UI loaded correctly
+  - phase: "Verify Initial UI"
   - assert:
       exists: tap-button
 
@@ -32,7 +40,7 @@ steps:
       exists: reset-button
 
   # 3. Test Tap Interaction
-  - phase: "Tap Test"
+  - phase: "Test Tap Interaction"
 
   - tap: tap-button
     wait: 500
@@ -41,8 +49,23 @@ steps:
     logContains: "Counter incremented to 1"
     timeout: 3000
 
+  # Tap multiple times
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 2"
+    timeout: 3000
+
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 3"
+    timeout: 3000
+
   # 4. Test Input Interaction
-  - phase: "Input Test"
+  - phase: "Test Input Interaction"
   
   - input: text-input
     value: "Hello from E2E test"
@@ -51,17 +74,8 @@ steps:
     logContains: "Input text changed to Hello from E2E test"
     timeout: 3000
 
-  # 5. Test Deep Link (reset_state)
-  - phase: "Deep Link Test"
-
-  - deepLink: "agenteract-swift-example://reset_state"
-
-  - waitFor: ""
-    logContains: "App state cleared"
-    timeout: 3000
-
-  # 6. Test Long Press Interaction
-  - phase: "Long Press Test"
+  # 5. Test Long Press Interaction
+  - phase: "Test Long Press Interaction"
 
   - longPress: long-press-view
 
@@ -69,8 +83,56 @@ steps:
     logContains: "Long pressed! Count: 1"
     timeout: 3000
 
-  # 7. Test Swipe Interaction
-  - phase: "Swipe Test"
+  # 6. Test AgentLink - Reset State (Example 1)
+  - phase: "AgentLink Test - Reset State"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 7. Verify state was reset
+  - phase: "Verify State Reset"
+
+  - sleep: 1000
+
+  # After reset, tap counter should be back to 0
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  # 8. Set state again for multiple reset test
+  - phase: "Set State Again"
+
+  - tap: tap-button
+    wait: 500
+
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 3"
+    timeout: 3000
+
+  - input: text-input
+    value: "Second input test"
+
+  - waitFor: ""
+    logContains: "Input text changed to Second input test"
+    timeout: 3000
+
+  - longPress: long-press-view
+
+  - waitFor: ""
+    logContains: "Long pressed! Count: 1"
+    timeout: 3000
+
+  # 9. Test Swipe Interaction
+  - phase: "Test Swipe Interaction"
 
   - swipe: swipeable-card
     direction: left
@@ -79,8 +141,8 @@ steps:
     logContains: "Card swiped"
     timeout: 3000
 
-  # 8. Test Scroll Interaction
-  - phase: "Scroll Test"
+  # 10. Test Scroll Interaction
+  - phase: "Test Scroll Interaction"
 
   - scroll: horizontal-scroll
     direction: right
@@ -88,11 +150,132 @@ steps:
 
   - sleep: 500
 
-  # 9. Reset All
-  - phase: "Reset Test"
+  # 11. Test AgentLink - Reset State Again (Example 2)
+  - phase: "AgentLink Test - Second Reset"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 12. Verify second reset worked
+  - phase: "Verify Second Reset"
+
+  - sleep: 1000
+
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  # 13. Test Reset Button (manual reset)
+  - phase: "Test Manual Reset Button"
+
+  - tap: tap-button
+    wait: 500
+
+  - tap: tap-button
+    wait: 500
+
+  # Counter should be at 3 now
+  - waitFor: ""
+    logContains: "Counter incremented to 3"
+    timeout: 3000
 
   - tap: reset-button
 
   - waitFor: ""
     logContains: "All values reset"
     timeout: 3000
+
+  # 14. Verify manual reset worked
+  - phase: "Verify Manual Reset"
+
+  - sleep: 1000
+
+  - tap: tap-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  # 15. Simulate app lifecycle via agentLink reset
+  - phase: "Simulate App Lifecycle via AgentLink"
+
+  - tap: tap-button
+    wait: 500
+
+  - tap: tap-button
+    wait: 500
+
+  - input: text-input
+    value: "Before lifecycle test"
+
+  - sleep: 500
+
+  # Use agentLink to reset (simulates app restart)
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  # 16. Verify app is still responsive after reset
+  - phase: "Verify App Responsive After Reset"
+
+  - sleep: 2000
+
+  - waitFor: tap-button
+    timeout: 10000
+
+  - assert:
+      exists: tap-button
+
+  - assert:
+      exists: text-input
+
+  - assert:
+      exists: reset-button
+
+  # 17. Final interaction test
+  - phase: "Final Interaction Test"
+
+  - tap: tap-button
+
+  - waitFor: ""
+    logContains: "Counter incremented to 1"
+    timeout: 3000
+
+  - input: text-input
+    value: "Final test input"
+
+  - waitFor: ""
+    logContains: "Input text changed to Final test input"
+    timeout: 3000
+
+  # 18. Final agentLink test for comprehensive coverage
+  - phase: "Final AgentLink Test"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 3000
+
+  - sleep: 1000
+
+  # 19. Final state verification
+  - phase: "Final State Verification"
+
+  - waitFor: tap-button
+    timeout: 5000
+
+  - assert:
+      exists: tap-button
+
+  - assert:
+      exists: text-input

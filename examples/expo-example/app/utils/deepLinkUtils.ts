@@ -1,23 +1,20 @@
 /**
- * Parse a deep link URL and extract hostname and query parameters
+ * Parse an agentLink URL and extract hostname and query parameters
+ * 
+ * For agentLink, we use simple top-level routes:
+ * - agenteract://reset_state
+ * - agenteract://reload
+ * - agenteract://navigate?screen=settings
+ * 
+ * The URL.hostname gives us the route name directly.
  */
 export function parseURL(url: string): { hostname: string; queryParams: Record<string, string> } {
   try {
     const parsed = new URL(url);
     
-    // Extract hostname - handle both standard URLs and Expo URLs
-    // For Expo URLs like exp://192.168.1.5:8081/--/reset_state
-    // we want the path segment after /--/ or the last path segment
-    let hostname = '';
-    
-    if (parsed.pathname.includes('/--/')) {
-      // Expo dev URL format
-      const parts = parsed.pathname.split('/--/');
-      hostname = parts[1]?.split('/')[0] || parts[1] || '';
-    } else {
-      // Standard URL format - get first path segment
-      hostname = parsed.pathname.split('/').filter(Boolean)[0] || '';
-    }
+    // For agentLink URLs like agenteract://reset_state
+    // the hostname is the route name
+    const hostname = parsed.hostname || parsed.pathname.split('/').filter(Boolean)[0] || '';
     
     // Extract query parameters
     const queryParams: Record<string, string> = {};

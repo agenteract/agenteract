@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var longPressCount = 0
     @State private var cardOffset: CGFloat = 0
     @State private var swipeCount = 0
-    @State private var resetTrigger = 0 // Used to trigger reset from deep link
+    @State private var resetTrigger = 0 // Used to trigger reset from agent link
 
     // Reset all state
     func resetAllState() {
@@ -302,8 +302,9 @@ struct ContentView: View {
         // Add the AgentDebugBridge with deep link handler
         .background(
             AgentDebugBridge(projectName: "swift-app") { url in
-                // Handle reset_state deep link
-                if url.host == "reset_state" || url.path.contains("reset_state") {
+                // Handle agentLink routes by hostname
+                // For example: agenteract://reset_state
+                if url.host == "reset_state" {
                     resetAllState()
                     return true
                 }

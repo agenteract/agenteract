@@ -26,7 +26,7 @@ class AgentDebugBridge extends StatefulWidget {
   final Widget child;
   final String? serverUrl;
   final bool autoConnect;
-  final Future<bool> Function(String url)? onDeepLink;
+  final Future<bool> Function(String url)? onAgentLink;
 
   const AgentDebugBridge({
     super.key,
@@ -34,7 +34,7 @@ class AgentDebugBridge extends StatefulWidget {
     required this.child,
     this.serverUrl,
     this.autoConnect = true,
-    this.onDeepLink,
+    this.onAgentLink,
   });
 
   @override
@@ -151,11 +151,11 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       _connect();
     }
 
-    // 3. Listen for Deep Links (set up listener concurrently)
-    _initDeepLinks();
+    // 3. Listen for Agent Links (set up listener concurrently)
+    _initAgentLinks();
   }
 
-  Future<void> _initDeepLinks() async {
+  Future<void> _initAgentLinks() async {
     _appLinks = AppLinks();
 
     try {
@@ -181,10 +181,10 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   void _handleLink(String link) async {
     debugPrint('[Agenteract] _handleLink called with: $link');
     try {
-      // Call custom deep link handler first if provided
-      if (widget.onDeepLink != null) {
-        debugPrint('[Agenteract] Calling custom onDeepLink handler');
-        final handled = await widget.onDeepLink!(link);
+      // Call custom agent link handler first if provided
+      if (widget.onAgentLink != null) {
+        debugPrint('[Agenteract] Calling custom onAgentLink handler');
+        final handled = await widget.onAgentLink!(link);
         if (handled) {
           debugPrint('[Agenteract] Deep link handled by app: $link');
           return;
@@ -400,6 +400,9 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
             id,
           );
           break;
+        case 'agentLink':
+          _handleAgentLink(data['payload'] as String?, id);
+          break;
         default:
           _sendError('Unknown action: $action', id);
       }
@@ -508,6 +511,26 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       _sendSuccess(id);
     } else {
       _sendError('No swipe handler found for testID: $testID', id);
+    }
+  }
+
+  void _handleAgentLink(String? payload, String? id) async {
+    if (payload == null) {
+      _sendError('Missing payload', id);
+      return;
+    }
+
+    try {
+      if (widget.onAgentLink != null) {
+        final handled = await widget.onAgentLink!(payload);
+        if (handled) {
+          _sendSuccess(id);
+          return;
+        }
+      }
+      _sendError('No onAgentLink handler provided or link not handled', id);
+    } catch (e) {
+      _sendError('agentLink handler error: $e', id);
     }
   }
 

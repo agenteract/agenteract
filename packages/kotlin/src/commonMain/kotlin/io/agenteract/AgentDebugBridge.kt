@@ -22,7 +22,8 @@ fun AgentDebugBridge(
     host: String = "localhost",
     port: Int = 8765,
     token: String? = null,
-    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null
+    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null,
+    onAgentLink: ((String) -> Unit)? = null
 ) {
     val scope = rememberCoroutineScope()
 
@@ -113,7 +114,7 @@ fun AgentDebugBridge(
 
                                 // Otherwise handle as command
                                 val command = json.decodeFromString<AgentCommand>(text)
-                                handleCommand(command, json) { cmdResponse ->
+                                handleCommand(command, json, onAgentLink) { cmdResponse ->
                                     val responseText = json.encodeToString(cmdResponse)
                                     send(responseText)
                                 }
@@ -161,11 +162,31 @@ private suspend fun sendDeviceInfo(
 private suspend fun handleCommand(
     command: AgentCommand,
     json: Json,
+    onAgentLink: ((String) -> Unit)? = null,
     sendResponse: suspend (AgentResponse) -> Unit
 ) {
     AgentLogger.log("Received command: ${command.action} id=${command.id}")
     
     when (command.action) {
+        "agentLink" -> {
+            val payload = command.payload
+            if (payload == null) {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Missing payload"))
+                return
+            }
+            if (onAgentLink != null) {
+                // Call onAgentLink on main thread if possible, but here we are in suspend
+                // The handler should handle thread safety/dispatching if needed
+                try {
+                    onAgentLink(payload)
+                    sendResponse(AgentResponse(id = command.id, status = "ok"))
+                } catch (e: Exception) {
+                    sendResponse(AgentResponse(id = command.id, status = "error", error = "Agent link handler failed: $e"))
+                }
+            } else {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "No agent link handler registered"))
+            }
+        }
         "getViewHierarchy" -> {
             val hierarchy = AgentRegistry.getHierarchy()
             sendResponse(AgentResponse(

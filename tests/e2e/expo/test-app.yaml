@@ -1,15 +1,23 @@
 # Expo iOS App E2E Test
-# Tests UI hierarchy fetching and interactions
+# Tests UI hierarchy fetching, interactions, agentLink functionality, and state management
 
 project: expo-app
 timeout: 30000
 
 steps:
+  # 0. Test Deep Link Pairing (simulator)
+  - phase: "Test Deep Link Pairing"
+  - pair: simulator
+    platform: ios
+    timeout: 5000
+
   # 1. Wait for app to be connected and ready
+  - phase: "Wait for App Connection"
   - waitFor: test-button
     timeout: 60000
 
   # 2. Verify initial UI loaded correctly
+  - phase: "Verify Initial UI"
   - assert:
       exists: test-button
 
@@ -26,7 +34,7 @@ steps:
       exists: main-list
 
   # 3. Test Tap Interaction
-  - phase: "Tap Test"
+  - phase: "Test Tap Interaction"
 
   - tap: test-button
     wait: 500
@@ -35,8 +43,15 @@ steps:
     logContains: "Simulate button pressed"
     timeout: 3000
 
+  # Tap multiple times to test state
+  - tap: test-button
+    wait: 500
+
+  - tap: test-button
+    wait: 500
+
   # 4. Test Input Interaction
-  - phase: "Input Test"
+  - phase: "Test Input Interaction"
 
   - input: username-input
     value: "Hello from E2E test"
@@ -46,23 +61,127 @@ steps:
   # Input is verified by checking hierarchy for the value
   # (Note: Expo example doesn't log input changes)
 
-  # 5. Test Deep Link - Reset State
-  - phase: "Deep Link Test"
+  # 5. Test AgentLink - Reset State (Example 1)
+  - phase: "AgentLink Test - Reset State"
 
-  # Give deep link handler time to initialize (async in app)  
+  # Give agentLink handler time to initialize (async in app)
   - sleep: 2000
 
-  - deepLink: "exp://localhost:8081/--/reset_state"
+  - agentLink: "agenteract://reset_state"
 
   - waitFor: ""
     logContains: "App state cleared"
     timeout: 30000
 
-  # 6. Test Scroll Interaction
-  - phase: "Scroll Test"
+  # 6. Verify state was reset
+  - phase: "Verify State Reset"
+
+  - sleep: 1000
+
+  # State should be cleared, we can verify by setting new values
+
+  # 7. Set state again to test multiple interactions
+  - phase: "Set State Again"
+
+  - input: username-input
+    value: "SecondUser"
+
+  - sleep: 500
+
+  - tap: test-button
+    wait: 500
+
+  - waitFor: ""
+    logContains: "Simulate button pressed"
+    timeout: 3000
+
+  # 8. Test Scroll Interaction
+  - phase: "Test Scroll Interaction"
 
   - scroll: horizontal-scroll
     direction: right
     amount: 100
 
   - sleep: 500
+
+  # 9. Test Swipe Interaction (if supported)
+  - phase: "Test Swipe Interaction"
+
+  - swipe: swipeable-card
+    direction: left
+
+  - sleep: 500
+
+  # 10. Test AgentLink - Reset State Again (Example 2)
+  - phase: "AgentLink Test - Second Reset"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 30000
+
+  # 11. Verify second reset worked
+  - phase: "Verify Second Reset"
+
+  - sleep: 1000
+
+  # 12. Test AgentLink - Reload Action (Example 3)
+  # This tests a different agentLink action
+  - phase: "AgentLink Test - Reload Action"
+
+  - agentLink: "agenteract://reload"
+
+  - waitFor: ""
+    logContains: "Reload requested via agent link"
+    timeout: 5000
+
+  # 13. Simulate app lifecycle via reset
+  # Note: Expo apps are managed by 'agenteract dev'
+  - phase: "Simulate App Lifecycle via AgentLink"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 30000
+
+  # 14. Verify app is still responsive after reset
+  - phase: "Verify App Responsive After Reset"
+
+  - sleep: 2000
+
+  - waitFor: test-button
+    timeout: 10000
+
+  - assert:
+      exists: test-button
+
+  - assert:
+      exists: username-input
+
+  - assert:
+      exists: main-list
+
+  # 15. Final interaction test
+  - phase: "Final Interaction Test"
+
+  - input: username-input
+    value: "FinalTest"
+
+  - sleep: 500
+
+  - tap: test-button
+
+  - waitFor: ""
+    logContains: "Simulate button pressed"
+    timeout: 3000
+
+  # 16. Final agentLink test for comprehensive coverage
+  - phase: "Final AgentLink Test"
+
+  - agentLink: "agenteract://reset_state"
+
+  - waitFor: ""
+    logContains: "App state cleared"
+    timeout: 30000
