@@ -210,8 +210,9 @@ async function main() {
     success('CLI packages installed from Verdaccio');
 
     // using --wait-log-timeout 500 to simulate deprecated usage
+    // Note: --localhost removed as it can cause "Could not connect to the server" errors on iOS simulator
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost' --wait-log-timeout 500`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios' --wait-log-timeout 500`
     );
     success('Config created');
 

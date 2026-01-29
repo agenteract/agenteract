@@ -674,15 +674,27 @@ async function executeStep(
       
       const { loadConfig, loadRuntimeConfig, findConfigRoot } = await import('@agenteract/core/node');
       
-      // Load runtime config from the current working directory where the dev server is running
-      // Note: ctx.projectPath points to the app directory, but the runtime config is where the CLI runs
-      const runtimeConfig = await loadRuntimeConfig(process.cwd());
+      // Load runtime config - try current working directory first, then fall back to where the server was started
+      // The runtime config is stored where `agenteract dev` was started
+      let runtimeConfig = await loadRuntimeConfig();
+      if (!runtimeConfig) {
+        // If not found in default location, try from projectPath parent (common pattern in tests)
+        if (ctx.projectPath) {
+          const { dirname } = await import('path');
+          runtimeConfig = await loadRuntimeConfig(dirname(ctx.projectPath));
+        }
+      }
+      
       if (!runtimeConfig) {
         throw new Error('Runtime config not found. Is the Agenteract dev server running?');
       }
 
-      // Load project config from the same location
-      const configRoot = await findConfigRoot(process.cwd());
+      // Load project config - try current directory first, then projectPath
+      let configRoot = await findConfigRoot();
+      if (!configRoot && ctx.projectPath) {
+        configRoot = await findConfigRoot(ctx.projectPath);
+      }
+      
       if (!configRoot) {
         throw new Error('Could not find agenteract.config.js');
       }
