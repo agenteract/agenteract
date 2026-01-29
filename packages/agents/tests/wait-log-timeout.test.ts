@@ -163,7 +163,8 @@ describe('waitLogTimeout functionality', () => {
       await waitAndFetchLogs(agentServerUrl, project, 50, logCount); // Explicit 50ms
       
       const elapsed = Date.now() - startTime;
-      expect(elapsed).toBeGreaterThanOrEqual(50);
+      // Allow small timing tolerance (45ms) to account for system timer resolution
+      expect(elapsed).toBeGreaterThanOrEqual(45);
       expect(elapsed).toBeLessThan(200); // Should not use config's 1000ms
       expect(mockAxios.get).toHaveBeenCalledWith(
         `${agentServerUrl}/logs?project=${project}&since=${logCount}`
@@ -177,7 +178,8 @@ describe('waitLogTimeout functionality', () => {
       await waitAndFetchLogs(agentServerUrl, project, undefined, logCount);
       
       const elapsed = Date.now() - startTime;
-      expect(elapsed).toBeGreaterThanOrEqual(100);
+      // Allow small timing tolerance (95ms) to account for system timer resolution
+      expect(elapsed).toBeGreaterThanOrEqual(95);
       expect(mockAxios.get).toHaveBeenCalled();
     });
 
@@ -227,7 +229,8 @@ describe('waitLogTimeout functionality', () => {
       await waitAndFetchLogs(agentServerUrl, project, waitTime, logCount);
       
       const elapsed = Date.now() - startTime;
-      expect(elapsed).toBeGreaterThanOrEqual(waitTime);
+      // Allow small timing tolerance (95ms) to account for system timer resolution
+      expect(elapsed).toBeGreaterThanOrEqual(95);
       expect(mockAxios.get).toHaveBeenCalled();
     });
 
@@ -259,7 +262,8 @@ describe('waitLogTimeout functionality', () => {
       await waitAndFetchLogs(agentServerUrl, project, undefined, logCount);
       
       const elapsed = Date.now() - startTime;
-      expect(elapsed).toBeGreaterThanOrEqual(500);
+      // Allow small timing tolerance (495ms) to account for system timer resolution
+      expect(elapsed).toBeGreaterThanOrEqual(495);
       expect(mockAxios.get).toHaveBeenCalled();
       expect(consoleWarnMock).toHaveBeenCalled(); // Should show deprecation warning
     });
