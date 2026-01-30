@@ -201,7 +201,18 @@ async function main() {
         // 8. Run YAML test suite
         info('Running YAML test suite...');
         const testFilePath = join(process.cwd(), 'tests', 'e2e', 'kotlin', 'test-app.yaml');
-        const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+        
+        // Determine runtime target based on platform
+        const runtimeTarget = platform === 'desktop' ? 'native' : 'android';
+        info(`Runtime target: ${runtimeTarget}`);
+        
+        const testResult = await runAgentCommand(
+            `cwd:${testConfigDir}`, 
+            'test', 
+            testFilePath, 
+            '--runtime-target', 
+            runtimeTarget
+        );
 
         // Parse JSON result
         const result = JSON.parse(testResult);

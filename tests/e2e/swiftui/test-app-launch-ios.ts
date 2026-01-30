@@ -223,7 +223,7 @@ async function main() {
     info('Creating agenteract config for swift-app in /tmp...');
     // using --wait-log-timeout 500 to simulate deprecated usage
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native --wait-log-timeout 500`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native --scheme agenteract-swift-example --wait-log-timeout 500`
     );
     success(`Config created in ${testConfigDir}`);
 
@@ -345,7 +345,7 @@ async function main() {
     // 14. Run YAML test suite
     info('Running YAML test suite...');
     const testFilePath = join(process.cwd(), 'tests', 'e2e', 'swiftui', 'test-app.yaml');
-    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath, '--runtime-target', 'ios');
 
     // Parse JSON result
     const result = JSON.parse(testResult);

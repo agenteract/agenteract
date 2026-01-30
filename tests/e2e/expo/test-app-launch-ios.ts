@@ -212,7 +212,7 @@ async function main() {
     // using --wait-log-timeout 500 to simulate deprecated usage
     // Note: --localhost removed as it can cause "Could not connect to the server" errors on iOS simulator
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios' --wait-log-timeout 500`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios' --scheme exp --wait-log-timeout 500`
     );
     success('Config created');
 
@@ -367,7 +367,15 @@ async function main() {
     // 12. Run YAML test suite
     info('Running YAML test suite...');
     const testFilePath = join(process.cwd(), 'tests', 'e2e', 'expo', 'test-app.yaml');
-    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+    
+    // Expo iOS always runs on simulator
+    const testResult = await runAgentCommand(
+      `cwd:${testConfigDir}`, 
+      'test', 
+      testFilePath, 
+      '--runtime-target', 
+      'ios'
+    );
 
     // Parse JSON result
     const result = JSON.parse(testResult);

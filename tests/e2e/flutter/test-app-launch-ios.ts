@@ -477,7 +477,15 @@ async function main() {
     // 14. Run YAML test suite
     info('Running YAML test suite...');
     const testFilePath = join(process.cwd(), 'tests', 'e2e', 'flutter', 'test-app.yaml');
-    const testResult = await runAgentCommand(`cwd:${testConfigDir}`, 'test', testFilePath);
+    
+    // Flutter iOS always runs on simulator
+    const testResult = await runAgentCommand(
+      `cwd:${testConfigDir}`, 
+      'test', 
+      testFilePath, 
+      '--runtime-target', 
+      'ios'
+    );
 
     // Parse JSON result
     const result = JSON.parse(testResult);

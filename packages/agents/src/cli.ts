@@ -866,6 +866,12 @@ yargs(hideBin(process.argv))
           type: 'string',
           description: 'Override device from test file',
         })
+        .option('runtime-target', {
+          alias: 't',
+          type: 'string',
+          choices: ['ios', 'android', 'native'],
+          description: 'Runtime target platform (ios, android, or native/desktop)',
+        })
         .option('verbose', {
           alias: 'v',
           type: 'boolean',
@@ -897,6 +903,9 @@ yargs(hideBin(process.argv))
         }
         if (argv.device) {
           testDefinition.device = argv.device;
+        }
+        if (argv.runtimeTarget) {
+          testDefinition.runtimeTarget = argv.runtimeTarget;
         }
 
         // Validate required fields

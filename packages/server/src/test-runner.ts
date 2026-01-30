@@ -72,6 +72,7 @@ export interface TestRunnerContext {
   project: string;
   device?: string;
   projectPath?: string;
+  runtimeTarget?: 'ios' | 'android' | 'native';
   lifecycleConfig?: {
     bundleId?: {
       ios?: string;
@@ -669,6 +670,42 @@ async function executeStep(
     }
 
     if (isPairStep(step)) {
+      // For native/desktop apps, pairing is not needed - they auto-connect via localhost
+      if (ctx.runtimeTarget === 'native') {
+        console.log(`[Test] Skipping pairing for native/desktop app (runtime target: native)`);
+        console.log(`[Test] Native apps auto-connect to localhost without authentication`);
+        
+        // Still validate server is running by loading runtime config
+        const { loadRuntimeConfig } = await import('@agenteract/core/node');
+        let runtimeConfig = await loadRuntimeConfig();
+        if (!runtimeConfig) {
+          if (ctx.projectPath) {
+            const { dirname } = await import('path');
+            runtimeConfig = await loadRuntimeConfig(dirname(ctx.projectPath));
+          }
+        }
+        
+        if (!runtimeConfig) {
+          throw new Error('Runtime config not found. Is the Agenteract dev server running?');
+        }
+        
+        console.log(`[Test] Server validated - listening on port ${runtimeConfig.port}`);
+        
+        // Wait briefly to ensure app has connected
+        const waitTime = step.timeout || 2000;
+        console.log(`[Test] Waiting ${waitTime}ms for native app to connect...`);
+        await sleep(waitTime);
+        
+        return {
+          step: stepIndex,
+          action,
+          target: 'native-desktop',
+          status: 'passed',
+          duration: Date.now() - startTime,
+          stepDefinition: step,
+        };
+      }
+      
       // Generate and send pairing deep link to simulator/emulator
       // This tests deep link pairing for app initialization
       
@@ -804,6 +841,7 @@ export async function runTest(
     project: definition.project,
     device: definition.device,
     defaultTimeout: definition.timeout || 10000,
+    runtimeTarget: definition.runtimeTarget,
   };
 
   try {

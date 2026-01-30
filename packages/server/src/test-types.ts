@@ -144,6 +144,7 @@ export interface TestDefinition {
   timeout?: number;
   extensions?: string | string[];
   steps: Step[];
+  runtimeTarget?: 'ios' | 'android' | 'native';
 }
 
 // Step result
