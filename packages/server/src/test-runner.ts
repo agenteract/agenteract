@@ -766,7 +766,11 @@ async function executeStep(
       if (step.platform === 'ios' && step.pair === 'simulator') {
         try {
           // Use xcrun simctl openurl to send deep link to iOS Simulator
-          execSync(`xcrun simctl openurl booted "${pairingUrl}"`, { stdio: 'inherit' });
+          // Use stdio: 'pipe' to avoid hanging in CI environments
+          const output = execSync(`xcrun simctl openurl booted "${pairingUrl}"`, { stdio: 'pipe' });
+          if (output && output.length > 0) {
+            console.log(`[Test] xcrun output: ${output.toString()}`);
+          }
           console.log(`[Test] Sent pairing deep link to iOS Simulator`);
         } catch (error) {
           throw new Error(`Failed to send deep link to iOS Simulator: ${error instanceof Error ? error.message : String(error)}`);
@@ -774,7 +778,11 @@ async function executeStep(
       } else if (step.platform === 'android' && step.pair === 'emulator') {
         try {
           // Use adb to send deep link to Android Emulator
-          execSync(`adb shell am start -a android.intent.action.VIEW -d "${pairingUrl}"`, { stdio: 'inherit' });
+          // Use stdio: 'pipe' to avoid hanging in CI environments
+          const output = execSync(`adb shell am start -a android.intent.action.VIEW -d "${pairingUrl}"`, { stdio: 'pipe' });
+          if (output && output.length > 0) {
+            console.log(`[Test] adb output: ${output.toString()}`);
+          }
           console.log(`[Test] Sent pairing deep link to Android Emulator`);
         } catch (error) {
           throw new Error(`Failed to send deep link to Android Emulator: ${error instanceof Error ? error.message : String(error)}`);
