@@ -41,10 +41,10 @@ import {
   bootDevice,
   clearAppData,
   setupPortForwarding,
-  // Phase 3-4 functions not yet implemented:
-  // installApp,
-  // uninstallApp,
-  // reinstallApp,
+  installApp,
+  uninstallApp,
+  reinstallApp,
+  // Phase 4 functions not yet implemented:
   // buildApp,
   startApp,
 } from './lifecycle-utils';
@@ -751,6 +751,338 @@ describe('lifecycle-utils', () => {
       expect(mockExecFileAsync).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
         'ℹ️  Not applicable for desktop platform (NOOP)'
+      );
+    });
+  });
+
+  describe('installApp', () => {
+    it('should install Android app via gradle installDebug', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExistsSync.mockReturnValue(true); // gradlew exists
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await installApp({
+        projectPath: '/path/to/flutter-app',
+        device,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['installDebug'],
+        expect.objectContaining({ cwd: '/path/to/flutter-app/android', timeout: 120000 })
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Installing Android app via gradle')
+      );
+    });
+
+    it('should install Android app via gradle installRelease', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('kmp-android');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await installApp({
+        projectPath: '/path/to/kmp-app',
+        device,
+        configuration: 'release',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['installRelease'],
+        expect.objectContaining({ cwd: '/path/to/kmp-app', timeout: 120000 })
+      );
+    });
+
+    it('should install Android app from APK', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await installApp({
+        projectPath: '/path/to/app',
+        device,
+        apkPath: '/path/to/app-release.apk',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'install', '-r', '/path/to/app-release.apk'],
+        { timeout: 60000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Installing APK')
+      );
+    });
+
+    it('should handle iOS as NOOP', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      await installApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  iOS apps auto-install during development (NOOP)'
+      );
+    });
+
+    it('should handle Expo Go as NOOP', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(false); // No ios/ or android/ dirs = Expo Go
+
+      await installApp({
+        projectPath: '/path/to/expo-go-app',
+        device,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Cannot install Expo Go apps via this method (NOOP)'
+      );
+    });
+  });
+
+  describe('uninstallApp', () => {
+    it('should uninstall iOS app', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: 'com.example.myapp',
+        android: null,
+      });
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await uninstallApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'uninstall', 'ABC-123', 'com.example.myapp'],
+        { timeout: 30000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Uninstalled com.example.myapp')
+      );
+    });
+
+    it('should uninstall Android app', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: null,
+        android: 'com.example.myapp',
+      });
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await uninstallApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'uninstall', 'com.example.myapp'],
+        { timeout: 30000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Uninstalled com.example.myapp')
+      );
+    });
+
+    it('should handle app not installed gracefully', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: null,
+        android: 'com.example.myapp',
+      });
+      mockExecFileAsync.mockRejectedValue(new Error('Unknown package: com.example.myapp'));
+
+      await uninstallApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  App com.example.myapp not installed (already clean)'
+      );
+    });
+
+    it('should handle Expo Go as NOOP', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(false); // Expo Go
+
+      await uninstallApp({
+        projectPath: '/path/to/expo-go-app',
+        device,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Cannot uninstall Expo Go apps via this method (NOOP)'
+      );
+    });
+
+    it('should use provided bundleId', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await uninstallApp({
+        projectPath: '/path/to/app',
+        device,
+        bundleId: 'com.custom.bundleid',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'uninstall', 'com.custom.bundleid'],
+        { timeout: 30000 }
+      );
+      // Should not call resolveBundleInfo when bundleId is provided
+      expect(mockResolveBundleInfo).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reinstallApp', () => {
+    it('should call uninstall then install', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: null,
+        android: 'com.example.myapp',
+      });
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await reinstallApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      // Should have called uninstall
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'uninstall', 'com.example.myapp'],
+        { timeout: 30000 }
+      );
+
+      // Should have called install
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['installDebug'],
+        expect.objectContaining({ cwd: '/path/to/app/android' })
+      );
+
+      expect(console.log).toHaveBeenCalledWith(
+        '🔄 Reinstalling app (uninstall + install)...'
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        '✓ App reinstalled successfully'
+      );
+    });
+
+    it('should pass configuration to install', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('kmp-android');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: null,
+        android: 'com.example.myapp',
+      });
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await reinstallApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'release',
+      });
+
+      // Should have called installRelease
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['installRelease'],
+        expect.objectContaining({ cwd: '/path/to/app' })
       );
     });
   });

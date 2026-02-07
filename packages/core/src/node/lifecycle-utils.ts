@@ -860,14 +860,14 @@ export async function startAndroidApp(
  * Restart an Android app (stop then start)
  * 
  * @param device - Android device/emulator
- * @param bundleId - App package name
- * @param mainActivity - Main activity class name (optional)
- * @param force - Use force-stop instead of graceful kill. Default: false
+ * @param bundleId - App package name (e.g., 'com.example.myapp')
+ * @param mainActivity - Optional main activity name (defaults to 'MainActivity')
+ * @param force - Use force-stop instead of graceful kill (default: false)
  * @throws Error if adb commands fail
  */
 export async function restartAndroidApp(
   device: Device | string, 
-  bundleId: string, 
+  bundleId: string,
   mainActivity?: string,
   force: boolean = false
 ): Promise<void> {
@@ -877,6 +877,194 @@ export async function restartAndroidApp(
   await startAndroidApp(device, bundleId, mainActivity);
 }
 
+//
+// Install/Uninstall/Reinstall operations - Platform and framework agnostic
+//
+
+/**
+ * Install an app on a device - platform and framework agnostic
+ * 
+ * Automatically detects app type and platform, then installs appropriately.
+ * - iOS: NOOP (apps auto-install during development via Xcode)
+ * - Android: Uses gradle installDebug/installRelease or adb install
+ * - Expo Go: NOOP (cannot install Expo Go via this method)
+ * 
+ * @param options - Install options including projectPath, device, and optional configuration
+ * @example
+ * ```typescript
+ * // Install Android app in debug mode
+ * await installApp({
+ *   projectPath: '/path/to/flutter-app',
+ *   device: androidEmulator
+ * });
+ * 
+ * // Install from APK file
+ * await installApp({
+ *   projectPath: '/path/to/app',
+ *   device: androidEmulator,
+ *   apkPath: '/path/to/app-release.apk'
+ * });
+ * ```
+ */
+export async function installApp(options: InstallOptions): Promise<void> {
+  const { projectPath, device, apkPath, configuration = 'debug' } = options;
+  
+  // Get device info
+  const deviceObj = typeof device === 'string'
+    ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const platform = deviceObj.type;
+  
+  // iOS apps auto-install during development
+  if (platform === 'ios') {
+    console.log('ℹ️  iOS apps auto-install during development (NOOP)');
+    return;
+  }
+  
+  // Detect project type
+  const platformInfo = await detectPlatform(projectPath);
+  
+  // Check if Expo Go
+  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+    console.log('ℹ️  Cannot install Expo Go apps via this method (NOOP)');
+    return;
+  }
+  
+  // Android installation
+  if (apkPath) {
+    // Install from APK file
+    console.log(`📦 Installing APK: ${apkPath}`);
+    await execFileAsync('adb', ['-s', deviceObj.id, 'install', '-r', apkPath], {
+      timeout: 60000,
+    });
+    console.log('✓ APK installed successfully');
+  } else {
+    // Install via gradle
+    const androidPath = platformInfo === 'flutter' 
+      ? join(projectPath, 'android')
+      : projectPath;
+    
+    const gradle = await findGradle(androidPath);
+    const task = configuration === 'release' ? 'installRelease' : 'installDebug';
+    
+    console.log(`📦 Installing Android app via gradle (${task})`);
+    await execFileAsync(gradle, [task], {
+      cwd: androidPath,
+      timeout: 120000,
+    });
+    console.log(`✓ App installed successfully via ${task}`);
+  }
+}
+
+/**
+ * Uninstall an app from a device - platform and framework agnostic
+ * 
+ * Removes the app completely from the device.
+ * - iOS: Uses xcrun simctl uninstall
+ * - Android: Uses adb uninstall
+ * - Expo Go: NOOP (cannot uninstall Expo Go via this method)
+ * 
+ * @param options - Lifecycle options
+ * @example
+ * ```typescript
+ * await uninstallApp({
+ *   projectPath: '/path/to/app',
+ *   device: myDevice
+ * });
+ * ```
+ */
+export async function uninstallApp(options: AppLifecycleOptions): Promise<void> {
+  const { projectPath, device, bundleId: bundleIdOverride } = options;
+  
+  // Get device info
+  const deviceObj = typeof device === 'string'
+    ? { id: device, type: 'ios' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const platform = deviceObj.type;
+  
+  // Detect project type
+  const platformInfo = await detectPlatform(projectPath);
+  
+  // Check if Expo Go
+  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  
+  if (isExpoGoApp) {
+    console.log('ℹ️  Cannot uninstall Expo Go apps via this method (NOOP)');
+    return;
+  }
+  
+  // Resolve bundle ID
+  let bundleId = bundleIdOverride;
+  if (!bundleId) {
+    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+    bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
+    
+    if (!bundleId) {
+      throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
+    }
+  }
+  
+  try {
+    if (platform === 'ios') {
+      console.log(`🗑️  Uninstalling ${bundleId} from iOS simulator`);
+      await execFileAsync('xcrun', ['simctl', 'uninstall', deviceObj.id, bundleId], {
+        timeout: 30000,
+      });
+      console.log(`✓ Uninstalled ${bundleId}`);
+    } else {
+      console.log(`🗑️  Uninstalling ${bundleId} from Android device`);
+      await execFileAsync('adb', ['-s', deviceObj.id, 'uninstall', bundleId], {
+        timeout: 30000,
+      });
+      console.log(`✓ Uninstalled ${bundleId}`);
+    }
+  } catch (error: any) {
+    // Gracefully handle app not installed
+    if (error.message?.includes('No such file') || 
+        error.message?.includes('not installed') ||
+        error.message?.includes('Unknown package')) {
+      console.log(`ℹ️  App ${bundleId} not installed (already clean)`);
+    } else {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Reinstall an app (uninstall then install) - platform and framework agnostic
+ * 
+ * Useful for getting a completely fresh app state during testing.
+ * Combines uninstall + delay + install operations.
+ * 
+ * @param options - Install options
+ * @example
+ * ```typescript
+ * await reinstallApp({
+ *   projectPath: '/path/to/app',
+ *   device: myDevice,
+ *   configuration: 'debug'
+ * });
+ * ```
+ */
+export async function reinstallApp(options: InstallOptions): Promise<void> {
+  console.log('🔄 Reinstalling app (uninstall + install)...');
+  
+  // Uninstall first
+  await uninstallApp(options);
+  
+  // Small delay to ensure clean state
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Then install
+  await installApp(options);
+  
+  console.log('✓ App reinstalled successfully');
+}
+
+//
+// Helper functions
 //
 // Helper functions
 //
