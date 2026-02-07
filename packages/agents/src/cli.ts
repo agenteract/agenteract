@@ -867,6 +867,307 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
+    'launch <project>',
+    'Launch an app on a device or simulator',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Platform filter (for multi-platform projects)',
+        })
+        .option('headless', {
+          type: 'boolean',
+          description: 'Run in headless mode (for web apps)',
+          default: true,
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const {
+          detectPlatform,
+          resolveBundleInfo,
+          getDefaultDeviceInfo,
+          listDevices,
+          launchApp,
+        } = await import('@agenteract/core/node');
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const platform = await detectPlatform(projectPath);
+        
+        console.log(`Detected platform: ${platform}`);
+        
+        // Resolve device
+        let device = null;
+        if (argv.device) {
+          // Use specified device
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device) || null;
+          if (!device) {
+            console.error(`Device "${argv.device}" not found`);
+            process.exit(1);
+          }
+        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+          // Get default device for mobile/iOS apps
+          device = await getDefaultDeviceInfo(argv.project);
+          if (!device) {
+            console.error(`No default device set for project "${argv.project}"`);
+            console.error('Set a default device with: agenteract-agents set-current-device <project> <deviceId>');
+            process.exit(1);
+          }
+        }
+        
+        // Filter by platform if specified
+        if (argv.platform && device && device.type !== argv.platform) {
+          console.error(`Device "${device.name}" is ${device.type}, but platform filter is ${argv.platform}`);
+          process.exit(1);
+        }
+        
+        // Resolve bundle info
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        
+        console.log(`Launching ${argv.project}...`);
+        if (device) {
+          console.log(`  Device: ${device.name} (${device.id})`);
+        }
+        
+        const launchTimeout = project.lifecycle?.launchTimeout || 60000;
+        const result = await launchApp(platform, device, bundleInfo, projectPath, launchTimeout);
+        
+        console.log('✓ App launched successfully');
+        
+        // Note: For web apps, the browser will remain open. User must stop manually.
+        if (result.browser) {
+          console.log('  Browser is running (use stop command to close)');
+        }
+        if (result.process) {
+          console.log('  Process is running (use stop command to terminate)');
+        }
+      } catch (error) {
+        console.error('✗ Failed to launch app:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'stop <project>',
+    'Stop a running app',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('force', {
+          alias: 'f',
+          type: 'boolean',
+          description: 'Force stop/kill the app',
+          default: false,
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const {
+          detectPlatform,
+          resolveBundleInfo,
+          getDefaultDeviceInfo,
+          listDevices,
+          stopAppInternal,
+        } = await import('@agenteract/core/node');
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const platform = await detectPlatform(projectPath);
+        
+        // Resolve device
+        let device = null;
+        if (argv.device) {
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device) || null;
+        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+          device = await getDefaultDeviceInfo(argv.project);
+        }
+        
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        
+        console.log(`Stopping ${argv.project}...`);
+        await stopAppInternal(platform, device, bundleInfo, {}, argv.force);
+        
+        console.log('✓ App stopped successfully');
+      } catch (error) {
+        console.error('✗ Failed to stop app:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'build <project>',
+    'Build an app',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Target platform (for multi-platform projects)',
+        })
+        .option('config', {
+          alias: 'c',
+          type: 'string',
+          description: 'Build configuration (debug, release, or custom)',
+          default: 'debug',
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const { detectPlatform, buildApp } = await import('@agenteract/core/node');
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const platform = await detectPlatform(projectPath);
+        
+        console.log(`Building ${argv.project} (${platform})...`);
+        
+        await buildApp(projectPath, platform, {
+          configuration: argv.config,
+          platform: argv.platform as 'ios' | 'android' | undefined,
+        });
+        
+        console.log('✓ Build completed successfully');
+      } catch (error) {
+        console.error('✗ Build failed:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'setup <project> <action>',
+    'Perform app setup operations (install, reinstall, clearData)',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('action', {
+          describe: 'Setup action',
+          type: 'string',
+          choices: ['install', 'reinstall', 'clearData'],
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Platform filter',
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const {
+          detectPlatform,
+          resolveBundleInfo,
+          getDefaultDeviceInfo,
+          listDevices,
+          performSetup,
+        } = await import('@agenteract/core/node');
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const platform = await detectPlatform(projectPath);
+        
+        // Resolve device
+        let device = null;
+        if (argv.device) {
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device) || null;
+        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+          device = await getDefaultDeviceInfo(argv.project);
+        }
+        
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        
+        console.log(`Performing ${argv.action} for ${argv.project}...`);
+        
+        await performSetup(projectPath, platform, device, bundleInfo, {
+          action: argv.action as 'install' | 'reinstall' | 'clearData',
+          platform: argv.platform as 'ios' | 'android' | undefined,
+        });
+        
+        console.log(`✓ ${argv.action} completed successfully`);
+      } catch (error) {
+        console.error(`✗ ${argv.action} failed:`, error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
     'md [dest]',
     'Generate agent instructions',
     (yargs) => {

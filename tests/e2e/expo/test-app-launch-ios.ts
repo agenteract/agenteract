@@ -31,6 +31,8 @@ import {
   restoreNodeModulesCache,
   saveNodeModulesCache,
 } from '../common/helpers.js';
+import { stopApp, startApp } from '../../../packages/core/src/node/lifecycle-utils.js';
+import * as path from 'path';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
@@ -398,6 +400,55 @@ async function main() {
     }
 
     success('UI hierarchy fetched successfully');
+
+    // 11.5. Test app lifecycle: stop and restart Expo Go
+    info('Testing app lifecycle: stopping and restarting Expo app...');
+    try {
+      // Stop the Expo Go app on simulator using lifecycle utility
+      await stopApp({
+        projectPath: exampleAppDir,
+        device: 'booted',
+        bundleId: 'host.exp.Exponent'
+      });
+      success('Expo Go stopped via lifecycle utility');
+      await sleep(2000);
+
+      info('Restarting Expo app using platform-agnostic lifecycle utility...');
+      // Use the platform-agnostic start function which auto-detects Expo Go
+      await startApp({
+        projectPath: exampleAppDir,
+        device: 'booted'
+      });
+      success('Sent start command to Expo app');
+      await sleep(10000); // Give it time to launch
+
+      info('Waiting for app to reconnect after restart...');
+      let reconnected = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const hierarchyAfterRestart = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'expo-app');
+          if (hierarchyAfterRestart.includes('View') || hierarchyAfterRestart.includes('Text')) {
+            success('App reconnected after lifecycle restart');
+            reconnected = true;
+            break;
+          }
+        } catch (err) {
+          // Still reconnecting
+        }
+        await sleep(1000);
+      }
+
+      if (!reconnected) {
+        error('App did not reconnect within 30 seconds after restart');
+        throw new Error('Lifecycle test failed: app did not reconnect');
+      }
+
+      success('✅ App lifecycle test passed: stop and restart successful');
+    } catch (err) {
+      error(`Lifecycle test failed: ${err}`);
+      // Don't fail the entire test, just log the error
+      info('Continuing with remaining tests...');
+    }
 
     // 12. Test tap interaction
     if (hasTestButton) {

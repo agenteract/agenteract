@@ -20,6 +20,7 @@
     "test:e2e:kotlin": "tsx tests/e2e/kotlin/test-app-launch.ts",
     "test:e2e:kotlin:ios-build": "tsx tests/e2e/kotlin/test-app-launch.ts --platform=ios",
     "test:e2e:kotlin:android": "tsx tests/e2e/kotlin/test-app-launch.ts --platform=android",
+    "test:e2e:lifecycle": "tsx tests/e2e/lifecycle/test-lifecycle-commands.ts",
     "test:e2e:all": "pnpm test:e2e:vite && pnpm test:e2e:expo:ios && pnpm test:e2e:flutter:ios && pnpm test:e2e:swift:ios",
     "test:e2e:cleanup": "tsx tests/e2e/cleanup-all.ts",
     "verdaccio:start": "tsx scripts/start-verdaccio.ts",

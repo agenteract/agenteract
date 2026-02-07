@@ -3,10 +3,20 @@
   "version": "0.1.6",
   "description": "Agent tools for Agenteract",
   "type": "module",
-  "main": "dist/cli.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli.js"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/agenteract/agenteract.git",

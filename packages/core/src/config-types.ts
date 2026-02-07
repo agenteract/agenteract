@@ -22,6 +22,16 @@ export interface ProjectConfig {
   devServer?: DevServerConfig;
   // Optional: URL scheme for deep linking (e.g., 'myapp')
   scheme?: string;
+  // Optional: app lifecycle configuration overrides
+  lifecycle?: {
+    bundleId?: {
+      ios?: string;      // iOS bundle identifier (e.g., 'com.example.app')
+      android?: string;  // Android package name (e.g., 'com.example.app')
+    };
+    mainActivity?: string;  // Android main activity class name (default: 'MainActivity')
+    launchTimeout?: number; // Timeout in ms for launch operations (default: 60000)
+    requiresInstall?: boolean; // Whether app needs installation before launch
+  };
 }
 
 export interface AgenteractConfig {

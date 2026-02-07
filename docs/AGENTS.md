@@ -566,6 +566,252 @@ If commands don't work, instruct the user to start the CLI wrapper:
 pnpm agenteract dev
 ```
 
+## App Lifecycle Management Tools
+
+Agenteract provides commands to manage app launching, stopping, building, and setup operations programmatically across all platforms.
+
+### Tool: Launch App
+
+Launch an application on a device or simulator. The platform is auto-detected, and the app will be built if necessary.
+
+**Command:**
+```bash
+pnpm agenteract-agents launch <project> [options]
+```
+
+**Options:**
+- `--device <id>`: Target specific device/simulator ID
+- `--platform <type>`: Override platform detection (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--headless`: Launch browser in headless mode (web apps only)
+
+**Examples:**
+```bash
+# Launch with auto-detected platform and default device
+pnpm agenteract-agents launch expo-app
+
+# Launch on specific iOS simulator
+pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+
+# Launch Flutter app on Android
+pnpm agenteract-agents launch flutter-app --platform flutter --device emulator-5554
+
+# Launch web app in headless mode
+pnpm agenteract-agents launch vite-app --headless
+```
+
+**When to use:**
+- Starting an app for testing or interaction
+- Launching on a specific device after device selection
+- Automating app startup in test workflows
+
+**Returns:** Launch result with device info, platform, and connection status
+
+### Tool: Stop App
+
+Stop a running application gracefully or forcefully.
+
+**Command:**
+```bash
+pnpm agenteract-agents stop <project> [options]
+```
+
+**Options:**
+- `--device <id>`: Target specific device ID
+- `--force`: Force stop (Android: `force-stop`, Desktop: SIGKILL)
+
+**Examples:**
+```bash
+# Stop app gracefully
+pnpm agenteract-agents stop expo-app
+
+# Force stop on specific device
+pnpm agenteract-agents stop expo-app --device emulator-5554 --force
+```
+
+**When to use:**
+- Cleaning up after tests
+- Stopping a frozen or unresponsive app
+- Preparing for a fresh app launch
+
+### Tool: Build App
+
+Build an application for a target platform and configuration.
+
+**Command:**
+```bash
+pnpm agenteract-agents build <project> [options]
+```
+
+**Options:**
+- `--platform <type>`: Target platform (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--config <type>`: Build configuration: `debug` (default) or `release`
+
+**Examples:**
+```bash
+# Build debug version with auto-detected platform
+pnpm agenteract-agents build flutter-app
+
+# Build release version for Android
+pnpm agenteract-agents build flutter-app --platform flutter --config release
+
+# Build Swift iOS app
+pnpm agenteract-agents build swift-app --platform swift --config debug
+```
+
+**When to use:**
+- Preparing an app for deployment
+- Building before running tests
+- Creating release builds for distribution
+
+**Platform-specific behavior:**
+- **Flutter/KMP**: Runs `./gradlew assembleDebug/Release` or `flutter build ios`
+- **Vite**: Runs `npm run build`
+- **Swift**: Runs `xcodebuild -scheme ... build`
+
+### Tool: Setup Operations
+
+Perform setup operations like install, reinstall, or clear app data.
+
+**Command:**
+```bash
+pnpm agenteract-agents setup <project> <action> [options]
+```
+
+**Actions:**
+- `install`: Install the app on device
+- `reinstall`: Uninstall and reinstall the app
+- `clearData`: Clear app data/cache (Android) or uninstall (iOS)
+
+**Options:**
+- `--device <id>`: Target specific device ID
+- `--platform <type>`: Override platform detection
+
+**Examples:**
+```bash
+# Install app on default device
+pnpm agenteract-agents setup expo-app install
+
+# Reinstall on specific device
+pnpm agenteract-agents setup flutter-app reinstall --device emulator-5554
+
+# Clear app data (Android) or uninstall (iOS)
+pnpm agenteract-agents setup expo-app clearData --platform expo
+```
+
+**When to use:**
+- Ensuring a fresh app installation before tests
+- Clearing app state between test runs
+- Installing app binaries on new devices
+
+**Platform-specific behavior:**
+- **Android install**: Runs `./gradlew installDebug`
+- **Android clearData**: Runs `adb shell pm clear <bundleId>`
+- **iOS clearData**: Uninstalls app (iOS has no direct clear data command)
+
+### Device Management
+
+**Default Device Selection:**
+Agenteract automatically manages device selection with the following priority:
+1. Explicit `--device` flag (highest priority)
+2. Default device from `.agenteract-runtime.json`
+3. Auto-detected device (booted simulator or first available)
+
+**Setting Default Device:**
+When you use the `--device` flag, that device is automatically saved as the default for future commands:
+
+```bash
+# First launch with explicit device
+pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+
+# Future commands use this device by default
+pnpm agenteract-agents launch expo-app
+pnpm agenteract-agents stop expo-app
+```
+
+### Lifecycle Configuration
+
+Add optional lifecycle configuration to `agenteract.config.js` to customize behavior:
+
+```javascript
+export default {
+  projects: [
+    {
+      name: 'expo-app',
+      path: './app',
+      lifecycle: {
+        bundleId: {
+          ios: 'com.example.app',
+          android: 'com.example.app'
+        },
+        mainActivity: 'com.example.app.MainActivity', // Android only
+        launchTimeout: 30000, // ms
+        requiresInstall: false
+      }
+    }
+  ]
+};
+```
+
+**Note:** All lifecycle config is optional. Bundle IDs and main activities are auto-detected from platform files (app.json, Info.plist, build.gradle, AndroidManifest.xml) if not specified.
+
+### Platform Detection
+
+Agenteract auto-detects platforms by scanning for marker files:
+
+| Platform | Marker Files |
+|----------|-------------|
+| Vite | `vite.config.ts`, `vite.config.js` |
+| Expo | `app.json` with `expo` key |
+| Flutter | `pubspec.yaml` |
+| Swift | `Package.swift` |
+| KMP Android | `build.gradle.kts` with Kotlin/Android |
+| KMP Desktop | `build.gradle.kts` with Compose Desktop |
+
+Override detection with the `--platform` flag when needed.
+
+### Typical Workflow Examples
+
+**Test Setup and Execution:**
+```bash
+# 1. Ensure fresh app state
+pnpm agenteract-agents setup expo-app reinstall
+
+# 2. Launch the app
+pnpm agenteract-agents launch expo-app
+
+# 3. Run your tests (hierarchy, tap, input, etc.)
+pnpm agenteract-agents hierarchy expo-app
+pnpm agenteract-agents tap expo-app login-button
+
+# 4. Clean up
+pnpm agenteract-agents stop expo-app
+```
+
+**Multi-Device Testing:**
+```bash
+# Test on iOS
+pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents hierarchy expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents stop expo-app --device "iPhone 15 Pro"
+
+# Test on Android
+pnpm agenteract-agents launch expo-app --device emulator-5554
+pnpm agenteract-agents hierarchy expo-app --device emulator-5554
+pnpm agenteract-agents stop expo-app --device emulator-5554
+```
+
+**Build and Deploy:**
+```bash
+# Build release version
+pnpm agenteract-agents build flutter-app --config release
+
+# Install on device
+pnpm agenteract-agents setup flutter-app install --device <device-id>
+
+# Launch and verify
+pnpm agenteract-agents launch flutter-app --device <device-id>
+```
+
 ## Tool: Get View Hierarchy
 
 This is your primary tool for "seeing" the application's current user interface. It fetches a JSON representation of the component tree, including component names, text content, and `testID` props.
@@ -792,3 +1038,261 @@ import { createAgentBinding } from '@agenteract/react';
 ```
 
 You can see how this is handled by agent-server requests in `https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/packages/react/src/AgentDebugBridge.tsx`.
+
+## Tool: Agent Links (agentLink)
+
+Agent Links provide a way to trigger app-specific actions through deep link-style URLs sent over the WebSocket connection. Unlike pairing deep links (which configure the server connection), agentLinks are sent to already-connected apps to trigger custom behaviors.
+
+**Use Cases:**
+- Reset app state during automated testing
+- Navigate to specific screens or routes
+- Reload or restart the app
+- Trigger any custom app action
+
+**Command:**
+```bash
+pnpm agenteract-agents agent-link <project> <url>
+```
+
+**Examples:**
+```bash
+# Reset application state (commonly used in tests)
+pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+
+# Navigate to a specific screen
+pnpm agenteract-agents agent-link expo-app agenteract://navigate?screen=settings
+
+# Reload the application
+pnpm agenteract-agents agent-link expo-app agenteract://reload
+
+# Custom action with parameters
+pnpm agenteract-agents agent-link expo-app agenteract://custom?param1=value1&param2=value2
+```
+
+**How It Works:**
+
+When you send an agentLink, the app's `onAgentLink` handler receives the URL and decides how to process it:
+
+1. If the handler returns `true`, the app processed the link
+2. If the handler returns `false`, `AgentDebugBridge` handles it (for pairing/config links)
+
+**URL Format:**
+- Scheme: `agenteract://`
+- Hostname: Action identifier (e.g., `reset_state`, `navigate`, `reload`)
+- Query parameters: Optional parameters (e.g., `?screen=settings&tab=profile`)
+
+**Implementation Guide:**
+
+Apps must provide an `onAgentLink` handler to `AgentDebugBridge` to process agentLinks. See the platform-specific examples below.
+
+**React/Expo Example:**
+```tsx
+import { AgentDebugBridge } from '@agenteract/react';
+
+// URL parsing helper
+const parseURL = (url: string) => {
+  const [schemeAndHostname, queryString] = url.split('?');
+  const hostname = schemeAndHostname.split('://')[1] || '';
+  
+  const queryParams: Record<string, string> = {};
+  if (queryString) {
+    queryString.split('&').forEach(param => {
+      const [key, value] = param.split('=');
+      queryParams[key] = decodeURIComponent(value);
+    });
+  }
+  
+  return { hostname, queryParams };
+};
+
+const handleAgentLink = async (url: string): Promise<boolean> => {
+  const { hostname, queryParams } = parseURL(url);
+  
+  switch (hostname) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true; // Handled by app
+    case 'navigate':
+      // Navigate to screen from query params
+      navigation.navigate(queryParams.screen);
+      return true;
+    case 'reload':
+      // Reload the app
+      Updates.reloadAsync();
+      return true;
+    default:
+      return false; // Let AgentDebugBridge handle config links
+  }
+};
+
+<AgentDebugBridge 
+  projectName="expo-app"
+  onAgentLink={handleAgentLink}
+/>
+```
+
+**Flutter Example:**
+```dart
+import 'package:agenteract/agenteract.dart';
+
+Future<bool> handleAgentLink(String url) async {
+  final uri = Uri.parse(url);
+  
+  switch (uri.host) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true;
+    case 'navigate':
+      // Navigate to screen
+      final screen = uri.queryParameters['screen'];
+      if (screen != null) {
+        Navigator.pushNamed(context, screen);
+      }
+      return true;
+    case 'reload':
+      // Reload the app (platform-specific)
+      await SystemNavigator.pop();
+      return true;
+    default:
+      return false;
+  }
+}
+
+AgentDebugBridge(
+  projectName: 'flutter-app',
+  onAgentLink: handleAgentLink,
+  child: MyApp(),
+)
+```
+
+**Kotlin (Compose Multiplatform) Example:**
+```kotlin
+import io.agenteract.AgentDebugBridge
+import java.net.URI
+
+val handleAgentLink: suspend (String) -> Boolean = { url ->
+    val uri = URI(url)
+    when (uri.host) {
+        "reset_state" -> {
+            resetAppState()
+            true
+        }
+        "navigate" -> {
+            // Parse query parameters
+            val params = uri.query?.split("&")
+                ?.associate {
+                    val (key, value) = it.split("=")
+                    key to value
+                }
+            val screen = params?.get("screen")
+            navController.navigate(screen ?: "home")
+            true
+        }
+        "reload" -> {
+            // Reload logic (platform-specific)
+            restartApp()
+            true
+        }
+        else -> false
+    }
+}
+
+AgentDebugBridge(
+    projectName = "kmp-app",
+    onAgentLink = handleAgentLink
+)
+```
+
+**Best Practices:**
+
+1. **Always return a boolean**: Return `true` if handled, `false` otherwise
+2. **Validate parameters**: Check query parameters exist before using them
+3. **Log actions**: Use console logging to confirm agentLinks were processed
+4. **Handle errors gracefully**: Catch exceptions and return `false` on error
+5. **Document your links**: Keep a list of supported agentLink actions in your code
+
+**Helper Utilities:**
+
+The example apps include URL parsing utilities that you can reference:
+- React/Expo: `/examples/expo-example/app/utils/deepLinkUtils.ts`
+- React (web): `/examples/react-example/src/utils/deepLinkUtils.ts`
+
+**Common Patterns:**
+
+**Reset State Pattern (for testing):**
+```tsx
+case 'reset_state':
+  // Clear all state
+  setCounter(0);
+  setUserData(null);
+  setFormValues(defaultFormValues);
+  console.log('State reset');
+  return true;
+```
+
+**Navigation Pattern:**
+```tsx
+case 'navigate':
+  const { screen, params } = queryParams;
+  if (screen) {
+    // Parse params if needed (e.g., params={"userId":123})
+    const parsedParams = params ? JSON.parse(params) : undefined;
+    navigation.navigate(screen, parsedParams);
+    return true;
+  }
+  return false;
+```
+
+**Reload Pattern:**
+```tsx
+case 'reload':
+  // React Native/Expo
+  if (Updates.reloadAsync) {
+    Updates.reloadAsync();
+  } else {
+    // Dev mode reload
+    DevSettings.reload();
+  }
+  return true;
+```
+
+**Platform-Specific Notes:**
+
+- **React/Expo**: AgentLinks are handled alongside pairing deep links in the same `onAgentLink` handler
+- **Flutter**: Uses the same `onAgentLink` callback, requires async handling
+- **Kotlin**: Uses suspend function for `onAgentLink`, supports coroutines
+- **Swift**: Not yet implemented (coming soon)
+
+**Debugging:**
+
+If agentLinks aren't working:
+1. Check that `onAgentLink` handler is provided to `AgentDebugBridge`
+2. Verify the app is connected (use `hierarchy` command to confirm)
+3. Check console logs to see if the handler was called
+4. Ensure you're returning `true` for handled links
+5. Use dev-logs to see any error messages
+
+**Testing Example:**
+
+A complete test workflow using agentLinks:
+```bash
+# 1. Check initial state
+pnpm agenteract-agents hierarchy expo-app
+
+# 2. Perform some interactions
+pnpm agenteract-agents tap expo-app increment-button
+pnpm agenteract-agents tap expo-app increment-button
+
+# 3. Verify state changed
+pnpm agenteract-agents hierarchy expo-app
+# (should show counter = 2)
+
+# 4. Reset state using agentLink
+pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+
+# 5. Confirm state was reset
+pnpm agenteract-agents hierarchy expo-app
+# (should show counter = 0)
+```

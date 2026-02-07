@@ -425,6 +425,134 @@ AI agents can now connect to the Agenteract server using the tools described in 
 
 Your agent is now ready to Agenteract!
 
+### Agent Links (agentLink)
+
+**Agent Links** provide a way to trigger app-specific actions through deep link-style URLs sent over the WebSocket connection. Unlike pairing deep links (which configure the server connection), agentLinks are sent to already-connected apps to trigger custom behaviors.
+
+**Use Cases:**
+- Reset app state during automated testing
+- Navigate to specific screens
+- Reload or restart the app
+- Trigger custom app actions
+
+**Command:**
+```bash
+npx @agenteract/cli agent-link <project> <url>
+```
+
+**Examples:**
+```bash
+# Reset application state
+npx @agenteract/cli agent-link expo-app agenteract://reset_state
+
+# Navigate to a specific screen
+npx @agenteract/cli agent-link expo-app agenteract://navigate?screen=settings
+
+# Reload the application
+npx @agenteract/cli agent-link expo-app agenteract://reload
+```
+
+**Implementation:**
+
+To handle agentLinks in your application, provide an `onAgentLink` handler to `AgentDebugBridge`:
+
+**React/Expo:**
+```tsx
+import { AgentDebugBridge } from '@agenteract/react';
+
+const handleAgentLink = async (url: string): Promise<boolean> => {
+  const { hostname, queryParams } = parseURL(url);
+  
+  switch (hostname) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true; // Handled by app
+    case 'navigate':
+      // Navigate to screen from query params
+      navigation.navigate(queryParams.screen);
+      return true;
+    default:
+      return false; // Let AgentDebugBridge handle config links
+  }
+};
+
+<AgentDebugBridge 
+  projectName="expo-app"
+  onAgentLink={handleAgentLink}
+/>
+```
+
+**Flutter:**
+```dart
+import 'package:agenteract/agenteract.dart';
+
+Future<bool> handleAgentLink(String url) async {
+  final uri = Uri.parse(url);
+  
+  switch (uri.host) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true;
+    case 'navigate':
+      // Navigate to screen
+      Navigator.pushNamed(context, uri.queryParameters['screen'] ?? '/');
+      return true;
+    default:
+      return false;
+  }
+}
+
+AgentDebugBridge(
+  projectName: 'flutter-app',
+  onAgentLink: handleAgentLink,
+  child: MyApp(),
+)
+```
+
+**Kotlin (Compose Multiplatform):**
+```kotlin
+import io.agenteract.AgentDebugBridge
+
+val handleAgentLink: suspend (String) -> Boolean = { url ->
+    val uri = URI(url)
+    when (uri.host) {
+        "reset_state" -> {
+            resetAppState()
+            true
+        }
+        "navigate" -> {
+            val screen = uri.query?.split("=")?.get(1)
+            navController.navigate(screen ?: "home")
+            true
+        }
+        else -> false
+    }
+}
+
+AgentDebugBridge(
+    projectName = "kmp-app",
+    onAgentLink = handleAgentLink
+)
+```
+
+**Return Values:**
+- Return `true` if your handler processes the agentLink
+- Return `false` to let `AgentDebugBridge` handle it (for pairing/config links)
+
+**URL Format:**
+- Scheme: `agenteract://`
+- Hostname: Action identifier (e.g., `reset_state`, `navigate`, `reload`)
+- Query parameters: Optional parameters (e.g., `?screen=settings&tab=profile`)
+
+**Helper Utilities:**
+
+The example apps include URL parsing utilities:
+- `/examples/expo-example/app/utils/deepLinkUtils.ts`
+- `/examples/react-example/src/utils/deepLinkUtils.ts`
+
+These provide a `parseURL()` function to extract the hostname and query parameters from agentLink URLs.
 
 ---
 
@@ -588,6 +716,179 @@ pnpm test:e2e:kotlin
 **Authentication:** Uses `expect` to automate the authentication process. See [docs/VERDACCIO_AUTH.md](docs/VERDACCIO_AUTH.md) for details.
 
 See [docs/INTEGRATION_TESTING.md](docs/INTEGRATION_TESTING.md) for complete information.
+
+## **📱 App Lifecycle Management**
+
+Agenteract provides CLI commands to manage app launching, stopping, building, and setup operations across all supported platforms (React/Vite, Expo, Flutter, Swift, Kotlin).
+
+### **Launch an App**
+
+Launch your app on a device or simulator:
+
+```bash
+npx @agenteract/agents launch <project> [options]
+```
+
+**Options:**
+- `--device <id>` - Target specific device/simulator ID
+- `--platform <type>` - Override platform detection (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--headless` - Launch browser in headless mode (web apps only)
+
+**Examples:**
+```bash
+# Launch with auto-detected platform and default device
+npx @agenteract/agents launch expo-app
+
+# Launch on specific iOS simulator
+npx @agenteract/agents launch expo-app --device "iPhone 15 Pro"
+
+# Launch Flutter app on Android with explicit platform
+npx @agenteract/agents launch flutter-app --platform flutter --device emulator-5554
+
+# Launch web app in headless mode
+npx @agenteract/agents launch vite-app --headless
+```
+
+### **Stop an App**
+
+Stop a running application:
+
+```bash
+npx @agenteract/agents stop <project> [options]
+```
+
+**Options:**
+- `--device <id>` - Target specific device ID
+- `--force` - Force stop (Android: `force-stop` instead of `stop`, Desktop: SIGKILL instead of SIGTERM)
+
+**Examples:**
+```bash
+# Stop app gracefully
+npx @agenteract/agents stop expo-app
+
+# Force stop on specific device
+npx @agenteract/agents stop expo-app --device emulator-5554 --force
+```
+
+### **Build an App**
+
+Build your application for a target platform:
+
+```bash
+npx @agenteract/agents build <project> [options]
+```
+
+**Options:**
+- `--platform <type>` - Target platform (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--config <type>` - Build configuration: `debug` (default) or `release`
+
+**Examples:**
+```bash
+# Build debug version with auto-detected platform
+npx @agenteract/agents build flutter-app
+
+# Build release version for Android
+npx @agenteract/agents build flutter-app --platform flutter --config release
+
+# Build Swift iOS app
+npx @agenteract/agents build swift-app --platform swift --config debug
+```
+
+### **Setup Operations**
+
+Perform setup operations like install, reinstall, or clear app data:
+
+```bash
+npx @agenteract/agents setup <project> <action> [options]
+```
+
+**Actions:**
+- `install` - Install the app on device
+- `reinstall` - Uninstall and reinstall the app
+- `clearData` - Clear app data/cache (Android) or uninstall (iOS)
+
+**Options:**
+- `--device <id>` - Target specific device ID
+- `--platform <type>` - Override platform detection
+
+**Examples:**
+```bash
+# Install app on default device
+npx @agenteract/agents setup expo-app install
+
+# Reinstall on specific device
+npx @agenteract/agents setup flutter-app reinstall --device emulator-5554
+
+# Clear app data (Android) or uninstall (iOS)
+npx @agenteract/agents setup expo-app clearData --platform expo
+```
+
+### **Lifecycle Configuration**
+
+Add optional lifecycle configuration to your `agenteract.config.js`:
+
+```javascript
+export default {
+  projects: [
+    {
+      name: 'expo-app',
+      path: './examples/expo-app',
+      devServer: { command: 'npx expo start', port: 8790 },
+      lifecycle: {
+        bundleId: {
+          ios: 'com.example.expoapp',
+          android: 'com.example.expoapp'
+        },
+        mainActivity: 'com.example.expoapp.MainActivity', // Android only
+        launchTimeout: 30000, // ms, default: 30000
+        requiresInstall: false // default: false
+      }
+    }
+  ]
+};
+```
+
+**Configuration Options:**
+- `bundleId` - App bundle identifier (auto-detected from app.json, Info.plist, build.gradle if not specified)
+- `mainActivity` - Android main activity class (auto-detected from AndroidManifest.xml if not specified)
+- `launchTimeout` - Maximum time to wait for app launch in milliseconds
+- `requiresInstall` - Whether setup operations should install before launching
+
+### **Device Management**
+
+Agenteract automatically detects and manages devices:
+
+**Default Device Selection:**
+- Explicit `--device` flag takes highest priority
+- Falls back to default device from `.agenteract-runtime.json`
+- For iOS: Uses booted simulator or first available
+- For Android: Uses first device from `adb devices`
+
+**Set Default Device:**
+```bash
+# Device info is automatically saved when you use --device flag
+npx @agenteract/agents launch expo-app --device "iPhone 15 Pro"
+
+# Future launches will use this device by default
+npx @agenteract/agents launch expo-app
+```
+
+Default device configuration is stored in `.agenteract-runtime.json` (should not be committed to SCM).
+
+### **Platform Detection**
+
+Agenteract auto-detects your platform by scanning for marker files:
+
+| Platform | Marker Files |
+|----------|-------------|
+| **Vite** | `vite.config.ts`, `vite.config.js` |
+| **Expo** | `app.json` with `expo` key |
+| **Flutter** | `pubspec.yaml` |
+| **Swift** | `Package.swift` |
+| **KMP Android** | `build.gradle.kts` with Kotlin/Android |
+| **KMP Desktop** | `build.gradle.kts` with Compose Desktop |
+
+You can override detection with the `--platform` flag.
 
 ### **Releases & Publishing**
 
