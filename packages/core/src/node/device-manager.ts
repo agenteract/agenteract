@@ -68,6 +68,11 @@ export async function listIOSDevices(): Promise<Device[]> {
       const platform = platformMatch ? platformMatch[0] : undefined;
       
       for (const device of deviceList as any[]) {
+        // Skip unavailable devices (missing runtime, etc.)
+        if (device.isAvailable === false) {
+          continue;
+        }
+        
         devices.push({
           id: device.udid,
           name: device.name,

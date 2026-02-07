@@ -17,17 +17,31 @@ jest.mock('util', () => ({
 
 // Mock fs
 const mockExistsSync = jest.fn();
+const mockReadFileSync = jest.fn();
 jest.mock('fs', () => ({
   existsSync: mockExistsSync,
+  readFileSync: mockReadFileSync,
+}));
+
+// Mock platform-detector
+const mockDetectPlatform = jest.fn();
+jest.mock('./platform-detector', () => ({
+  detectPlatform: mockDetectPlatform,
+}));
+
+// Mock bundle-resolver
+const mockResolveBundleInfo = jest.fn();
+jest.mock('./bundle-resolver', () => ({
+  resolveBundleInfo: mockResolveBundleInfo,
 }));
 
 import {
   getDeviceState,
   findGradle,
   bootDevice,
-  // Phase 2-4 functions not yet implemented:
-  // clearAppData,
-  // setupPortForwarding,
+  clearAppData,
+  setupPortForwarding,
+  // Phase 3-4 functions not yet implemented:
   // installApp,
   // uninstallApp,
   // reinstallApp,
@@ -104,6 +118,60 @@ describe('lifecycle-utils', () => {
 
         expect(result).toEqual({
           id: 'ABC-123',
+          state: 'shutdown',
+          platform: 'ios',
+        });
+      });
+
+      it('should handle "booted" identifier when device is booted', async () => {
+        const mockOutput = {
+          devices: {
+            'com.apple.CoreSimulator.SimRuntime.iOS-17-0': [
+              {
+                udid: 'ABC-123',
+                name: 'iPhone 15',
+                state: 'Booted',
+              },
+            ],
+          },
+        };
+
+        mockExecFileAsync.mockResolvedValue({
+          stdout: JSON.stringify(mockOutput),
+          stderr: '',
+        });
+
+        const result = await getDeviceState('booted');
+
+        expect(result).toEqual({
+          id: 'ABC-123',
+          state: 'booted',
+          platform: 'ios',
+        });
+      });
+
+      it('should handle "booted" identifier when no device is booted', async () => {
+        const mockOutput = {
+          devices: {
+            'com.apple.CoreSimulator.SimRuntime.iOS-17-0': [
+              {
+                udid: 'ABC-123',
+                name: 'iPhone 15',
+                state: 'Shutdown',
+              },
+            ],
+          },
+        };
+
+        mockExecFileAsync.mockResolvedValue({
+          stdout: JSON.stringify(mockOutput),
+          stderr: '',
+        });
+
+        const result = await getDeviceState('booted');
+
+        expect(result).toEqual({
+          id: 'booted',
           state: 'shutdown',
           platform: 'ios',
         });
@@ -436,6 +504,254 @@ describe('lifecycle-utils', () => {
         expect(console.log).toHaveBeenCalledWith(
           'ℹ️  Not applicable for desktop platform (NOOP)'
         );
+    });
+  });
+
+  describe('clearAppData', () => {
+    it('should clear Android app data using pm clear', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockResolvedValue({ stdout: 'Success', stderr: '' });
+
+      await clearAppData({
+        projectPath: '/test/project',
+        device,
+        bundleId: 'com.example.app',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'shell', 'pm', 'clear', 'com.example.app'],
+        { timeout: 30000 }
+      );
+      expect(console.log).toHaveBeenCalledWith('✓ Cleared app data for com.example.app');
+    });
+
+    it('should uninstall iOS app to clear data', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await clearAppData({
+        projectPath: '/test/project',
+        device,
+        bundleId: 'com.example.app',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'uninstall', 'ABC-123', 'com.example.app'],
+        { timeout: 30000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        '✓ Cleared app data for com.example.app (uninstalled on iOS)'
+      );
+    });
+
+    it('should handle app not installed gracefully (Android)', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockRejectedValue(new Error('Unknown package: com.example.app'));
+
+      await clearAppData({
+        projectPath: '/test/project',
+        device,
+        bundleId: 'com.example.app',
+      });
+
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  App com.example.app not installed, data already clear (NOOP)'
+      );
+    });
+
+    it('should handle app not installed gracefully (iOS)', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockRejectedValue(
+        new Error('The app is not installed on the specified device')
+      );
+
+      await clearAppData({
+        projectPath: '/test/project',
+        device,
+        bundleId: 'com.example.app',
+      });
+
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  App com.example.app not installed, data already clear (NOOP)'
+      );
+    });
+
+    it('should handle Expo Go as NOOP', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      // Mock detectPlatform to return 'expo'
+      mockDetectPlatform.mockResolvedValue('expo');
+      
+      // Mock isExpoGo to return true (no ios/android folders)
+      mockExistsSync.mockReturnValue(false);
+
+      await clearAppData({
+        projectPath: '/test/expo-go-project',
+        device,
+        bundleId: 'host.exp.Exponent',
+      });
+
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Cannot clear data for Expo Go apps (NOOP)'
+      );
+    });
+
+    it('should handle desktop as NOOP', async () => {
+      const device: Device = {
+        id: 'desktop',
+        name: 'Desktop',
+        type: 'desktop',
+      };
+
+      await clearAppData({
+        projectPath: '/test/project',
+        device,
+        bundleId: 'com.example.app',
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Not applicable for desktop platform (NOOP)'
+      );
+    });
+  });
+
+  describe('setupPortForwarding', () => {
+    it('should setup Android port forwarding', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await setupPortForwarding({
+        device,
+        port: 8081,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'reverse', 'tcp:8081', 'tcp:8081'],
+        { timeout: 10000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        '✓ Port forwarding setup: device:8081 -> host:8081'
+      );
+    });
+
+    it('should setup Android port forwarding with custom host port', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await setupPortForwarding({
+        device,
+        port: 8081,
+        hostPort: 3000,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        ['-s', 'emulator-5554', 'reverse', 'tcp:8081', 'tcp:3000'],
+        { timeout: 10000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        '✓ Port forwarding setup: device:8081 -> host:3000'
+      );
+    });
+
+    it('should handle already forwarded port gracefully', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockExecFileAsync.mockRejectedValue(new Error('already reversed'));
+
+      await setupPortForwarding({
+        device,
+        port: 8081,
+      });
+
+      expect(console.log).toHaveBeenCalledWith('ℹ️  Port 8081 already forwarded (NOOP)');
+    });
+
+    it('should handle iOS as NOOP', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      await setupPortForwarding({
+        device,
+        port: 8081,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  iOS simulators share localhost with host (NOOP)'
+      );
+    });
+
+    it('should handle desktop as NOOP', async () => {
+      const device: Device = {
+        id: 'desktop',
+        name: 'Desktop',
+        type: 'desktop',
+      };
+
+      await setupPortForwarding({
+        device,
+        port: 8081,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Not applicable for desktop platform (NOOP)'
+      );
     });
   });
 

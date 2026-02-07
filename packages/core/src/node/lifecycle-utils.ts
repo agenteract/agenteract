@@ -26,6 +26,18 @@ export interface AppLifecycleOptions {
   
   /** Force stop (Android only) - use force-stop instead of graceful kill */
   force?: boolean;
+  
+  /** 
+   * Optional project name for Expo Go apps - required for sending CLI commands
+   * If not provided, will attempt to resolve from projectPath
+   */
+  projectName?: string;
+  
+  /**
+   * Optional working directory for CLI commands (for Expo Go apps)
+   * This is where agenteract.config.js is located
+   */
+  cwd?: string;
 }
 
 /**
@@ -137,6 +149,30 @@ export async function getDeviceState(device: Device | string): Promise<DeviceSta
       
       const data = JSON.parse(stdout);
       const devices = data.devices;
+      
+      // Special case: 'booted' identifier means "currently booted device"
+      if (deviceId === 'booted') {
+        // Look for any booted device
+        for (const runtime in devices) {
+          const deviceList = devices[runtime];
+          const bootedDevice = deviceList.find((d: any) => d.state?.toLowerCase() === 'booted');
+          
+          if (bootedDevice) {
+            return { 
+              id: bootedDevice.udid, 
+              state: 'booted', 
+              platform: 'ios' 
+            };
+          }
+        }
+        
+        // No booted device found
+        return { 
+          id: 'booted', 
+          state: 'shutdown', 
+          platform: 'ios' 
+        };
+      }
       
       // Find the device across all runtime versions
       for (const runtime in devices) {
@@ -275,9 +311,16 @@ export async function bootDevice(options: DeviceBootOptions): Promise<void> {
   
   // iOS boot logic
   if (state.platform === 'ios') {
+    // Special case: if deviceId is 'booted' and state is 'shutdown', we need a real device to boot
+    if (deviceId === 'booted' && state.state === 'shutdown') {
+      throw new Error(
+        'No iOS simulator is currently booted. Please specify a device ID/name or boot a simulator manually using "xcrun simctl boot <device-id>"'
+      );
+    }
+    
     // Check if already booted
     if (state.state === 'booted') {
-      console.log(`ℹ️  Device ${deviceId} is already booted (NOOP)`);
+      console.log(`ℹ️  Device ${state.id} is already booted (NOOP)`);
       return;
     }
     
@@ -285,23 +328,24 @@ export async function bootDevice(options: DeviceBootOptions): Promise<void> {
       throw new Error(`Device ${deviceId} not found or in unknown state`);
     }
     
-    // Boot the simulator
+    // Boot the simulator - use the actual device ID from state (in case 'booted' was passed)
+    const actualDeviceId = state.id;
     try {
-      await execFileAsync('xcrun', ['simctl', 'boot', deviceId], {
+      await execFileAsync('xcrun', ['simctl', 'boot', actualDeviceId], {
         timeout: 10000,
       });
       
-      console.log(`🔄 Booting device ${deviceId}...`);
+      console.log(`🔄 Booting device ${actualDeviceId}...`);
       
       // Wait for boot if requested
       if (waitForBoot) {
         const startTime = Date.now();
         
         while (Date.now() - startTime < timeout) {
-          const currentState = await getDeviceState(device);
+          const currentState = await getDeviceState(actualDeviceId);
           
           if (currentState.state === 'booted') {
-            console.log(`✓ Device ${deviceId} booted successfully`);
+            console.log(`✓ Device ${actualDeviceId} booted successfully`);
             return;
           }
           
@@ -309,17 +353,188 @@ export async function bootDevice(options: DeviceBootOptions): Promise<void> {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
-        throw new Error(`Device ${deviceId} boot timed out after ${timeout}ms`);
+        throw new Error(`Device ${actualDeviceId} boot timed out after ${timeout}ms`);
       } else {
-        console.log(`✓ Boot initiated for device ${deviceId}`);
+        console.log(`✓ Boot initiated for device ${actualDeviceId}`);
       }
     } catch (error: any) {
       // Handle "already booted" error gracefully
       if (error.message?.includes('Unable to boot device in current state: Booted')) {
-        console.log(`ℹ️  Device ${deviceId} is already booted (NOOP)`);
+        console.log(`ℹ️  Device ${actualDeviceId} is already booted (NOOP)`);
         return;
       }
-      throw new Error(`Failed to boot iOS device ${deviceId}: ${error.message}`);
+      throw new Error(`Failed to boot iOS device ${actualDeviceId}: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Clear app data (cache, preferences, databases, etc.)
+ * 
+ * Platform-specific behavior:
+ * - iOS: Uninstalls and reinstalls the app (iOS cannot clear data without uninstalling)
+ * - Android: Uses `adb shell pm clear` to clear app data
+ * - Expo Go: NOOP (cannot clear data for Expo Go apps)
+ * - Desktop: NOOP (not applicable)
+ * 
+ * @param options - Lifecycle options including projectPath, device, and optional bundleId
+ * @throws Error if clearing fails or app is not installed
+ * 
+ * @example
+ * ```typescript
+ * // Clear data for a prebuilt app
+ * await clearAppData({
+ *   projectPath: '/path/to/app',
+ *   device: myDevice,
+ *   bundleId: 'com.example.myapp' // optional
+ * });
+ * ```
+ */
+export async function clearAppData(options: AppLifecycleOptions): Promise<void> {
+  const { projectPath, device, bundleId: bundleIdOverride } = options;
+  
+  // Get device info
+  const deviceObj = typeof device === 'string'
+    ? { id: device, type: 'ios' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const platform = deviceObj.type;
+  const deviceId = deviceObj.id;
+  
+  // Desktop is NOOP
+  if (platform === 'desktop') {
+    console.log('ℹ️  Not applicable for desktop platform (NOOP)');
+    return;
+  }
+  
+  // Detect project type
+  const platformInfo = await detectPlatform(projectPath);
+  
+  // Expo Go apps cannot have data cleared
+  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+    console.log('ℹ️  Cannot clear data for Expo Go apps (NOOP)');
+    return;
+  }
+  
+  // Resolve bundle ID if not provided
+  let bundleId = bundleIdOverride;
+  if (!bundleId) {
+    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+    bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
+    
+    if (!bundleId) {
+      throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
+    }
+  }
+  
+  // Platform-specific clearing
+  if (platform === 'ios') {
+    // iOS: Must uninstall to clear data (no way to clear without uninstalling)
+    try {
+      await execFileAsync('xcrun', ['simctl', 'uninstall', deviceId, bundleId], {
+        timeout: 30000,
+      });
+      console.log(`✓ Cleared app data for ${bundleId} (uninstalled on iOS)`);
+    } catch (error: any) {
+      // If app is not installed, that's fine - data is already "cleared"
+      if (error.message?.includes('No such file or directory') || 
+          error.message?.includes('not installed')) {
+        console.log(`ℹ️  App ${bundleId} not installed, data already clear (NOOP)`);
+        return;
+      }
+      throw new Error(`Failed to clear iOS app data for ${bundleId}: ${error.message}`);
+    }
+  } else if (platform === 'android') {
+    // Android: Use pm clear
+    try {
+      await execFileAsync('adb', ['-s', deviceId, 'shell', 'pm', 'clear', bundleId], {
+        timeout: 30000,
+      });
+      console.log(`✓ Cleared app data for ${bundleId}`);
+    } catch (error: any) {
+      // If package doesn't exist, data is already clear
+      if (error.message?.includes('Failed to clear') || 
+          error.message?.includes('Unknown package')) {
+        console.log(`ℹ️  App ${bundleId} not installed, data already clear (NOOP)`);
+        return;
+      }
+      throw new Error(`Failed to clear Android app data for ${bundleId}: ${error.message}`);
+    }
+  }
+}
+
+/**
+ * Setup port forwarding (Android only)
+ * 
+ * Forwards a port from the Android device/emulator to the host machine.
+ * This is useful for accessing dev servers running on the host (e.g., Metro, Vite).
+ * 
+ * Platform-specific behavior:
+ * - Android: Uses `adb reverse tcp:<port> tcp:<hostPort>` to forward ports
+ * - iOS: NOOP (iOS simulators share localhost with the host)
+ * - Desktop: NOOP (not applicable)
+ * 
+ * @param options - Port forwarding options including device, port, and optional hostPort
+ * @throws Error if port forwarding setup fails
+ * 
+ * @example
+ * ```typescript
+ * // Forward port 8081 (Metro bundler)
+ * await setupPortForwarding({
+ *   device: androidEmulator,
+ *   port: 8081
+ * });
+ * 
+ * // Forward device port 8081 to host port 3000
+ * await setupPortForwarding({
+ *   device: androidEmulator,
+ *   port: 8081,
+ *   hostPort: 3000
+ * });
+ * ```
+ */
+export async function setupPortForwarding(options: PortForwardingOptions): Promise<void> {
+  const { device, port, hostPort = port } = options;
+  
+  // Get device info
+  const deviceObj = typeof device === 'string'
+    ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const platform = deviceObj.type;
+  const deviceId = deviceObj.id;
+  
+  // iOS simulators share localhost with host
+  if (platform === 'ios') {
+    console.log('ℹ️  iOS simulators share localhost with host (NOOP)');
+    return;
+  }
+  
+  // Desktop doesn't need port forwarding
+  if (platform === 'desktop') {
+    console.log('ℹ️  Not applicable for desktop platform (NOOP)');
+    return;
+  }
+  
+  // Android: Setup reverse port forwarding
+  if (platform === 'android') {
+    try {
+      await execFileAsync('adb', [
+        '-s', deviceId,
+        'reverse',
+        `tcp:${port}`,
+        `tcp:${hostPort}`
+      ], {
+        timeout: 10000,
+      });
+      console.log(`✓ Port forwarding setup: device:${port} -> host:${hostPort}`);
+    } catch (error: any) {
+      // If port is already forwarded, that's fine
+      if (error.message?.includes('already reversed')) {
+        console.log(`ℹ️  Port ${port} already forwarded (NOOP)`);
+        return;
+      }
+      throw new Error(`Failed to setup port forwarding for port ${port}: ${error.message}`);
     }
   }
 }
@@ -354,8 +569,40 @@ export async function bootDevice(options: DeviceBootOptions): Promise<void> {
  * });
  * ```
  */
+/**
+ * Start/launch an app - platform and framework agnostic
+ * 
+ * Automatically detects app type (Expo Go, prebuilt native, etc.) and uses appropriate launch method.
+ * For Expo Go apps, sends CLI command to reopen the app. For prebuilt apps, uses native launch commands.
+ * 
+ * @param options - Lifecycle options
+ * @example
+ * ```typescript
+ * // Minimal usage - auto-detects everything
+ * await startApp({
+ *   projectPath: '/path/to/expo-app',
+ *   device: iosSimulator
+ * });
+ * 
+ * // Expo Go with project name (for CLI commands)
+ * await startApp({
+ *   projectPath: '/path/to/expo-app',
+ *   device: iosSimulator,
+ *   projectName: 'my-expo-app',
+ *   cwd: '/path/to/agenteract/config'
+ * });
+ * 
+ * // With bundle ID override
+ * await startApp({
+ *   projectPath: '/path/to/expo-app',
+ *   device: { type: 'android', id: 'emulator-5554', name: 'Pixel 5' },
+ *   bundleId: 'com.mycompany.myapp',
+ *   mainActivity: '.MainActivity'
+ * });
+ * ```
+ */
 export async function startApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, mainActivity } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName, cwd } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string' 
@@ -367,22 +614,30 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
   // Detect project type
   const platformInfo = await detectPlatform(projectPath);
   
+  // Check if Expo Go
+  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  
   // Resolve bundle IDs if not provided
   let bundleId = bundleIdOverride;
   if (!bundleId) {
-    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
-    bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
-    
-    if (!bundleId) {
-      throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
+    if (isExpoGoApp) {
+      // For Expo Go, use the Expo Go bundle ID
+      bundleId = platform === 'ios' ? 'host.exp.Exponent' : 'host.exp.exponent';
+    } else {
+      const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+      bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
+      
+      if (!bundleId) {
+        throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
+      }
     }
   }
   
   // Handle different app types
-  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
-    // Expo Go - send keystroke to CLI
+  if (isExpoGoApp) {
+    // Expo Go - send keystroke to CLI to reopen the app
     const keystroke = platform === 'ios' ? 'i' : 'a';
-    await sendExpoCLICommand(projectPath, keystroke);
+    await sendExpoCLICommand(projectName, keystroke, cwd);
   } else {
     // Prebuilt apps - use platform commands
     if (platform === 'ios') {
@@ -418,14 +673,22 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
   
   // Detect project type and resolve bundle ID
   const platformInfo = await detectPlatform(projectPath);
-  let bundleId = bundleIdOverride;
   
+  // Check if Expo Go
+  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  
+  let bundleId = bundleIdOverride;
   if (!bundleId) {
-    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
-    bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
-    
-    if (!bundleId) {
-      throw new Error(`Bundle ID not found for ${platform}`);
+    if (isExpoGoApp) {
+      // For Expo Go, use the Expo Go bundle ID
+      bundleId = platform === 'ios' ? 'host.exp.Exponent' : 'host.exp.exponent';
+    } else {
+      const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+      bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
+      
+      if (!bundleId) {
+        throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
+      }
     }
   }
   
@@ -629,22 +892,37 @@ export async function restartAndroidApp(
  * @param projectPath - Path to Expo project (used for context, not actually used for finding the server)
  * @param keystroke - The keystroke to send ('i', 'a', 'r', etc.)
  */
-async function sendExpoCLICommand(projectPath: string, keystroke: string): Promise<void> {
+/**
+ * Send a keystroke command to the Expo CLI
+ * This triggers the Expo dev server to perform an action (e.g., 'i' to open iOS, 'a' to open Android)
+ * 
+ * @param projectName - Project name from agenteract.config.js
+ * @param keystroke - Single character command ('i' for iOS, 'a' for Android, etc.)
+ * @param cwd - Working directory where agenteract.config.js is located (defaults to process.cwd())
+ */
+async function sendExpoCLICommand(projectName: string | undefined, keystroke: string, cwd?: string): Promise<void> {
   // The Expo CLI is typically running in the background via the PTY server
   // We need to send the keystroke through the PTY interface
   // This is handled by the agent-server's PTY functionality
   
-  // For now, we'll use a simple approach: send the keystroke via stdin
-  // In practice, this would go through the agent-server's cmd endpoint
+  if (!projectName) {
+    throw new Error('projectName is required for Expo Go apps. Pass projectName option to startApp().');
+  }
+  
   try {
     const { execFile: execFileCb } = await import('child_process');
     const util = await import('util');
     const execFilePromise = util.promisify(execFileCb);
     
     // Call the agents CLI to send the command
-    await execFilePromise('npx', ['@agenteract/agents', 'cmd', projectPath, keystroke], {
-      timeout: 5000,
-    });
+    // Format: npx @agenteract/agents cmd [project-name] [keystroke]
+    // Use cwd to specify where the config is located
+    const execOptions: any = { timeout: 5000 };
+    if (cwd) {
+      execOptions.cwd = cwd;
+    }
+    
+    await execFilePromise('npx', ['@agenteract/agents', 'cmd', projectName, keystroke], execOptions);
   } catch (error: any) {
     throw new Error(`Failed to send Expo CLI command '${keystroke}': ${error.message}`);
   }

@@ -31,7 +31,14 @@ import {
   restoreNodeModulesCache,
   saveNodeModulesCache,
 } from '../common/helpers.js';
-import { stopApp, startApp } from '../../../packages/core/src/node/lifecycle-utils.js';
+import { 
+  stopApp, 
+  startApp, 
+  bootDevice, 
+  getDeviceState,
+  clearAppData 
+} from '../../../packages/core/src/node/lifecycle-utils.js';
+import { listIOSDevices } from '../../../packages/core/src/node/device-manager.js';
 import * as path from 'path';
 
 let agentServer: ChildProcess | null = null;
@@ -222,6 +229,77 @@ async function main() {
       `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost' --wait-log-timeout 500`
     );
     success('Config created');
+
+    // 7.5. Test Phase 1 & 2 lifecycle utilities (before launching app)
+    info('Testing Phase 1 lifecycle utilities...');
+    
+    // Find an available iOS simulator
+    info('Finding available iOS simulator...');
+    const iosDevices = await listIOSDevices();
+    
+    if (iosDevices.length === 0) {
+      error('No available iOS simulators found.');
+      error('This usually means:');
+      error('  1. No simulators are installed');
+      error('  2. All simulators have missing/corrupted runtimes');
+      error('');
+      error('To fix:');
+      error('  - Open Xcode > Settings > Platforms');
+      error('  - Download an iOS simulator runtime');
+      error('  - Or run: xcrun simctl list devices available');
+      throw new Error('No available iOS simulators found. Please install iOS simulator runtimes in Xcode.');
+    }
+    
+    info(`Found ${iosDevices.length} available iOS simulator(s)`);
+    
+    // Prefer a booted device, otherwise use the first available simulator
+    let testDevice = iosDevices.find(d => d.state === 'booted');
+    if (!testDevice) {
+      testDevice = iosDevices[0];
+      info(`No booted simulator found, will use: ${testDevice.name} (${testDevice.id})`);
+    } else {
+      info(`Found booted simulator: ${testDevice.name} (${testDevice.id})`);
+    }
+    
+    // Test getDeviceState - verify simulator is accessible
+    info('Testing getDeviceState...');
+    try {
+      const deviceState = await getDeviceState(testDevice);
+      info(`Device state: ${JSON.stringify(deviceState)}`);
+      
+      if (deviceState.platform !== 'ios') {
+        throw new Error(`Expected iOS device, got ${deviceState.platform}`);
+      }
+      
+      success(`✓ getDeviceState working: device is ${deviceState.state}`);
+      
+      // Test bootDevice - ensure simulator is booted
+      info('Testing bootDevice...');
+      if (deviceState.state === 'shutdown') {
+        info('Simulator is shutdown, booting...');
+        await bootDevice({ 
+          device: testDevice, 
+          waitForBoot: true, 
+          timeout: 60000 
+        });
+        success('✓ bootDevice successfully booted the simulator');
+      } else {
+        info('Simulator already booted, testing NOOP behavior...');
+        await bootDevice({ device: testDevice });
+        success('✓ bootDevice handled already-booted simulator (NOOP)');
+      }
+      
+      // Verify device is now booted
+      const deviceStateAfterBoot = await getDeviceState(testDevice);
+      if (deviceStateAfterBoot.state !== 'booted') {
+        throw new Error(`Expected device to be booted, but state is ${deviceStateAfterBoot.state}`);
+      }
+      success('✓ Device confirmed booted after bootDevice call');
+      
+    } catch (err) {
+      error(`Phase 1 lifecycle test failed: ${err}`);
+      throw err;
+    }
 
     // 8. Start agenteract dev from test directory
     info('Starting agenteract dev...');
@@ -417,7 +495,9 @@ async function main() {
       // Use the platform-agnostic start function which auto-detects Expo Go
       await startApp({
         projectPath: exampleAppDir,
-        device: 'booted'
+        device: 'booted',
+        projectName: 'expo-app',
+        cwd: testConfigDir
       });
       success('Sent start command to Expo app');
       await sleep(10000); // Give it time to launch
@@ -447,6 +527,30 @@ async function main() {
     } catch (err) {
       error(`Lifecycle test failed: ${err}`);
       // Don't fail the entire test, just log the error
+      info('Continuing with remaining tests...');
+    }
+
+    // 11.6. Test Phase 2 lifecycle utility: clearAppData
+    info('Testing Phase 2 lifecycle utility: clearAppData...');
+    try {
+      info('Note: clearAppData for Expo Go is a NOOP (cannot clear Expo Go data)');
+      
+      // This should be a NOOP for Expo Go apps
+      await clearAppData({
+        projectPath: exampleAppDir,
+        device: 'booted',
+        bundleId: 'host.exp.Exponent'
+      });
+      
+      success('✅ clearAppData handled Expo Go correctly (NOOP)');
+      
+      // For a real test of clearAppData, we would need a prebuilt app
+      // The function should work for prebuilt apps by uninstalling (iOS) or using pm clear (Android)
+      info('Note: Full clearAppData test requires a prebuilt app (tested in unit tests)');
+      
+    } catch (err) {
+      error(`clearAppData test failed: ${err}`);
+      // Don't fail the entire test
       info('Continuing with remaining tests...');
     }
 

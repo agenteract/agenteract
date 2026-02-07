@@ -502,6 +502,8 @@ export {
 ### **Phase 4: Build** (Sprint 2)
 13. Implement `buildApp()` + tests (with silent option)
 14. Test build operations for each platform type
+14. a. Add an option to expo e2e test that prebuilds the app
+14. b. Add a pnpm script that runs the expo-ios test with the prebuild option enabled: test:e2e:expo:ios:prebuild
 15. Run all tests, verify pass
 
 ### **Phase 5: Enhancements** (Sprint 3)
