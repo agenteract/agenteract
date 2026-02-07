@@ -493,6 +493,20 @@ async function main() {
       info(`Dev logs not available: ${err}`);
     }
 
+    // 21. Test agentLink command for reset_state
+    info('Testing agentLink command: reset_state...');
+    const agentLinkResult = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'expo-app', 'agenteract://reset_state');
+    console.log(agentLinkResult);
+    assertContains(agentLinkResult, '"status":"ok"', 'AgentLink command executed successfully');
+    success('AgentLink reset_state successful');
+
+    // 22. Verify agentLink was logged
+    await sleep(500); // Give app time to log the agentLink
+    const logsAfterAgentLink = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
+    assertContains(logsAfterAgentLink, 'Agent link received', 'AgentLink was logged');
+    assertContains(logsAfterAgentLink, 'reset_state', 'Reset state action was logged');
+    success('AgentLink verified in logs');
+
     success('✅ All tests passed!');
 
   } catch (err) {

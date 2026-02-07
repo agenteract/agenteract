@@ -1,6 +1,5 @@
 package io.agenteract.kmp_example
 
-import App
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity

@@ -810,6 +810,63 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
+    'agent-link <project> <url>',
+    'Send an agentLink URL to the app (for app state control, navigation, etc.)',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('url', {
+          describe: 'The agentLink URL (e.g., agenteract://reset_state or agenteract://navigate?screen=settings)',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
+        });
+    },
+    async (argv) => {
+      try {
+        const { agentServerUrl } = await getServerUrls();
+        const requestBody: any = {
+          project: argv.project,
+          action: 'agentLink',
+          payload: argv.url,
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        console.log(JSON.stringify(response.data));
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
     'md [dest]',
     'Generate agent instructions',
     (yargs) => {

@@ -11,7 +11,8 @@ data class AgentCommand(
     val value: String? = null,
     val direction: String? = null,
     val amount: Double? = null,
-    val velocity: String? = null
+    val velocity: String? = null,
+    val payload: String? = null
 )
 
 @Serializable

@@ -400,6 +400,22 @@ async function main() {
 
         await verifyInLogs('All values reset');
 
+        // 15. Test agentLink command for reset_state
+        info('Testing agentLink command: reset_state...');
+        const agentLinkRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'kmp-app', 'agenteract://reset_state');
+        console.log(agentLinkRawOutput);
+        const agentLinkResponse = extractFullJsonFromCliOutput(agentLinkRawOutput, 'command');
+        if (!agentLinkResponse || agentLinkResponse.status !== 'ok') {
+            throw new Error(`AgentLink command failed: ${agentLinkRawOutput}`);
+        }
+        success('AgentLink reset_state command sent');
+
+        // 16. Verify agentLink was logged
+        await sleep(500); // Give app time to log the agentLink
+        await verifyInLogs('AgentLink handled by app');
+        await verifyInLogs('All values reset');
+        success('AgentLink verified in logs');
+
         success('✅ Kotlin Full Suite E2E Test Passed!');
 
     } catch (err) {

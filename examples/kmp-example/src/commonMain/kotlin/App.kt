@@ -1,3 +1,5 @@
+package io.agenteract.kmp_example
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -49,13 +51,18 @@ import kotlinx.coroutines.launch
 @Composable
 fun App() {
     MaterialTheme {
+        val coroutineScope = rememberCoroutineScope()
+        
+        // State management
         var counter by remember { mutableStateOf(0) }
         var inputText by remember { mutableStateOf("") }
         var longPressCount by remember { mutableStateOf(0) }
         var swipeCount by remember { mutableStateOf(0) }
         var lastSwipeDirection by remember { mutableStateOf("") }
         
-        val coroutineScope = rememberCoroutineScope()
+        val verticalScrollState = rememberScrollState()
+        val horizontalListState = rememberLazyListState()
+        val verticalListState = rememberLazyListState()
         
         fun log(message: String) {
             coroutineScope.launch {
@@ -63,12 +70,37 @@ fun App() {
             }
         }
         
-        val verticalScrollState = rememberScrollState()
-        val horizontalListState = rememberLazyListState()
-        val verticalListState = rememberLazyListState()
+        fun resetAll() {
+            counter = 0
+            inputText = ""
+            longPressCount = 0
+            swipeCount = 0
+            lastSwipeDirection = ""
+            coroutineScope.launch {
+                horizontalListState.scrollToItem(0)
+            }
+            log("All values reset")
+        }
 
         // Initialize the Agent Debug Bridge
-        AgentDebugBridge(projectName = "kmp-app")
+        AgentDebugBridge(
+            projectName = "kmp-app",
+            onAgentLink = { url ->
+                // Parse agentLink URL by hostname
+                // For example: agenteract://reset_state
+                val hostname = url.substringAfter("://").substringBefore("?").substringBefore("/")
+                when (hostname) {
+                    "reset_state" -> {
+                        resetAll()
+                        coroutineScope.launch {
+                            AgentLogger.log("App state cleared")
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+        )
 
         Scaffold(
             topBar = {
@@ -302,32 +334,12 @@ fun App() {
                 // Reset Button
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Button(
-                        onClick = {
-                            counter = 0
-                            inputText = ""
-                            longPressCount = 0
-                            swipeCount = 0
-                            lastSwipeDirection = ""
-                            coroutineScope.launch {
-                                horizontalListState.scrollToItem(0)
-                            }
-                            log("All values reset")
-                        },
+                        onClick = { resetAll() },
                         colors = ButtonDefaults.buttonColors(backgroundColor = Color.Red, contentColor = Color.White),
                         modifier = Modifier.agent(
                             testID = "reset-button",
                             type = "Button",
-                            onTap = {
-                                counter = 0
-                                inputText = ""
-                                longPressCount = 0
-                                swipeCount = 0
-                                lastSwipeDirection = ""
-                                coroutineScope.launch {
-                                    horizontalListState.scrollToItem(0)
-                                }
-                                log("All values reset")
-                            }
+                            onTap = { resetAll() }
                         )
                     ) {
                         Text("Reset All")

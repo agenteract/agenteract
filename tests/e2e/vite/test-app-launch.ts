@@ -352,6 +352,20 @@ export default defineConfig({
     info('Recent logs:');
     console.log(logs);
 
+    // 13. Test agentLink command for reset_state
+    info('Testing agentLink command: reset_state...');
+    const agentLinkResult = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'react-app', 'agenteract://reset_state');
+    console.log(agentLinkResult);
+    assertContains(agentLinkResult, '"status":"ok"', 'AgentLink command executed successfully');
+    success('AgentLink reset_state successful');
+
+    // 14. Verify agentLink was logged
+    await sleep(500); // Give app time to log the agentLink
+    const logsAfterAgentLink = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '5');
+    assertContains(logsAfterAgentLink, 'Agent link received', 'AgentLink was logged');
+    assertContains(logsAfterAgentLink, 'reset_state', 'Reset state action was logged');
+    success('AgentLink verified in logs');
+
     success('✅ All tests passed!');
 
   } catch (err) {

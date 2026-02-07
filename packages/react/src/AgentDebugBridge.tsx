@@ -349,7 +349,7 @@ export function simulateSwipe(
 
 
 // --- Command Handler ---
-const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
+const handleCommand = async (cmd: ServerCommand, socket: WebSocket, onAgentLink?: (url: string) => Promise<boolean> | boolean) => {
   if (typeof cmd !== 'object' || !('action' in cmd)) {
     console.log(`Warning: command missing 'action' field: ${JSON.stringify(cmd)}`);
     // Send a generic error back if the command is malformed
@@ -374,6 +374,32 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
     case "swipe":
       success = simulateSwipe(cmd.testID, cmd.direction, cmd.velocity);
       break;
+    case "agentLink":
+      if (cmd.payload) {
+        if (onAgentLink) {
+          try {
+            const handled = await onAgentLink(cmd.payload);
+            success = handled;
+            if (handled) {
+              console.log('[Agenteract] agentLink handled by app');
+            } else {
+              console.log('[Agenteract] agentLink not handled by app');
+            }
+          } catch (error) {
+            console.error('[Agenteract] Error in agentLink handler:', error);
+            socket.send(JSON.stringify({ status: "error", error: `agentLink handler error: ${error}`, id: cmd.id }));
+            return;
+          }
+        } else {
+          console.log('[Agenteract] No agentLink handler configured');
+          socket.send(JSON.stringify({ status: "error", error: "No agentLink handler configured", id: cmd.id }));
+          return;
+        }
+      } else {
+        socket.send(JSON.stringify({ status: "error", error: "Missing payload for agentLink", id: cmd.id }));
+        return;
+      }
+      break;
     default:
       socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}`, id: cmd.id }));
       return;
@@ -385,10 +411,12 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket) => {
 // --- AgentDebugBridge Component ---
 export const AgentDebugBridge = ({
   projectName,
-  autoConnect = true
+  autoConnect = true,
+  onAgentLink
 }: {
   projectName: string;
   autoConnect?: boolean;
+  onAgentLink?: (url: string) => Promise<boolean> | boolean;
 }) => {
   const socketRef = useRef<WebSocket | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -397,6 +425,7 @@ export const AgentDebugBridge = ({
   const [deviceId, setDeviceId] = useState<string | undefined>(undefined);
   const [shouldConnect, setShouldConnect] = useState<boolean>(false);
   const configLoadedRef = useRef<boolean>(false);
+  const onAgentLinkRef = useRef(onAgentLink);
 
   // --- Load Config on Mount ---
   useEffect(() => {
@@ -467,7 +496,18 @@ export const AgentDebugBridge = ({
       const isAgenteractConfig = parsed.pathname.includes('agenteract/config') ||
                                  parsed.pathname.includes('/--/agenteract/config');
 
-      if (!isAgenteractConfig) return;
+      // If not a config link, let the custom handler try it
+      if (!isAgenteractConfig) {
+        if (onAgentLinkRef.current) {
+          const handled = await onAgentLinkRef.current(url);
+          if (handled) {
+            console.log('[Agenteract] agentLink handled by app');
+          } else {
+            console.log('[Agenteract] agentLink not handled by app');
+          }
+        }
+        return;
+      }
 
       const params = new URLSearchParams(parsed.search);
       const host = params.get('host');
@@ -640,7 +680,7 @@ export const AgentDebugBridge = ({
           } else if (command.action === 'getConsoleLogs') {
             socket.send(JSON.stringify({ status: 'success', logs: logBuffer, id: command.id }));
           } else {
-            await handleCommand(command, socket);
+            await handleCommand(command, socket, onAgentLinkRef.current);
           }
         } catch (error) {
           console.warn('[Agenteract] Command error:', error);

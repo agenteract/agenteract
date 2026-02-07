@@ -613,13 +613,27 @@ async function main() {
     assertContains(logsAfterSwipe, 'Card swiped', 'Swipe was logged');
     success('Swipe verified in logs');
 
-    // 23. Get all logs to verify app is running
+    // 23. Test agentLink command for reset_state
+    info('Testing agentLink command: reset_state...');
+    const agentLinkResult = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'flutter-example', 'agenteract://reset_state');
+    console.log(agentLinkResult);
+    assertContains(agentLinkResult, '"status":"ok"', 'AgentLink command executed successfully');
+    success('AgentLink reset_state successful');
+
+    // 24. Verify agentLink was logged
+    await sleep(500); // Give app time to log the agentLink
+    const logsAfterAgentLink = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
+    assertContains(logsAfterAgentLink, 'Agent link received', 'AgentLink was logged');
+    assertContains(logsAfterAgentLink, 'reset_state', 'Reset state action was logged');
+    success('AgentLink verified in logs');
+
+    // 25. Get all logs to verify app is running
     info('Fetching app logs...');
     const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '20');
     info('Recent logs:');
     console.log(logs);
 
-    // 24. Check dev logs
+    // 26. Check dev logs
     info('Checking Flutter dev server logs...');
     try {
       const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'flutter-example', '--since', '30');

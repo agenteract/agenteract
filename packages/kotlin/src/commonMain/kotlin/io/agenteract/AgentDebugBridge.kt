@@ -22,7 +22,8 @@ fun AgentDebugBridge(
     host: String = "localhost",
     port: Int = 8765,
     token: String? = null,
-    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null
+    onConfigUpdate: ((AgenteractConfig) -> Unit)? = null,
+    onAgentLink: (suspend (String) -> Boolean)? = null
 ) {
     val scope = rememberCoroutineScope()
 
@@ -113,7 +114,7 @@ fun AgentDebugBridge(
 
                                 // Otherwise handle as command
                                 val command = json.decodeFromString<AgentCommand>(text)
-                                handleCommand(command, json) { cmdResponse ->
+                                handleCommand(command, json, onAgentLink) { cmdResponse ->
                                     val responseText = json.encodeToString(cmdResponse)
                                     send(responseText)
                                 }
@@ -161,6 +162,7 @@ private suspend fun sendDeviceInfo(
 private suspend fun handleCommand(
     command: AgentCommand,
     json: Json,
+    onAgentLink: (suspend (String) -> Boolean)? = null,
     sendResponse: suspend (AgentResponse) -> Unit
 ) {
     AgentLogger.log("Received command: ${command.action} id=${command.id}")
@@ -282,6 +284,31 @@ private suspend fun handleCommand(
                 }
             } else {
                 sendResponse(AgentResponse(id = command.id, status = "error", error = "No long press handler found for $testID"))
+            }
+        }
+        "agentLink" -> {
+            val payload = command.payload
+            if (payload == null) {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Missing payload"))
+                return
+            }
+            
+            if (onAgentLink != null) {
+                try {
+                    val handled = onAgentLink.invoke(payload)
+                    if (handled) {
+                        AgentLogger.log("AgentLink handled by app")
+                        sendResponse(AgentResponse(id = command.id, status = "ok"))
+                    } else {
+                        AgentLogger.log("AgentLink not handled by app")
+                        sendResponse(AgentResponse(id = command.id, status = "error", error = "agentLink not handled by app"))
+                    }
+                } catch (e: Exception) {
+                    AgentLogger.log("Error in agentLink handler: $e")
+                    sendResponse(AgentResponse(id = command.id, status = "error", error = "Error in agentLink handler: $e"))
+                }
+            } else {
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "No agentLink handler configured"))
             }
         }
         else -> {
