@@ -18,9 +18,14 @@ jest.mock('util', () => ({
 // Mock fs
 const mockExistsSync = jest.fn();
 const mockReadFileSync = jest.fn();
+const mockReaddir = jest.fn();
 jest.mock('fs', () => ({
   existsSync: mockExistsSync,
   readFileSync: mockReadFileSync,
+}));
+
+jest.mock('fs/promises', () => ({
+  readdir: mockReaddir,
 }));
 
 // Mock platform-detector
@@ -44,9 +49,10 @@ import {
   installApp,
   uninstallApp,
   reinstallApp,
-  // Phase 4 functions not yet implemented:
-  // buildApp,
+  buildApp,
   startApp,
+  startIOSApp,
+  startAndroidApp,
 } from './lifecycle-utils';
 import { Device } from './device-manager';
 
@@ -835,13 +841,15 @@ describe('lifecycle-utils', () => {
       );
     });
 
-    it('should handle iOS as NOOP', async () => {
+    it('should handle iOS as NOOP for non-Expo apps', async () => {
       const device: Device = {
         id: 'ABC-123',
         name: 'iPhone 15',
         type: 'ios',
         state: 'booted',
       };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
 
       await installApp({
         projectPath: '/path/to/app',
@@ -850,7 +858,36 @@ describe('lifecycle-utils', () => {
 
       expect(mockExecFileAsync).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(
-        'ℹ️  iOS apps auto-install during development (NOOP)'
+        'ℹ️  iOS apps auto-install during xcodebuild (NOOP)'
+      );
+    });
+
+    it('should install prebuilt Expo iOS app', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(true); // prebuilt (has ios folder)
+      mockReaddir.mockResolvedValue(['MyApp.app']);
+      mockExecFileAsync.mockResolvedValue({ stdout: '', stderr: '' });
+
+      await installApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'install', 'ABC-123', expect.stringContaining('MyApp.app')],
+        { timeout: 60000 }
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Prebuilt Expo app installed successfully')
       );
     });
 
@@ -1083,6 +1120,776 @@ describe('lifecycle-utils', () => {
         './gradlew',
         ['installRelease'],
         expect.objectContaining({ cwd: '/path/to/app' })
+      );
+    });
+  });
+
+  describe('buildApp', () => {
+    it('should build Flutter Android app', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ cwd: '/path/to/app/android' })
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining('Build completed successfully')
+      );
+    });
+
+    it('should build Flutter iOS app', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'flutter',
+        ['build', 'ios', '--debug'],
+        expect.objectContaining({ cwd: '/path/to/app' })
+      );
+    });
+
+    it('should build prebuilt Expo Android app with gradle', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(true); // android/ios folders exist
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ cwd: '/path/to/app/android' })
+      );
+    });
+
+    it('should build prebuilt Expo iOS app with xcodebuild', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(true); // android/ios folders exist
+      mockReaddir.mockResolvedValue(['MyApp.xcworkspace', 'MyApp.xcodeproj']);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCEEDED', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining(['-scheme', 'MyApp', '-configuration', 'Debug']),
+        expect.objectContaining({ cwd: '/path/to/app/ios' })
+      );
+    });
+
+    it('should handle Expo Go as NOOP', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockExistsSync.mockReturnValue(false); // Expo Go (no android/ios folders)
+
+      await buildApp({
+        projectPath: '/path/to/expo-go-app',
+        device,
+      });
+
+      expect(mockExecFileAsync).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith(
+        'ℹ️  Expo Go apps use OTA updates, no build required (NOOP)'
+      );
+    });
+
+    it('should build KMP Android app', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('kmp-android');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ cwd: '/path/to/app' })
+      );
+    });
+
+    it('should build KMP Desktop app', async () => {
+      const device: Device = {
+        id: 'desktop',
+        name: 'Desktop',
+        type: 'desktop',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('kmp-desktop');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['build'],
+        expect.objectContaining({ cwd: '/path/to/app' })
+      );
+    });
+
+    it('should build Swift iOS app', async () => {
+      const device: Device = {
+        id: 'ABC-123',
+        name: 'iPhone 15',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('swift');
+      mockReaddir.mockResolvedValue(['MyApp.xcworkspace', 'MyApp.xcodeproj']);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCEEDED', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'release',
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcodebuild',
+        expect.arrayContaining(['-scheme', 'MyApp', '-configuration', 'Release']),
+        expect.any(Object)
+      );
+    });
+
+    it('should build Vite app', async () => {
+      const device: Device = {
+        id: 'desktop',
+        name: 'Desktop',
+        type: 'desktop',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('vite');
+      mockExecFileAsync.mockResolvedValue({ stdout: 'build complete', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'npm',
+        ['run', 'build'],
+        expect.objectContaining({ cwd: '/path/to/app' })
+      );
+    });
+
+    it('should respect silent mode (default: true)', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+      });
+
+      // In silent mode, stdio should be 'ignore'
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ stdio: 'ignore' })
+      );
+    });
+
+    it('should stream output when silent=false', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExistsSync.mockReturnValue(true);
+      mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCESSFUL', stderr: '' });
+
+      await buildApp({
+        projectPath: '/path/to/app',
+        device,
+        configuration: 'debug',
+        silent: false,
+      });
+
+      // When silent=false, stdio should be 'inherit' to stream output
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        './gradlew',
+        ['assembleDebug'],
+        expect.objectContaining({ stdio: 'inherit' })
+      );
+    });
+
+    it('should handle build failures', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('flutter');
+      mockExecFileAsync.mockRejectedValue(new Error('Build failed'));
+
+      await expect(
+        buildApp({
+          projectPath: '/path/to/app',
+          device,
+        })
+      ).rejects.toThrow('Build failed');
+    });
+  });
+
+  describe('startApp with auto-boot', () => {
+    it('should auto-boot iOS device if shutdown before starting app', async () => {
+      const device: Device = {
+        id: 'ABC123',
+        name: 'iPhone 14',
+        type: 'ios',
+        state: 'shutdown',
+      };
+
+      // Mock device state check in startApp (shutdown)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock device state check in bootDevice (from startApp)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock boot command (from bootDevice called by startApp)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        // Mock device state check in startIOSApp (shutdown)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock device state check in bootDevice (from startIOSApp)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock boot command (from bootDevice called by startIOSApp)
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: 'com.test.app',
+        android: 'com.test.app',
+      });
+
+      await startApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      // Verify boot was called (twice - once from startApp, once from startIOSApp)
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', 'ABC123'],
+        expect.any(Object)
+      );
+
+      // Verify launch was called
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'launch', 'ABC123', 'com.test.app'],
+        expect.any(Object)
+      );
+    });
+
+    it('should skip auto-boot if iOS device is already booted', async () => {
+      const device: Device = {
+        id: 'ABC123',
+        name: 'iPhone 14',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      // Mock device state check in startApp (already booted)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Booted',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock device state check in startIOSApp (already booted)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Booted',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: 'com.test.app',
+        android: 'com.test.app',
+      });
+
+      await startApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      // Verify boot was NOT called (only getDeviceState calls + launch)
+      expect(mockExecFileAsync).not.toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', 'ABC123'],
+        expect.any(Object)
+      );
+    });
+
+    it('should handle Android emulator auto-boot (NOOP)', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'shutdown',
+      };
+
+      // Mock device state check in startApp (shutdown)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock device state check in bootDevice (from startApp) - returns early for Android
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock device state check in startAndroidApp (shutdown)
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock device state check in bootDevice (from startAndroidApp) - returns early for Android
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      mockDetectPlatform.mockResolvedValue('expo');
+      mockResolveBundleInfo.mockResolvedValue({
+        ios: 'com.test.app',
+        android: 'com.test.app',
+      });
+
+      await startApp({
+        projectPath: '/path/to/app',
+        device,
+      });
+
+      // Verify no boot command is called for Android (bootDevice is NOOP)
+      // Should have 4 getDeviceState calls + 1 launch call
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        [
+          '-s',
+          'emulator-5554',
+          'shell',
+          'monkey',
+          '-p',
+          'com.test.app',
+          '-c',
+          'android.intent.category.LAUNCHER',
+          '1',
+        ],
+        expect.any(Object)
+      );
+    });
+
+    it('should skip auto-boot for desktop devices', async () => {
+      const device: Device = {
+        id: 'desktop',
+        name: 'Desktop',
+        type: 'desktop',
+        state: 'booted',
+      };
+
+      mockDetectPlatform.mockResolvedValue('vite');
+
+      // Desktop devices don't have bundle IDs, so we need to provide one
+      // For now, desktop startApp is not fully implemented, so we just verify
+      // that no boot commands are attempted
+      try {
+        await startApp({
+          projectPath: '/path/to/app',
+          device,
+          bundleId: 'not-used',
+        });
+      } catch (e) {
+        // May fail due to incomplete desktop implementation, but that's ok
+      }
+
+      // Verify no boot commands were called
+      expect(mockExecFileAsync).not.toHaveBeenCalledWith(
+        'xcrun',
+        expect.arrayContaining(['simctl', 'boot']),
+        expect.any(Object)
+      );
+      expect(mockExecFileAsync).not.toHaveBeenCalledWith(
+        'emulator',
+        expect.any(Array),
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('startIOSApp with auto-boot', () => {
+    it('should auto-boot device if shutdown before launching', async () => {
+      const device: Device = {
+        id: 'ABC123',
+        name: 'iPhone 14',
+        type: 'ios',
+        state: 'shutdown',
+      };
+
+      // Mock device state check in startIOSApp (shutdown)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock device state check in bootDevice (shutdown)
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Shutdown',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock boot command
+        .mockResolvedValueOnce({ stdout: '', stderr: '' })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startIOSApp(device, 'com.test.app');
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', 'ABC123'],
+        expect.any(Object)
+      );
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'launch', 'ABC123', 'com.test.app'],
+        expect.any(Object)
+      );
+    });
+
+    it('should skip auto-boot if device is already booted', async () => {
+      const device: Device = {
+        id: 'ABC123',
+        name: 'iPhone 14',
+        type: 'ios',
+        state: 'booted',
+      };
+
+      // Mock device state check (already booted)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: JSON.stringify({
+            devices: {
+              'iOS 16.0': [
+                {
+                  udid: 'ABC123',
+                  name: 'iPhone 14',
+                  state: 'Booted',
+                },
+              ],
+            },
+          }),
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startIOSApp(device, 'com.test.app');
+
+      expect(mockExecFileAsync).not.toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'boot', 'ABC123'],
+        expect.any(Object)
+      );
+    });
+
+    it('should skip auto-boot when using "booted" device identifier', async () => {
+      mockExecFileAsync.mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startIOSApp('booted', 'com.test.app');
+
+      // Should not check device state or boot when using 'booted'
+      expect(mockExecFileAsync).toHaveBeenCalledTimes(1);
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'xcrun',
+        ['simctl', 'launch', 'booted', 'com.test.app'],
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('startAndroidApp with auto-boot', () => {
+    it('should handle auto-boot for Android (bootDevice is NOOP)', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'shutdown',
+      };
+
+      // Mock device state check in startAndroidApp (shutdown)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock device state check in bootDevice (NOOP for Android)
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\n',
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startAndroidApp(device, 'com.test.app');
+
+      // For Android, bootDevice is NOOP, so no emulator command should be called
+      // Only getDeviceState + launch
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        [
+          '-s',
+          'emulator-5554',
+          'shell',
+          'monkey',
+          '-p',
+          'com.test.app',
+          '-c',
+          'android.intent.category.LAUNCHER',
+          '1',
+        ],
+        expect.any(Object)
+      );
+    });
+
+    it('should skip auto-boot if emulator is already booted', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      // Mock device state check (already booted)
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\nemulator-5554    device\n',
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startAndroidApp(device, 'com.test.app');
+
+      // No boot commands for Android
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        [
+          '-s',
+          'emulator-5554',
+          'shell',
+          'monkey',
+          '-p',
+          'com.test.app',
+          '-c',
+          'android.intent.category.LAUNCHER',
+          '1',
+        ],
+        expect.any(Object)
+      );
+    });
+
+    it('should launch with custom main activity', async () => {
+      const device: Device = {
+        id: 'emulator-5554',
+        name: 'Pixel 5',
+        type: 'android',
+        state: 'booted',
+      };
+
+      // Mock device state check
+      mockExecFileAsync
+        .mockResolvedValueOnce({
+          stdout: 'List of devices attached\nemulator-5554    device\n',
+        })
+        // Mock app launch
+        .mockResolvedValueOnce({ stdout: '', stderr: '' });
+
+      await startAndroidApp(device, 'com.test.app', '.CustomActivity');
+
+      expect(mockExecFileAsync).toHaveBeenCalledWith(
+        'adb',
+        [
+          '-s',
+          'emulator-5554',
+          'shell',
+          'am',
+          'start',
+          '-n',
+          'com.test.app/.CustomActivity',
+        ],
+        expect.any(Object)
       );
     });
   });

@@ -611,6 +611,14 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
   
   const platform = deviceObj.type;
   
+  // Auto-boot device if it's shutdown (skip for desktop)
+  if (platform !== 'desktop') {
+    const deviceState = await getDeviceState(deviceObj);
+    if (deviceState.state === 'shutdown') {
+      await bootDevice({ device: deviceObj, waitForBoot: false });
+    }
+  }
+  
   // Detect project type
   const platformInfo = await detectPlatform(projectPath);
   
@@ -758,6 +766,18 @@ export async function stopIOSApp(device: Device | string, bundleId: string): Pro
 export async function startIOSApp(device: Device | string, bundleId: string): Promise<void> {
   const deviceId = typeof device === 'string' ? device : device.id;
   
+  // Auto-boot device if shutdown (only if device is not 'booted' identifier)
+  if (deviceId !== 'booted') {
+    const deviceObj = typeof device === 'string' 
+      ? { id: device, type: 'ios' as const, name: device, state: 'unknown' as const }
+      : device;
+    
+    const deviceState = await getDeviceState(deviceObj);
+    if (deviceState.state === 'shutdown') {
+      await bootDevice({ device: deviceObj, waitForBoot: false });
+    }
+  }
+  
   try {
     await execFileAsync('xcrun', ['simctl', 'launch', deviceId, bundleId], {
       timeout: 30000,
@@ -825,12 +845,24 @@ export async function startAndroidApp(
 ): Promise<void> {
   const deviceId = typeof device === 'string' ? device : device.id;
   
+  // Auto-boot device if shutdown
+  const deviceObj = typeof device === 'string' 
+    ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const deviceState = await getDeviceState(deviceObj);
+  if (deviceState.state === 'shutdown') {
+    await bootDevice({ device: deviceObj, waitForBoot: false });
+  }
+  
   try {
     if (mainActivity) {
       // Launch specific activity
+      // If activity starts with '.', it's relative to the package
+      // Otherwise, use it as-is (could be fully qualified)
       const activityPath = mainActivity.startsWith('.') 
-        ? `${bundleId}${mainActivity}` 
-        : mainActivity;
+        ? mainActivity  // Keep the dot, e.g., '.MainActivity'
+        : mainActivity; // Use as-is, e.g., 'com.example.CustomActivity'
       
       await execFileAsync('adb', [
         '-s', deviceId, 
@@ -916,18 +948,44 @@ export async function installApp(options: InstallOptions): Promise<void> {
   
   const platform = deviceObj.type;
   
-  // iOS apps auto-install during development
-  if (platform === 'ios') {
-    console.log('ℹ️  iOS apps auto-install during development (NOOP)');
-    return;
-  }
-  
-  // Detect project type
+  // Detect project type first
   const platformInfo = await detectPlatform(projectPath);
   
   // Check if Expo Go
   if (platformInfo === 'expo' && isExpoGo(projectPath)) {
     console.log('ℹ️  Cannot install Expo Go apps via this method (NOOP)');
+    return;
+  }
+  
+  // iOS installation
+  if (platform === 'ios') {
+    // For prebuilt Expo apps, we need to install the built .app
+    if (platformInfo === 'expo') {
+      console.log('📦 Installing prebuilt Expo iOS app...');
+      const iosPath = join(projectPath, 'ios');
+      const buildPath = join(iosPath, 'build', 'Build', 'Products', 
+        configuration === 'release' ? 'Release-iphonesimulator' : 'Debug-iphonesimulator');
+      
+      // Find the .app bundle
+      const { readdir } = await import('fs/promises');
+      const files = await readdir(buildPath);
+      const appBundle = files.find(f => f.endsWith('.app'));
+      
+      if (!appBundle) {
+        throw new Error(`No .app bundle found in ${buildPath}. Did the build complete successfully?`);
+      }
+      
+      const appPath = join(buildPath, appBundle);
+      console.log(`Installing ${appBundle} to simulator...`);
+      
+      await execFileAsync('xcrun', ['simctl', 'install', deviceObj.id, appPath], {
+        timeout: 60000,
+      });
+      console.log('✓ Prebuilt Expo app installed successfully');
+    } else {
+      // Flutter/Swift apps auto-install during xcodebuild
+      console.log('ℹ️  iOS apps auto-install during xcodebuild (NOOP)');
+    }
     return;
   }
   
@@ -1061,6 +1119,303 @@ export async function reinstallApp(options: InstallOptions): Promise<void> {
   await installApp(options);
   
   console.log('✓ App reinstalled successfully');
+}
+
+//
+// Build operations - Platform and framework agnostic
+//
+
+/**
+ * Build an app - platform and framework agnostic
+ * 
+ * Automatically detects project type and builds appropriately.
+ * Supports silent mode to suppress build output (default: true).
+ * 
+ * - **Flutter**: Uses `flutter build` or gradle
+ * - **Prebuilt Expo**: Uses xcodebuild or gradle
+ * - **KMP**: Uses gradle tasks
+ * - **Swift**: Uses xcodebuild
+ * - **Vite**: Uses npm run build
+ * - **Expo Go**: NOOP (uses OTA updates)
+ * 
+ * @param options - Build options
+ * @example
+ * ```typescript
+ * // Build in silent mode (default)
+ * await buildApp({
+ *   projectPath: '/path/to/flutter-app',
+ *   device: androidDevice,
+ *   configuration: 'debug'
+ * });
+ * 
+ * // Build with full output
+ * await buildApp({
+ *   projectPath: '/path/to/app',
+ *   device: iosDevice,
+ *   configuration: 'release',
+ *   silent: false
+ * });
+ * ```
+ */
+export async function buildApp(options: BuildOptions): Promise<void> {
+  const { projectPath, device, configuration = 'debug', platform: platformOverride, silent = true } = options;
+  
+  // Get device info to determine platform
+  const deviceObj = typeof device === 'string'
+    ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
+    : device;
+  
+  const targetPlatform = platformOverride || deviceObj.type;
+  
+  // Detect project type
+  const platformInfo = await detectPlatform(projectPath);
+  
+  // Check if Expo Go
+  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+    console.log('ℹ️  Expo Go apps use OTA updates, no build required (NOOP)');
+    return;
+  }
+  
+  // Build based on project type
+  const buildMessage = `🔨 Building ${platformInfo} ${targetPlatform} app (${configuration})...`;
+  if (!silent) {
+    console.log(buildMessage);
+  }
+  
+  try {
+    switch (platformInfo) {
+      case 'flutter':
+        await buildFlutterApp(projectPath, targetPlatform, configuration, silent);
+        break;
+      
+      case 'expo':
+        // Prebuilt Expo
+        await buildPrebuiltExpoApp(projectPath, targetPlatform, configuration, silent);
+        break;
+      
+      case 'kmp-android':
+        await buildKMPAndroidApp(projectPath, configuration, silent);
+        break;
+      
+      case 'kmp-desktop':
+        await buildKMPDesktopApp(projectPath, configuration, silent);
+        break;
+      
+      case 'swift':
+        await buildSwiftApp(projectPath, configuration, silent);
+        break;
+      
+      case 'vite':
+        await buildViteApp(projectPath, silent);
+        break;
+      
+      default:
+        throw new Error(`Build not supported for platform: ${platformInfo}`);
+    }
+    
+    console.log(`✓ Build completed successfully`);
+  } catch (error: any) {
+    throw new Error(`Build failed: ${error.message}`);
+  }
+}
+
+/**
+ * Build Flutter app
+ */
+async function buildFlutterApp(
+  projectPath: string,
+  platform: 'ios' | 'android' | 'desktop',
+  configuration: string,
+  silent: boolean
+): Promise<void> {
+  if (platform === 'android') {
+    const androidPath = join(projectPath, 'android');
+    const gradle = await findGradle(androidPath);
+    const task = configuration === 'release' ? 'assembleRelease' : 'assembleDebug';
+    
+    const execOptions: any = { cwd: androidPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+    if (silent) {
+      execOptions.stdio = 'ignore';
+    } else {
+      execOptions.stdio = 'inherit';
+    }
+    
+    await execFileAsync(gradle, [task], execOptions);
+  } else if (platform === 'ios') {
+    const args = ['build', 'ios'];
+    if (configuration === 'release') {
+      args.push('--release');
+    } else {
+      args.push('--debug');
+    }
+    
+    const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+    if (silent) {
+      execOptions.stdio = 'ignore';
+    } else {
+      execOptions.stdio = 'inherit';
+    }
+    
+    await execFileAsync('flutter', args, execOptions);
+  }
+}
+
+/**
+ * Build prebuilt Expo app
+ */
+async function buildPrebuiltExpoApp(
+  projectPath: string,
+  platform: 'ios' | 'android' | 'desktop',
+  configuration: string,
+  silent: boolean
+): Promise<void> {
+  if (platform === 'android') {
+    const androidPath = join(projectPath, 'android');
+    const gradle = await findGradle(androidPath);
+    const task = configuration === 'release' ? 'assembleRelease' : 'assembleDebug';
+    
+    const execOptions: any = { cwd: androidPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+    if (silent) {
+      execOptions.stdio = 'ignore';
+    } else {
+      execOptions.stdio = 'inherit';
+    }
+    
+    await execFileAsync(gradle, [task], execOptions);
+  } else if (platform === 'ios') {
+    // For Expo iOS, we need to use xcodebuild
+    const iosPath = join(projectPath, 'ios');
+    const { readdir } = await import('fs/promises');
+    const files = await readdir(iosPath);
+    
+    const workspace = files.find(f => f.endsWith('.xcworkspace'));
+    const project = files.find(f => f.endsWith('.xcodeproj'));
+    
+    if (!workspace && !project) {
+      throw new Error('No Xcode project or workspace found in ios/');
+    }
+    
+    const args = [
+      '-scheme', workspace ? workspace.replace('.xcworkspace', '') : project!.replace('.xcodeproj', ''),
+      '-configuration', configuration === 'release' ? 'Release' : 'Debug',
+      '-sdk', 'iphonesimulator',
+      '-derivedDataPath', join(iosPath, 'build'),
+      'build',
+    ];
+    
+    if (workspace) {
+      args.unshift('-workspace', workspace);
+    } else if (project) {
+      args.unshift('-project', project);
+    }
+    
+    const execOptions: any = { cwd: iosPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+    if (silent) {
+      execOptions.stdio = 'ignore';
+    } else {
+      execOptions.stdio = 'inherit';
+    }
+    
+    await execFileAsync('xcodebuild', args, execOptions);
+  }
+}
+
+/**
+ * Build KMP Android app
+ */
+async function buildKMPAndroidApp(
+  projectPath: string,
+  configuration: string,
+  silent: boolean
+): Promise<void> {
+  const gradle = await findGradle(projectPath);
+  const task = configuration === 'release' ? 'assembleRelease' : 
+               configuration === 'debug' ? 'assembleDebug' : configuration;
+  
+  const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+  if (silent) {
+    execOptions.stdio = 'ignore';
+  } else {
+    execOptions.stdio = 'inherit';
+  }
+  
+  await execFileAsync(gradle, [task], execOptions);
+}
+
+/**
+ * Build KMP Desktop app
+ */
+async function buildKMPDesktopApp(
+  projectPath: string,
+  configuration: string,
+  silent: boolean
+): Promise<void> {
+  const gradle = await findGradle(projectPath);
+  const task = configuration === 'release' ? 'packageDistributionForCurrentOS' : 'build';
+  
+  const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+  if (silent) {
+    execOptions.stdio = 'ignore';
+  } else {
+    execOptions.stdio = 'inherit';
+  }
+  
+  await execFileAsync(gradle, [task], execOptions);
+}
+
+/**
+ * Build Swift app using xcodebuild
+ */
+async function buildSwiftApp(
+  projectPath: string,
+  configuration: string,
+  silent: boolean
+): Promise<void> {
+  const { readdir } = await import('fs/promises');
+  const files = await readdir(projectPath);
+  
+  const workspace = files.find(f => f.endsWith('.xcworkspace'));
+  const project = files.find(f => f.endsWith('.xcodeproj'));
+  
+  if (!workspace && !project) {
+    throw new Error('No Xcode project or workspace found');
+  }
+  
+  const args = [
+    '-scheme', workspace ? workspace.replace('.xcworkspace', '') : project!.replace('.xcodeproj', ''),
+    '-configuration', configuration === 'release' ? 'Release' : 'Debug',
+    '-sdk', 'iphonesimulator',
+    'build',
+  ];
+  
+  if (workspace) {
+    args.unshift('-workspace', workspace);
+  } else if (project) {
+    args.unshift('-project', project);
+  }
+  
+  const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+  if (silent) {
+    execOptions.stdio = 'ignore';
+  } else {
+    execOptions.stdio = 'inherit';
+  }
+  
+  await execFileAsync('xcodebuild', args, execOptions);
+}
+
+/**
+ * Build Vite app
+ */
+async function buildViteApp(projectPath: string, silent: boolean): Promise<void> {
+  const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+  if (silent) {
+    execOptions.stdio = 'ignore';
+  } else {
+    execOptions.stdio = 'inherit';
+  }
+  
+  await execFileAsync('npm', ['run', 'build'], execOptions);
 }
 
 //

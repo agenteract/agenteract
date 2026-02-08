@@ -23,7 +23,25 @@ export {
   restartApp,
   isExpoGo,
   
-  // Low-level utilities
+  // Device utilities
+  bootDevice,
+  getDeviceState,
+  
+  // Data management
+  clearAppData,
+  
+  // Installation
+  installApp,
+  uninstallApp,
+  reinstallApp,
+  
+  // Build operations (note: buildApp from app-launcher is also exported above)
+  // The buildApp from lifecycle-utils is the newer implementation
+  
+  // Port forwarding
+  setupPortForwarding,
+  
+  // Low-level platform-specific utilities
   stopIOSApp,
   startIOSApp,
   restartIOSApp,
@@ -31,6 +49,14 @@ export {
   startAndroidApp,
   restartAndroidApp,
   
+  // Utilities
+  findGradle,
+  
   // Types
   type AppLifecycleOptions,
+  type DeviceState,
+  type DeviceBootOptions,
+  type PortForwardingOptions,
+  type InstallOptions,
+  // Note: BuildOptions is exported from app-launcher above
 } from './lifecycle-utils.js';

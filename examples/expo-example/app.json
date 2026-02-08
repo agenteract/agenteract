@@ -1,17 +1,20 @@
 {
   "expo": {
-    "name": "@agenteract/expo-example",
-    "slug": "@agenteract/expo-example",
+    "name": "Agenteract Expo Example",
+    "slug": "agenteract-expo-example",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "@agenteract/expo-example",
+    "scheme": "agenteract-expo-example",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "main": "index.js",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "io.agenteract.expoexample"
     },
     "android": {
+      "package": "io.agenteract.expoexample",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -1296,3 +1296,736 @@ pnpm agenteract-agents agent-link expo-app agenteract://reset_state
 pnpm agenteract-agents hierarchy expo-app
 # (should show counter = 0)
 ```
+
+---
+
+## Lifecycle Utilities for Automated Testing
+
+Agenteract provides platform-agnostic lifecycle utilities in `@agenteract/core` that enable agents to programmatically manage app lifecycles for automated testing and development workflows.
+
+### Overview
+
+The lifecycle utilities provide a comprehensive API for:
+- **Device Management**: Boot devices, check device state
+- **Build Operations**: Build apps for iOS, Android across frameworks
+- **Installation**: Install, uninstall, and reinstall apps
+- **Data Management**: Clear app data and cache
+- **App Control**: Start, stop, and restart apps
+
+All functions are platform-agnostic and automatically detect the correct platform based on the device type.
+
+### Supported Frameworks
+
+- **Expo**: Expo Go and prebuilt modes
+- **React Native**: Prebuilt apps
+- **Flutter**: iOS and Android
+- **Swift**: Native iOS apps
+- **Kotlin Multiplatform**: Android and iOS
+- **Vite**: Web applications
+
+---
+
+## Device Utilities
+
+### `getDeviceState(device)`
+
+Check the current state of a device (booted, shutdown, or unknown).
+
+**Parameters:**
+- `device`: Device object or device ID string
+
+**Returns:** `Promise<DeviceState>` with `id`, `state`, and `platform`
+
+**Example:**
+```typescript
+import { getDeviceState } from '@agenteract/core';
+
+const state = await getDeviceState(myDevice);
+console.log(`Device ${state.id} is ${state.state}`);
+
+if (state.state === 'shutdown') {
+  console.log('Device needs to be booted');
+}
+```
+
+**Platform Behavior:**
+- **iOS**: Returns 'booted' or 'shutdown' from xcrun simctl
+- **Android**: Returns 'booted' if device is online, 'shutdown' if offline
+- **Desktop**: Always returns 'booted'
+
+---
+
+### `bootDevice(options)`
+
+Boot a device (start/power on).
+
+**Parameters:**
+- `device`: Device object or device ID string
+- `waitForBoot`: Wait for boot completion (default: true)
+- `timeout`: Boot timeout in milliseconds (default: 30000)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { bootDevice } from '@agenteract/core';
+
+// Boot and wait for completion
+await bootDevice({
+  device: myIOSSimulator,
+  waitForBoot: true,
+  timeout: 30000
+});
+
+// Quick boot without waiting
+await bootDevice({
+  device: myIOSSimulator,
+  waitForBoot: false
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Boots simulator using `xcrun simctl boot`, optionally waits for completion
+- **Android**: NOOP (Android emulators boot automatically when accessed)
+- **Desktop**: NOOP (desktop is always booted)
+
+**Auto-Boot Integration:**
+The `startApp()` function automatically boots shutdown devices before launching, so manual boot calls are usually not needed.
+
+---
+
+## Data Management
+
+### `clearAppData(options)`
+
+Clear app data and cache without uninstalling.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { clearAppData } from '@agenteract/core';
+
+// Clear data for a prebuilt app
+await clearAppData({
+  projectPath: '/path/to/app',
+  device: myDevice,
+  bundleId: 'com.example.myapp' // optional
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl uninstall` to reset app container
+- **Android**: Uses `adb shell pm clear` to clear data
+- **Expo Go**: Not supported (use `agenteract://reset_state` instead)
+- **Desktop**: NOOP (not applicable)
+
+**Best Practice:**
+For E2E tests, prefer using `agenteract://reset_state` agentLink over `clearAppData()` - it's faster and doesn't require reinstalling.
+
+---
+
+## Installation
+
+### `installApp(options)`
+
+Install an app on a device.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `configuration`: 'debug' or 'release' (default: 'debug')
+- `apkPath`: Optional APK path for Android
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { installApp } from '@agenteract/core';
+
+// Install Flutter app in debug mode
+await installApp({
+  projectPath: '/path/to/flutter-app',
+  device: androidEmulator,
+  configuration: 'debug'
+});
+
+// Install from APK file
+await installApp({
+  projectPath: '/path/to/app',
+  device: androidEmulator,
+  apkPath: '/path/to/app-release.apk'
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl install` with .app bundle
+- **Android**: Uses gradle tasks or `adb install`
+- **Expo Go**: NOOP (cannot install Expo Go)
+- **Desktop**: NOOP (not applicable)
+
+---
+
+### `uninstallApp(options)`
+
+Uninstall an app from a device.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { uninstallApp } from '@agenteract/core';
+
+await uninstallApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl uninstall`
+- **Android**: Uses `adb uninstall`
+- **Expo Go**: NOOP (cannot uninstall Expo Go)
+
+---
+
+### `reinstallApp(options)`
+
+Reinstall an app (uninstall then install).
+
+**Parameters:**
+Same as `installApp()`
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { reinstallApp } from '@agenteract/core';
+
+// Get completely fresh app state
+await reinstallApp({
+  projectPath: '/path/to/app',
+  device: myDevice,
+  configuration: 'debug'
+});
+```
+
+**Use Cases:**
+- Getting a completely clean slate during testing
+- Resetting app state when `agenteract://reset_state` isn't implemented
+- Verifying fresh install behavior
+
+**Note:** Slower than `clearAppData()` - use sparingly in E2E tests.
+
+---
+
+## Build Operations
+
+### `buildApp(options)`
+
+Build an app for deployment.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `configuration`: 'debug', 'release', or custom config (default: 'debug')
+- `platform`: 'ios' or 'android' (auto-detected if not provided)
+- `silent`: Suppress build output (default: true)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { buildApp } from '@agenteract/core';
+
+// Build in silent mode (default)
+await buildApp({
+  projectPath: '/path/to/flutter-app',
+  device: androidDevice,
+  configuration: 'debug'
+});
+
+// Build with full output
+await buildApp({
+  projectPath: '/path/to/app',
+  device: iosDevice,
+  configuration: 'release',
+  silent: false
+});
+```
+
+**Platform Behavior:**
+- **Flutter**: Uses gradle for Android, `flutter build ios` for iOS
+- **Expo Prebuilt**: Uses gradle for Android, xcodebuild for iOS
+- **KMP**: Uses gradle tasks
+- **Swift**: Uses xcodebuild
+- **Vite**: Uses `npm run build`
+- **Expo Go**: NOOP (uses OTA updates)
+
+**Build Output:**
+By default, build output is suppressed (`silent: true`). Set `silent: false` to stream build output for debugging.
+
+**Expo Note:**
+For Expo apps, prefer using `expo run:ios` or `expo run:android` which handles prebuild + build + install + launch in one command.
+
+---
+
+## App Control
+
+### `startApp(options)`
+
+Start/launch an app on a device.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+- `mainActivity`: Optional Android main activity
+- `projectName`: Optional project name (for Expo Go)
+- `cwd`: Optional working directory (for Expo Go)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { startApp } from '@agenteract/core';
+
+// Start prebuilt app
+await startApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+
+// Start Expo Go app
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: myDevice,
+  projectName: 'expo-app',
+  cwd: '/path/to/workspace'
+});
+
+// Start Android app with custom activity
+await startApp({
+  projectPath: '/path/to/app',
+  device: androidDevice,
+  mainActivity: '.MainActivity'
+});
+```
+
+**Auto-Boot Feature:**
+`startApp()` automatically boots shutdown devices before launching. This ensures apps can launch successfully without manual intervention.
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl launch`, auto-boots if shutdown
+- **Android**: Uses `adb shell am start`, auto-boots if offline
+- **Expo Go**: Sends CLI command to open project
+- **Desktop**: Opens URL in default browser
+
+---
+
+### `stopApp(options)`
+
+Stop/terminate a running app.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+- `force`: Force stop on Android (default: false)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { stopApp } from '@agenteract/core';
+
+// Graceful stop
+await stopApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+
+// Force stop on Android
+await stopApp({
+  projectPath: '/path/to/app',
+  device: androidDevice,
+  force: true
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl terminate`
+- **Android**: Uses `adb shell am force-stop` (if force) or kills process
+- **Expo Go**: Not supported (cannot stop Expo Go itself)
+
+---
+
+### `restartApp(options)`
+
+Restart an app (stop then start).
+
+**Parameters:**
+Same as `startApp()`
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { restartApp } from '@agenteract/core';
+
+await restartApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+```
+
+**Use Cases:**
+- Applying configuration changes
+- Resetting app state without reinstalling
+- Testing launch behavior
+
+---
+
+## Complete Testing Workflow Example
+
+Here's a complete agent-driven testing workflow using lifecycle utilities:
+
+```typescript
+import {
+  getDeviceState,
+  bootDevice,
+  buildApp,
+  installApp,
+  startApp,
+  stopApp,
+  clearAppData,
+  reinstallApp
+} from '@agenteract/core';
+import { getAvailableDevice } from '@agenteract/core';
+
+// 1. Get device and check state
+const device = await getAvailableDevice('ios');
+const state = await getDeviceState(device);
+
+// 2. Boot device if needed (usually not needed - startApp auto-boots)
+if (state.state === 'shutdown') {
+  await bootDevice({ device, waitForBoot: true });
+}
+
+// 3. Build the app
+await buildApp({
+  projectPath: '/path/to/app',
+  device,
+  configuration: 'debug'
+});
+
+// 4. Install the app
+await installApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 5. Start the app (auto-boots if needed)
+await startApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 6. Run tests using agent commands
+// (Use hierarchy, tap, input, etc.)
+
+// 7. Reset state between tests
+await clearAppData({
+  projectPath: '/path/to/app',
+  device
+});
+
+// Or use agentLink for faster reset
+// await agentLink({ url: 'agenteract://reset_state' });
+
+// 8. Restart app with clean state
+await restartApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 9. Run more tests...
+
+// 10. Clean up
+await stopApp({
+  projectPath: '/path/to/app',
+  device
+});
+```
+
+---
+
+## Expo-Specific Workflows
+
+### Expo Go Mode
+
+```typescript
+// Expo Go apps don't need build/install steps
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: myDevice,
+  projectName: 'expo-app',
+  cwd: '/path/to/workspace'
+});
+
+// Metro serves JavaScript over the air
+// No build/install needed
+```
+
+### Expo Prebuild Mode
+
+```bash
+# For Expo prebuilt apps, use expo run:ios/android
+# This handles prebuild + build + install + launch
+
+# Clean prebuild
+rm -rf ios android
+
+# Run (auto prebuild + build + install + launch)
+expo run:ios --device <device-name>
+
+# Or for Android
+expo run:android --device <device-id>
+```
+
+**Important:** Prebuilt Expo apps still need Metro bundler running! Start Metro first:
+```bash
+npx expo start --localhost
+```
+
+Then launch the app via `expo run:ios` or using lifecycle utilities.
+
+---
+
+## Framework Detection
+
+All lifecycle utilities automatically detect the framework and platform based on:
+
+1. **Project files**: Check for `package.json`, `pubspec.yaml`, `build.gradle`, etc.
+2. **Device type**: Infer platform from device (iOS simulator, Android emulator, desktop)
+3. **Directory structure**: Check for `ios/`, `android/`, framework-specific folders
+
+You don't need to manually specify the framework - it's detected automatically!
+
+---
+
+## Best Practices
+
+### State Management in Tests
+
+**Prefer agentLink over reinstall:**
+```typescript
+// ❌ Slow - reinstalls app every time
+await reinstallApp({ projectPath, device });
+
+// ✅ Fast - just resets state
+await agentLink({ url: 'agenteract://reset_state' });
+```
+
+**Implement `reset_state` in your app:**
+```tsx
+// In your AgentDebugBridge handler
+case 'reset_state':
+  setCounter(0);
+  setUserData(null);
+  setFormValues(defaultFormValues);
+  console.log('State reset');
+  return true;
+```
+
+### Device Boot Management
+
+**Let startApp auto-boot:**
+```typescript
+// ❌ Manual boot not needed
+await bootDevice({ device });
+await startApp({ projectPath, device });
+
+// ✅ Auto-boots if needed
+await startApp({ projectPath, device });
+```
+
+### Build Output
+
+**Use silent mode by default:**
+```typescript
+// ✅ Silent - less noise
+await buildApp({ projectPath, device, silent: true });
+
+// Only show output when debugging build issues
+await buildApp({ projectPath, device, silent: false });
+```
+
+### Error Handling
+
+```typescript
+try {
+  await installApp({ projectPath, device });
+} catch (error) {
+  if (error.message.includes('already installed')) {
+    // App is already installed - this is OK
+    console.log('App already installed, continuing...');
+  } else {
+    throw error; // Re-throw unexpected errors
+  }
+}
+```
+
+---
+
+## TypeScript Support
+
+All lifecycle utilities are fully typed with TypeScript:
+
+```typescript
+import type {
+  AppLifecycleOptions,
+  DeviceState,
+  DeviceBootOptions,
+  InstallOptions,
+  BuildOptions,
+  PortForwardingOptions
+} from '@agenteract/core';
+
+// Type-safe configuration
+const options: InstallOptions = {
+  projectPath: '/path/to/app',
+  device: myDevice,
+  configuration: 'debug'
+};
+
+await installApp(options);
+```
+
+---
+
+## Utility Functions
+
+### `isExpoGo(projectPath)`
+
+Detect if an Expo project uses Expo Go or is prebuilt.
+
+```typescript
+import { isExpoGo } from '@agenteract/core';
+
+const usesExpoGo = isExpoGo('/path/to/expo-app');
+
+if (usesExpoGo) {
+  console.log('Using Expo Go - no build needed');
+} else {
+  console.log('Prebuilt Expo - needs build step');
+}
+```
+
+Returns `true` if no `ios/` or `android/` directories exist.
+
+### `findGradle(projectPath)`
+
+Find gradle executable (wrapper or global).
+
+```typescript
+import { findGradle } from '@agenteract/core';
+
+const gradle = await findGradle('/path/to/android/project');
+// Returns './gradlew' or 'gradle'
+```
+
+Checks for `./gradlew` first, then falls back to global `gradle`.
+
+---
+
+## Platform-Specific Notes
+
+### iOS
+- Requires Xcode and command-line tools
+- Uses `xcrun simctl` for device management
+- Auto-detects .app bundle location after build
+- Supports simulator-specific configurations
+
+### Android
+- Requires Android SDK and ADB
+- Uses gradle for builds
+- Supports both emulators and physical devices
+- Activity names: Use `.MainActivity` format for relative activities
+
+### Expo
+- **Expo Go**: No build/install needed, uses OTA updates
+- **Prebuilt**: Same as React Native but needs Metro running
+- Use `expo run:ios` / `expo run:android` for comprehensive workflow
+- Clean `ios/android` folders before `expo run` for fresh prebuild
+
+### Flutter
+- Requires Flutter SDK
+- Uses gradle for Android, `flutter build ios` for iOS
+- Supports debug and release configurations
+- Auto-detects Flutter project structure
+
+### Swift
+- Native iOS apps built with xcodebuild
+- Requires Xcode project or workspace
+- Supports schemes and configurations
+- Uses `-derivedDataPath` for predictable output
+
+### Kotlin Multiplatform
+- Uses gradle for both iOS and Android
+- Supports shared code across platforms
+- Platform-specific build tasks detected automatically
+
+---
+
+## Troubleshooting
+
+### "Device not found"
+- Check device is listed: `xcrun simctl list` (iOS) or `adb devices` (Android)
+- Verify device ID is correct
+- Boot device first if shutdown
+
+### "Build failed"
+- Set `silent: false` to see full build output
+- Check project builds manually first
+- Verify dependencies are installed
+- Clean build folder and retry
+
+### "App not installed"
+- Check bundle ID is correct
+- Verify build succeeded
+- Try manual install first to diagnose
+- Check device has enough storage
+
+### "Cannot start app"
+- Verify app is installed
+- Check device is booted
+- Ensure Metro is running (for Expo prebuilt)
+- Check bundle ID matches installed app
+
+### "clearAppData fails"
+- App must be installed first
+- Not supported for Expo Go (use agentLink instead)
+- Check bundle ID is correct
+
+---
+
+## Additional Resources
+
+- **API Documentation**: Full JSDoc in `@agenteract/core/src/node/lifecycle-utils.ts`
+- **Example Tests**: `/tests/e2e/expo/test-app-launch-ios.ts`
+- **Type Definitions**: `@agenteract/core` exports all types
+- **Source Code**: `/packages/core/src/node/lifecycle-utils.ts`
+
+---

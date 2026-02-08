@@ -13,6 +13,7 @@ export interface Device {
   type: 'ios' | 'android' | 'desktop';
   state?: 'booted' | 'shutdown' | 'unknown';
   platform?: string;    // e.g., 'iOS 17.0', 'Android 14'
+  avdName?: string;     // Android Virtual Device name (for emulators, used by expo run:android)
 }
 
 interface RuntimeConfig {
@@ -129,12 +130,27 @@ export async function listAndroidDevices(): Promise<Device[]> {
         // Ignore if we can't get version
       }
       
+      // For emulators, get the AVD name (needed for expo run:android)
+      let avdName: string | undefined;
+      if (id.startsWith('emulator-')) {
+        try {
+          const { stdout: avdOutput } = await execFileAsync('adb', [
+            '-s', id, 'emu', 'avd', 'name'
+          ]);
+          // Output is "AVD_NAME\nOK\n", so take first line
+          avdName = avdOutput.trim().split('\n')[0];
+        } catch {
+          // Ignore if we can't get AVD name (might be physical device)
+        }
+      }
+      
       devices.push({
         id,
         name,
         type: 'android',
         state: state === 'device' ? 'booted' : 'unknown',
         platform,
+        avdName,
       });
     }
     
