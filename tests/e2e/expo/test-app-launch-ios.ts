@@ -28,6 +28,8 @@ import {
   takeSimulatorScreenshot,
   preparePackageForVerdaccio,
   installCLIPackages,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -42,6 +44,14 @@ async function cleanup() {
   cleanupExecuted = true;
 
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (exampleAppDir) {
+    await saveNodeModulesCache(exampleAppDir, 'agenteract-e2e-expo-app');
+  }
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-expo');
+  }
 
   // First, try to quit Expo gracefully via agenteract CLI
   if (testConfigDir && agentServer && agentServer.pid) {
@@ -181,6 +191,9 @@ async function main() {
       success('app.json fixed - removed web.output');
     }
 
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(exampleAppDir, 'agenteract-e2e-expo-app');
+
     // Install dependencies from Verdaccio
     info('Installing expo-example dependencies from Verdaccio...');
     await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
@@ -190,6 +203,10 @@ async function main() {
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `${e2eBase}/test-expo-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-expo');
+    
     await installCLIPackages(testConfigDir, [
       '@agenteract/cli',
       '@agenteract/agents',

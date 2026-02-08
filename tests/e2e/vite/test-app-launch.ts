@@ -33,6 +33,8 @@ import {
   setupCleanup,
   getTmpDir,
   preparePackageForVerdaccio,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -42,6 +44,14 @@ let exampleAppDir: string | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (exampleAppDir) {
+    await saveNodeModulesCache(exampleAppDir, 'agenteract-e2e-vite-app');
+  }
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-vite');
+  }
 
   if (browser) {
     try {
@@ -180,6 +190,9 @@ export default defineConfig({
     writeFileSync(viteConfigPath, newViteConfig);
     success('Vite config fixed');
 
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(exampleAppDir, 'agenteract-e2e-vite-app');
+
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
     await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
@@ -196,6 +209,10 @@ export default defineConfig({
 
     // Create directory
     mkdirSync(testConfigDir, { recursive: true });
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-vite');
+    
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
     // install packages so latest are used with npx
     await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
@@ -341,7 +358,7 @@ export default defineConfig({
     error(`Test failed: ${err}`);
     process.exit(1);
   } finally {
-    // await cleanup();
+    await cleanup();
     process.exit(0);
   }
 }

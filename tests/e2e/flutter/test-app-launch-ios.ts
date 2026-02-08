@@ -26,6 +26,8 @@ import {
   sleep,
   setupCleanup,
   installCLIPackages,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js'; import { assert } from 'node:console';
 
 let agentServer: ChildProcess | null = null;
@@ -40,6 +42,14 @@ async function cleanup() {
   cleanupExecuted = true;
 
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (exampleAppDir) {
+    await saveNodeModulesCache(exampleAppDir, 'agenteract-e2e-flutter-app');
+  }
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-flutter');
+  }
 
   // First, try to quit Flutter gracefully via agenteract CLI
   if (testConfigDir && agentServer && agentServer.pid) {
@@ -287,6 +297,10 @@ async function main() {
     // 8b. Install @agenteract/flutter-cli in Flutter app directory
     // This is needed because dev.ts spawns npx from the project directory (cwd: projectPath)
     // Without this, npx prompts to install the package
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(exampleAppDir, 'agenteract-e2e-flutter-app');
+    
     info('Installing @agenteract/flutter-cli in Flutter app directory for npx...');
     await installCLIPackages(exampleAppDir, ['@agenteract/flutter-cli']);
     success('@agenteract/flutter-cli installed in Flutter app directory');
@@ -295,6 +309,10 @@ async function main() {
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `/tmp/agenteract-e2e-test-flutter-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-flutter');
+    
     await installCLIPackages(testConfigDir, [
       '@agenteract/cli',
       '@agenteract/agents',

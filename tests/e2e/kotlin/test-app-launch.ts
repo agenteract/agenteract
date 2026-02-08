@@ -29,6 +29,8 @@ import {
     setupCleanup,
     getTmpDir,
     installCLIPackages,
+    restoreNodeModulesCache,
+    saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -39,6 +41,11 @@ const platform = process.argv.find(arg => arg.startsWith('--platform='))?.split(
 
 async function cleanup() {
     info('Cleaning up...');
+
+    // Save node_modules to cache before cleanup (even if test failed)
+    if (testConfigDir) {
+        await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-kotlin');
+    }
 
     if (platform === 'android') {
         try {
@@ -91,11 +98,15 @@ async function main() {
         info('Installing CLI packages...');
         if (existsSync(testConfigDir)) rmSync(testConfigDir, { recursive: true, force: true });
         
+        // Try to restore node_modules from cache
+        await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-kotlin');
+        
         await installCLIPackages(testConfigDir, [
             '@agenteract/cli',
             '@agenteract/agents',
             '@agenteract/server'
         ]);
+        success('CLI packages installed from Verdaccio');
 
         // 4. Setup Agenteract Config
         // We point to the local example app. 

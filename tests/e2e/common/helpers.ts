@@ -581,3 +581,92 @@ export async function installCLIPackages(
   const installCmd = `cd ${configDir} && npm install ${packageVersions.join(' ')} --registry ${verdaccioUrl}`;
   await runCommand(installCmd);
 }
+
+/**
+ * Check if we're running in CI environment
+ */
+export function isCI(): boolean {
+  return !!(
+    process.env.CI ||
+    process.env.CONTINUOUS_INTEGRATION ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.TRAVIS ||
+    process.env.CIRCLECI ||
+    process.env.GITLAB_CI
+  );
+}
+
+/**
+ * Get the cache directory for node_modules
+ */
+export function getNodeModulesCacheDir(): string {
+  return join(homedir(), '.cache', 'agenteract', 'node_modules');
+}
+
+/**
+ * Restore node_modules from cache if available
+ * @param targetDir - Directory where node_modules should be restored
+ * @param cacheKey - Cache key (e.g., 'agenteract-e2e-vite-app')
+ * @returns true if cache was restored, false otherwise
+ */
+export async function restoreNodeModulesCache(
+  targetDir: string,
+  cacheKey: string
+): Promise<boolean> {
+  // Skip caching in CI
+  if (isCI()) {
+    return false;
+  }
+
+  const cacheDir = getNodeModulesCacheDir();
+  const cachedNodeModules = join(cacheDir, cacheKey, 'node_modules');
+  const targetNodeModules = join(targetDir, 'node_modules');
+
+  if (!existsSync(cachedNodeModules)) {
+    return false;
+  }
+
+  try {
+    info(`Restoring node_modules from cache: ${cacheKey}`);
+    await runCommand(`mkdir -p ${targetDir}`);
+    await runCommand(`cp -Rp ${cachedNodeModules} ${targetNodeModules}`);
+    success('node_modules restored from cache');
+    return true;
+  } catch (err) {
+    error(`Failed to restore node_modules from cache: ${err}`);
+    return false;
+  }
+}
+
+/**
+ * Save node_modules to cache
+ * @param sourceDir - Directory containing node_modules to cache
+ * @param cacheKey - Cache key (e.g., 'agenteract-e2e-vite-app')
+ */
+export async function saveNodeModulesCache(
+  sourceDir: string,
+  cacheKey: string
+): Promise<void> {
+  // Skip caching in CI
+  if (isCI()) {
+    return;
+  }
+
+  const sourceNodeModules = join(sourceDir, 'node_modules');
+  if (!existsSync(sourceNodeModules)) {
+    return;
+  }
+
+  const cacheDir = getNodeModulesCacheDir();
+  const cachedNodeModules = join(cacheDir, cacheKey, 'node_modules');
+
+  try {
+    info(`Saving node_modules to cache: ${cacheKey}`);
+    await runCommand(`mkdir -p ${join(cacheDir, cacheKey)}`);
+    await runCommand(`rm -rf ${cachedNodeModules}`);
+    await runCommand(`cp -Rp ${sourceNodeModules} ${cachedNodeModules}`);
+    success('node_modules saved to cache');
+  } catch (err) {
+    error(`Failed to save node_modules to cache: ${err}`);
+  }
+}
