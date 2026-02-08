@@ -30,7 +30,8 @@ import {
   saveNodeModulesCache,
 } from '../common/helpers.js';
 import { 
-  stopApp, 
+  stopApp,
+  startApp,
   bootDevice, 
   getDeviceState,
   listIOSDevices
@@ -597,22 +598,22 @@ async function main() {
 
     success('UI hierarchy fetched successfully');
 
-    // 13.5. Test app lifecycle: stop and restart app
-    info('Testing app lifecycle: stopping and restarting app...');
+    // 13.5. Test app lifecycle: quit Flutter CLI and restart app via lifecycle utilities
+    info('Testing app lifecycle: quitting Flutter dev session, then restarting app via lifecycle utilities...');
     try {
-      // Stop the app on device using lifecycle utility
-      await stopApp({
-        projectPath: exampleAppDir,
-        device: testDevice
-      });
-      success('Flutter app stopped via lifecycle utility');
-      await sleep(2000);
+      // 1) Quit the flutter run session so the app fully terminates
+      info('Sending quit (q) command to Flutter dev console...');
+      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', 'q');
+      success('Sent quit command to Flutter dev console');
+      await sleep(5000); // Give it time to shut down and terminate the app
 
-      // Restart the app by sending 'R' to Flutter PTY to trigger hot restart
-      info('Restarting Flutter app via hot restart (R command)...');
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', 'R');
-      success('Sent hot restart command to Flutter app');
-      await sleep(10000); // Give it time to restart
+      // 2) Restart the app by launching the already-installed iOS app via lifecycle utility
+      info('Restarting Flutter app via startApp lifecycle utility...');
+      await startApp({
+        projectPath: exampleAppDir,
+        device: testDevice,
+      });
+      success('Sent start command to Flutter app via lifecycle utility');
 
       info('Waiting for app to reconnect after restart...');
       let reconnected = false;
@@ -632,10 +633,10 @@ async function main() {
 
       if (!reconnected) {
         error('App did not reconnect within 30 seconds after restart');
-        throw new Error('Lifecycle test failed: app did not reconnect');
+        throw new Error('Lifecycle test failed: app did not reconnect after restart');
       }
 
-      success('✅ App lifecycle test passed: stop and restart successful');
+      success('✅ App lifecycle test passed: quit + restart successful');
     } catch (err) {
       error(`Lifecycle test failed: ${err}`);
       // Don't fail the entire test, just log the error

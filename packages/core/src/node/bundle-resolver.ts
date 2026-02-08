@@ -56,7 +56,7 @@ export async function resolveBundleInfo(
 }
 
 /**
- * Resolve Flutter bundle info from pubspec.yaml and gradle/xcode files
+ * Resolve Flutter bundle info from Android Gradle and iOS Xcode project files
  */
 async function resolveFlutterBundleInfo(projectPath: string, bundleInfo: BundleInfo): Promise<BundleInfo> {
   const result = { ...bundleInfo };
@@ -74,12 +74,32 @@ async function resolveFlutterBundleInfo(projectPath: string, bundleInfo: BundleI
           result.android = match[1];
         }
       } catch (error) {
-        // Ignore read errors
+        console.error(`Failed to resolve Android bundle ID from ${buildGradlePath}: ${error}`);
       }
     }
   }
-  
-  // iOS: Read from ios/Runner/Info.plist or ios/Runner.xcodeproj
+
+  // iOS: Read bundle identifier from Xcode project (Runner.xcodeproj/project.pbxproj)
+  if (!result.ios) {
+    const pbxprojPath = path.join(projectPath, 'ios', 'Runner.xcodeproj', 'project.pbxproj');
+    if (existsSync(pbxprojPath)) {
+      try {
+        const content = await readFile(pbxprojPath, 'utf8');
+
+        // Look for PRODUCT_BUNDLE_IDENTIFIER = com.example.app;
+        const match = content.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);/);
+        if (match) {
+          const raw = match[1].trim();
+          // Strip any surrounding quotes
+          result.ios = raw.replace(/^"|"$/g, '').trim();
+        }
+      } catch (error) {
+        console.error(`Failed to resolve iOS bundle ID from Xcode project: ${error}`);
+      }
+    }
+  }
+
+  // Fallback iOS: Read from ios/Runner/Info.plist when it contains a literal identifier
   if (!result.ios) {
     const infoPlistPath = path.join(projectPath, 'ios', 'Runner', 'Info.plist');
     if (existsSync(infoPlistPath)) {
@@ -89,10 +109,14 @@ async function resolveFlutterBundleInfo(projectPath: string, bundleInfo: BundleI
         // Look for CFBundleIdentifier
         const match = content.match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/);
         if (match) {
-          result.ios = match[1].replace('$(PRODUCT_BUNDLE_IDENTIFIER)', '').trim();
+          const raw = match[1].trim();
+          // If the value is a literal bundle id, use it as-is; otherwise leave undefined
+          if (!/\$\(.*\)/.test(raw)) {
+            result.ios = raw;
+          }
         }
       } catch (error) {
-        // Ignore read errors
+        console.error(`Failed to resolve iOS bundle ID from Info.plist: ${error}`);
       }
     }
   }
@@ -133,7 +157,7 @@ async function resolveExpoBundleInfo(projectPath: string, bundleInfo: BundleInfo
       result.androidMainActivity = 'MainActivity';
     }
   } catch (error) {
-    // Ignore parse errors
+    console.error(`Failed to resolve Expo bundle info from app.json: ${error}`);
   }
   
   return result;
@@ -165,7 +189,7 @@ async function resolveKMPBundleInfo(projectPath: string, bundleInfo: BundleInfo)
         result.android = match[1];
       }
     } catch (error) {
-      // Ignore read errors
+      console.error(`Failed to resolve Android bundle ID from ${gradleFile}: ${error}`);
     }
   }
   
@@ -180,7 +204,7 @@ async function resolveKMPBundleInfo(projectPath: string, bundleInfo: BundleInfo)
           result.android = match[1].trim();
         }
       } catch (error) {
-        // Ignore read errors
+        console.error(`Failed to resolve Android bundle ID from ${gradlePropsPath}: ${error}`);
       }
     }
   }
@@ -222,7 +246,7 @@ async function resolveSwiftBundleInfo(projectPath: string, bundleInfo: BundleInf
           break;
         }
       } catch (error) {
-        // Ignore read errors
+        console.error(`Failed to resolve iOS bundle ID from ${plistPath}: ${error}`);
       }
     }
   }
