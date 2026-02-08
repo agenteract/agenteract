@@ -551,6 +551,13 @@ async function main(): Promise<void> {
     console.log('   Use --no-cache to force rebuild all packages');
   } else {
     console.log('🔄 Cache disabled (CI mode or --no-cache flag)');
+    console.log('🗑️  Clearing Verdaccio storage for @agenteract packages...');
+    try {
+      execSync('rm -rf .verdaccio/storage/@agenteract', { stdio: 'inherit' });
+      console.log('✓ Verdaccio storage cleared');
+    } catch (error) {
+      console.log('⚠️  Could not clear Verdaccio storage (might not exist yet)');
+    }
   }
 
   // Check if Verdaccio is running
