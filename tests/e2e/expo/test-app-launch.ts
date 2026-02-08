@@ -40,9 +40,10 @@ import {
   clearAppData,
   buildApp,
   installApp,
-  uninstallApp
-} from '../../../packages/core/src/node/lifecycle-utils.js';
-import { listIOSDevices, listAndroidDevices } from '../../../packages/core/src/node/device-manager.js';
+  uninstallApp,
+  listIOSDevices,
+  listAndroidDevices
+} from '@agenteract/core/node';
 import * as path from 'path';
 
 let agentServer: ChildProcess | null = null;

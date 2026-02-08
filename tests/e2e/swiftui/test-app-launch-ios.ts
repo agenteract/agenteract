@@ -34,9 +34,9 @@ import {
   stopApp, 
   startApp, 
   bootDevice, 
-  getDeviceState
-} from '../../../packages/core/src/node/lifecycle-utils.js';
-import { listIOSDevices } from '../../../packages/core/src/node/device-manager.js';
+  getDeviceState,
+  listIOSDevices
+} from '@agenteract/core/node';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;

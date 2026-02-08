@@ -1,4 +1,4 @@
-import { listAndroidDevices } from '../../packages/core/src/node/device-manager.js';
+import { listAndroidDevices } from '@agenteract/core/node';
 
 async function test() {
   const devices = await listAndroidDevices();

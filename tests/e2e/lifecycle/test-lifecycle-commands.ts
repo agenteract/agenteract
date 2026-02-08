@@ -12,9 +12,7 @@
  * platform-specific E2E tests.
  */
 
-import { detectPlatform } from '../../../packages/core/src/node/platform-detector.js';
-import { listDevices } from '../../../packages/core/src/node/device-manager.js';
-import { resolveBundleInfo } from '../../../packages/core/src/node/bundle-resolver.js';
+import { detectPlatform, listDevices, resolveBundleInfo } from '@agenteract/core/node';
 import { join } from 'path';
 import { existsSync } from 'fs';
 

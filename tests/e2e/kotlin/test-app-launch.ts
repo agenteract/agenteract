@@ -36,9 +36,9 @@ import {
   stopApp, 
   startApp, 
   bootDevice, 
-  getDeviceState
-} from '../../../packages/core/src/node/lifecycle-utils.js';
-import { listAndroidDevices } from '../../../packages/core/src/node/device-manager.js';
+  getDeviceState,
+  listAndroidDevices
+} from '@agenteract/core/node';
 
 let agentServer: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
