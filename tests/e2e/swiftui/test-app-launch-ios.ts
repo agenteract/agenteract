@@ -464,6 +464,15 @@ async function main() {
       error(`Failed to get dev logs: ${err}`);
     }
 
+    // Terminate app before finishing test to prevent interference with future runs
+    info('Terminating SwiftUI app to clean up for future test runs...');
+    try {
+      await runCommand('pkill -f "AgenteractSwiftExample" 2>/dev/null || true');
+      success('SwiftUI app terminated');
+    } catch (err) {
+      info(`Could not terminate SwiftUI app: ${err}`);
+    }
+
     success('✅ All tests passed!');
 
   } catch (err) {

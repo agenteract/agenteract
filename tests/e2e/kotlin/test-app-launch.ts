@@ -416,6 +416,20 @@ async function main() {
         await verifyInLogs('All values reset');
         success('AgentLink verified in logs');
 
+        // Terminate app before finishing test to prevent interference with future runs
+        info('Terminating app to clean up for future test runs...');
+        if (platform === 'android') {
+            try {
+                await runCommand('adb shell am force-stop io.agenteract.kmp_example', 'Stop Android App');
+                success('Android app terminated');
+            } catch (err) {
+                info(`Could not terminate Android app: ${err}`);
+            }
+        } else if (platform === 'desktop') {
+            // Desktop app will be killed by cleanup
+            info('Desktop app will be terminated by cleanup');
+        }
+
         success('✅ Kotlin Full Suite E2E Test Passed!');
 
     } catch (err) {

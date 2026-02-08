@@ -32,12 +32,6 @@ export interface AppLifecycleOptions {
    * If not provided, will attempt to resolve from projectPath
    */
   projectName?: string;
-  
-  /**
-   * Optional working directory for CLI commands (for Expo Go apps)
-   * This is where agenteract.config.js is located
-   */
-  cwd?: string;
 }
 
 /**
@@ -588,8 +582,7 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * await startApp({
  *   projectPath: '/path/to/expo-app',
  *   device: iosSimulator,
- *   projectName: 'my-expo-app',
- *   cwd: '/path/to/agenteract/config'
+ *   projectName: 'my-expo-app'
  * });
  * 
  * // With bundle ID override
@@ -602,7 +595,7 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * ```
  */
 export async function startApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName, cwd } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string' 
@@ -643,9 +636,15 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
   
   // Handle different app types
   if (isExpoGoApp) {
-    // Expo Go - send keystroke to CLI to reopen the app
+    // Expo Go - use Expo CLI keystroke to launch the app
+    // This requires the Expo dev server to be running
+    if (!projectName) {
+      throw new Error('projectName is required for Expo Go apps. Pass projectName option to startApp().');
+    }
+    
     const keystroke = platform === 'ios' ? 'i' : 'a';
-    await sendExpoCLICommand(projectName, keystroke, cwd);
+    await sendExpoCLICommand(projectName, keystroke, projectPath);
+    // Wait for the app to start - the Expo CLI will trigger the launch
   } else {
     // Prebuilt apps - use platform commands
     if (platform === 'ios') {
@@ -665,12 +664,12 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
  * await stopApp({
  *   projectPath: '/path/to/app',
  *   device: myDevice,
- *   force: true  // Force kill (Android only)
+ *   force: true  // Force kill (Android only, defaults to true)
  * });
  * ```
  */
 export async function stopApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, force = false } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, force = true } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string'
@@ -750,9 +749,14 @@ export async function stopIOSApp(device: Device | string, bundleId: string): Pro
     });
   } catch (error: any) {
     // Ignore error if app is not running
-    if (!error.message?.includes('No matching processes')) {
+    // Error messages can be:
+    // - "No matching processes" (older error format)
+    // - "found nothing to terminate" (newer error format)
+    if (!error.message?.includes('No matching processes') && 
+        !error.message?.includes('nothing to terminate')) {
       throw new Error(`Failed to stop iOS app ${bundleId} on device ${deviceId}: ${error.message}`);
     }
+    // App is not running, which is fine
   }
 }
 
@@ -806,27 +810,23 @@ export async function restartIOSApp(device: Device | string, bundleId: string): 
  * 
  * @param device - Android device/emulator (use device.id for specific device)
  * @param bundleId - App package name (e.g., 'com.example.myapp')
- * @param force - If true, use force-stop (immediate); if false, use kill (graceful). Default: false
+ * @param force - If true, use force-stop (immediate); if false, use kill (graceful). Default: true
  * @throws Error if adb command fails
+ * 
+ * Note: `am kill` only stops background/cached processes. For foreground apps, you must use force-stop.
+ * Since most test scenarios involve stopping a foreground app, force defaults to true.
  */
 export async function stopAndroidApp(
   device: Device | string, 
   bundleId: string, 
-  force: boolean = false
+  force: boolean = true
 ): Promise<void> {
   const deviceId = typeof device === 'string' ? device : device.id;
   
-  try {
-    const command = force ? 'force-stop' : 'kill';
-    await execFileAsync('adb', ['-s', deviceId, 'shell', 'am', command, bundleId], {
-      timeout: 10000,
-    });
-  } catch (error: any) {
-    // Graceful kill may fail if app is not running - that's OK
-    if (force || !error.message?.includes('does not exist')) {
-      throw new Error(`Failed to stop Android app ${bundleId} on device ${deviceId}: ${error.message}`);
-    }
-  }
+  const command = force ? 'force-stop' : 'kill';
+  await execFileAsync('adb', ['-s', deviceId, 'shell', 'am', command, bundleId], {
+    timeout: 10000,
+  });
 }
 
 /**
@@ -1441,15 +1441,19 @@ async function buildViteApp(projectPath: string, silent: boolean): Promise<void>
  * 
  * @param projectName - Project name from agenteract.config.js
  * @param keystroke - Single character command ('i' for iOS, 'a' for Android, etc.)
- * @param cwd - Working directory where agenteract.config.js is located (defaults to process.cwd())
+ * @param projectPath - Path to the Expo project directory (where .agenteract-runtime.json is located)
  */
-async function sendExpoCLICommand(projectName: string | undefined, keystroke: string, cwd?: string): Promise<void> {
+async function sendExpoCLICommand(projectName: string | undefined, keystroke: string, projectPath: string): Promise<void> {
   // The Expo CLI is typically running in the background via the PTY server
   // We need to send the keystroke through the PTY interface
   // This is handled by the agent-server's PTY functionality
   
   if (!projectName) {
     throw new Error('projectName is required for Expo Go apps. Pass projectName option to startApp().');
+  }
+  
+  if (!projectPath) {
+    throw new Error('projectPath is required for Expo Go apps. Pass projectPath option to startApp().');
   }
   
   try {
@@ -1459,14 +1463,15 @@ async function sendExpoCLICommand(projectName: string | undefined, keystroke: st
     
     // Call the agents CLI to send the command
     // Format: npx @agenteract/agents cmd [project-name] [keystroke]
-    // Use cwd to specify where the config is located
-    const execOptions: any = { timeout: 5000 };
-    if (cwd) {
-      execOptions.cwd = cwd;
-    }
+    // Run from the project directory to ensure correct .agenteract-runtime.json token is used
+    const execOptions: any = { 
+      timeout: 5000,
+      cwd: projectPath
+    };
     
     await execFilePromise('npx', ['@agenteract/agents', 'cmd', projectName, keystroke], execOptions);
   } catch (error: any) {
-    throw new Error(`Failed to send Expo CLI command '${keystroke}': ${error.message}`);
+    // Propagate the error with context
+    throw new Error(`Failed to send Expo CLI command '${keystroke}' to project '${projectName}' at ${projectPath}: ${error.message}`);
   }
 }

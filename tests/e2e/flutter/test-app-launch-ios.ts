@@ -649,6 +649,19 @@ async function main() {
     assertContains(appLogs, 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
     success('App config working in hybrid mode (logging from dev server and app)');
 
+    // Terminate app before finishing test to prevent interference with future runs
+    info('Terminating Flutter app to clean up for future test runs...');
+    if (testConfigDir) {
+      try {
+        info('Sending quit command to Flutter via agenteract CLI...');
+        await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'flutter-example', 'q');
+        await sleep(2000);
+        success('Flutter quit command sent');
+      } catch (err) {
+        info(`Could not send quit command: ${err}`);
+      }
+    }
+
   } catch (err) {
     error(`Test failed: ${err}\n${err instanceof Error ? err.stack : 'No stack trace available'}`);
     await cleanup(); // Ensure cleanup runs even on failure

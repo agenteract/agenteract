@@ -49,6 +49,7 @@ let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
 let cleanupExecuted = false;
+let PLATFORM: 'ios' | 'android' = 'ios'; // Will be set in main()
 
 async function cleanup() {
   if (cleanupExecuted) {
@@ -110,9 +111,17 @@ async function cleanup() {
     await runCommand('pkill -f "metro" 2>/dev/null || true');
     await runCommand('pkill -f "@agenteract/expo" 2>/dev/null || true');
 
-    // kill expo go app
-    // would need to use adb on android to kill the app, and know the bundle id
-    await runCommand('pkill -f "Expo Go" 2>/dev/null || true');
+    // Kill Expo-related apps (platform-specific)
+    // Terminate both Expo Go AND the prebuilt example app to ensure cleanup regardless of test mode
+    if (PLATFORM === 'ios') {
+      // For iOS, terminate both Expo Go and the prebuilt app on all booted simulators
+      await runCommand('xcrun simctl terminate booted host.exp.Exponent 2>/dev/null || true');
+      await runCommand('xcrun simctl terminate booted io.agenteract.expoexample 2>/dev/null || true');
+    } else {
+      // For Android, use adb to force-stop both Expo Go and the prebuilt app
+      await runCommand('adb shell am force-stop host.exp.exponent 2>/dev/null || true');
+      await runCommand('adb shell am force-stop io.agenteract.expoexample 2>/dev/null || true');
+    }
 
     // Also kill any Expo processes that might be children of our test
     if (testConfigDir) {
@@ -162,7 +171,7 @@ async function main() {
   const PREBUILD_MODE = process.env.PREBUILD === 'true';
   
   // Check platform (default to ios for backward compatibility)
-  const PLATFORM = (process.env.PLATFORM || 'ios') as 'ios' | 'android';
+  PLATFORM = (process.env.PLATFORM || 'ios') as 'ios' | 'android';
   
   // Validate platform
   if (PLATFORM !== 'ios' && PLATFORM !== 'android') {
@@ -633,8 +642,7 @@ async function main() {
         await startApp({
           projectPath: exampleAppDir,
           device: testDevice,
-          projectName: 'expo-app',
-          cwd: testConfigDir!
+          projectName: 'expo-app'
         });
         success('Sent start command to Expo app');
       }
