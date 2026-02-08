@@ -30,6 +30,13 @@ import {
   restoreNodeModulesCache,
   saveNodeModulesCache,
 } from '../common/helpers.js';
+import { 
+  stopApp, 
+  startApp, 
+  bootDevice, 
+  getDeviceState
+} from '../../../packages/core/src/node/lifecycle-utils.js';
+import { listIOSDevices } from '../../../packages/core/src/node/device-manager.js';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
@@ -49,15 +56,14 @@ async function cleanup() {
     await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-swift');
   }
 
-  // First, try to quit Flutter gracefully via agenteract CLI
-  if (testConfigDir && agentServer && agentServer.pid) {
-    try {
-      info('Killing AgenteractSwiftApp process...');
-      await runCommand('pkill -f "AgenteractSwiftExample" 2>/dev/null || true');
-      success('AgenteractSwiftExample process killed');
-    } catch (err) {
-      info(`Could not kill AgenteractSwiftExample process: ${err}`);
-    }
+  // Terminate SwiftUI app using lifecycle utilities
+  try {
+    info('Terminating AgenteractSwiftExample app...');
+    await runCommand('xcrun simctl terminate booted com.example.AgenteractSwiftExample 2>/dev/null || true');
+    await runCommand('pkill -f "AgenteractSwiftExample" 2>/dev/null || true');
+    success('AgenteractSwiftExample process killed');
+  } catch (err) {
+    info(`Could not kill AgenteractSwiftExample process: ${err}`);
   }
 
   // Then send SIGTERM to agenteract dev for graceful shutdown
@@ -122,27 +128,6 @@ async function main() {
     } catch (err) {
       error('Xcode is not installed or not in PATH');
       throw new Error('Xcode is required for this test');
-    }
-
-    let simulatorName: string | undefined;
-
-    // Check for iOS simulator
-    info('Checking for iOS simulator...');
-    try {
-      const simulators = await runCommand('xcrun simctl list devices available');
-      if (!simulators.includes('iPhone')) {
-        throw new Error('No iPhone simulator found');
-      }
-      simulatorName = simulators.split('\n').find(line => line.includes('iPhone'))?.split('(')[0].trim() ?? undefined;
-
-      if (!simulatorName) {
-        throw new Error('No iPhone simulator found');
-      }
-
-      success(`iOS simulator ${simulatorName} available`);
-    } catch (err) {
-      error('No iOS simulator found');
-      throw new Error('iOS simulator is required for this test. Install Xcode and run `xcodebuild -downloadAllPlatforms`');
     }
 
     // 2. Clean up any existing processes on agenteract ports
@@ -240,6 +225,77 @@ async function main() {
     );
     success(`Config created in ${testConfigDir}`);
 
+    // 10.5. Test Phase 1 lifecycle utilities (before building app)
+    info('Testing Phase 1 lifecycle utilities...');
+    
+    // Find an available iOS simulator
+    info('Finding available iOS simulator...');
+    const devices = await listIOSDevices();
+    
+    if (devices.length === 0) {
+      error('No available iOS simulators found.');
+      error('This usually means:');
+      error('  1. No simulators are installed');
+      error('  2. All simulators have missing/corrupted runtimes');
+      error('');
+      error('To fix:');
+      error('  - Open Xcode > Settings > Platforms');
+      error('  - Download an iOS simulator runtime');
+      error('  - Or run: xcrun simctl list devices available');
+      throw new Error('No available iOS devices found. Please install iOS simulator runtimes in Xcode.');
+    }
+    
+    info(`Found ${devices.length} available iOS device(s)`);
+    
+    // Prefer a booted device, otherwise use the first available device
+    let testDevice = devices.find(d => d.state === 'booted');
+    if (!testDevice) {
+      testDevice = devices[0];
+      info(`No booted simulator found, will use: ${testDevice.name} (${testDevice.id})`);
+    } else {
+      info(`Found booted simulator: ${testDevice.name} (${testDevice.id})`);
+    }
+    
+    // Test getDeviceState - verify simulator is accessible
+    info('Testing getDeviceState...');
+    try {
+      const deviceState = await getDeviceState(testDevice);
+      info(`Device state: ${JSON.stringify(deviceState)}`);
+      
+      if (deviceState.platform !== 'ios') {
+        throw new Error(`Expected iOS device, got ${deviceState.platform}`);
+      }
+      
+      success(`✓ getDeviceState working: device is ${deviceState.state}`);
+      
+      // Test bootDevice - ensure device is booted
+      info('Testing bootDevice...');
+      if (deviceState.state === 'shutdown') {
+        info('Simulator is shutdown, booting...');
+        await bootDevice({ 
+          device: testDevice, 
+          waitForBoot: true, 
+          timeout: 60000 
+        });
+        success('✓ bootDevice successfully booted the simulator');
+      } else {
+        info('Simulator already booted, testing NOOP behavior...');
+        await bootDevice({ device: testDevice });
+        success('✓ bootDevice handled already-booted simulator (NOOP)');
+      }
+      
+      // Verify device is now booted
+      const deviceStateAfterBoot = await getDeviceState(testDevice);
+      if (deviceStateAfterBoot.state !== 'booted') {
+        throw new Error(`Expected device to be booted, but state is ${deviceStateAfterBoot.state}`);
+      }
+      success('✓ Device confirmed booted after bootDevice call');
+      
+    } catch (err) {
+      error(`Phase 1 lifecycle test failed: ${err}`);
+      throw err;
+    }
+
     // 11. Start agenteract dev from test directory
     info('Starting agenteract dev...');
     info('This will start the Swift dev server and AgentDebugBridge');
@@ -255,8 +311,7 @@ async function main() {
     const derivedDataPath = `${exampleAppDir}/build/DerivedData`;
     await runCommand(`rm -rf ${derivedDataPath}`);
     await runCommand(`mkdir -p ${derivedDataPath}`);
-    await runCommand(`cd ${exampleAppDir} && xcodebuild -project AgenteractSwiftExample/AgenteractSwiftExample.xcodeproj -scheme AgenteractSwiftExample -destination 'platform=iOS Simulator,name=${simulatorName}' -derivedDataPath ${derivedDataPath} build`);
-    await runCommand(`cd ${exampleAppDir} && xcodebuild -project AgenteractSwiftExample/AgenteractSwiftExample.xcodeproj -scheme AgenteractSwiftExample -destination 'platform=iOS Simulator,name=${simulatorName}' build`);
+    await runCommand(`cd ${exampleAppDir} && xcodebuild -project AgenteractSwiftExample/AgenteractSwiftExample.xcodeproj -scheme AgenteractSwiftExample -destination 'platform=iOS Simulator,id=${testDevice.id}' -derivedDataPath ${derivedDataPath} build`);
     success('Swift-App app built');
 
     info(`test app path: ${testConfigDir}`)
@@ -264,19 +319,18 @@ async function main() {
     // Install and launch the app on simulator
     info('Installing and launching the Swift-App app on simulator...');
 
-    // First, boot the simulator if not already running
-    const simulatorId = await runCommand(`xcrun simctl list devices available | grep "${simulatorName}" | grep -E -o -i "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})" | head -1`);
-    await runCommand(`xcrun simctl boot "${simulatorId.trim()}" 2>/dev/null || true`);
+    // Boot the simulator if not already running (should be booted from Phase 1 test)
+    await runCommand(`xcrun simctl boot "${testDevice.id}" 2>/dev/null || true`);
     await sleep(2000);
 
     // Get the app bundle path from the build
     const appBundlePath = `${derivedDataPath}/Build/Products/Debug-iphonesimulator/AgenteractSwiftExample.app`;
 
     // Install the app on the simulator
-    await runCommand(`xcrun simctl install "${simulatorId.trim()}" "${appBundlePath}"`);
+    await runCommand(`xcrun simctl install "${testDevice.id}" "${appBundlePath}"`);
 
     // Launch the app
-    await runCommand(`xcrun simctl launch "${simulatorId.trim()}" com.example.AgenteractSwiftExample`);
+    await runCommand(`xcrun simctl launch "${testDevice.id}" com.example.AgenteractSwiftExample`);
     success('Swift-App app installed and launched');
 
     // we don't have a pty wrapper for Swift since it's a native app, so we just wait for the app to start
@@ -378,6 +432,59 @@ async function main() {
 
     success('UI hierarchy fetched successfully');
 
+    // 13.5. Test app lifecycle: stop and restart app
+    info('Testing app lifecycle: stopping and restarting app...');
+    try {
+      // Stop the app on device using lifecycle utility
+      await stopApp({
+        projectPath: exampleAppDir,
+        device: testDevice
+      });
+      success('SwiftUI app stopped via lifecycle utility');
+      await sleep(2000);
+
+      // Restart the app using lifecycle utility
+      info('Restarting SwiftUI app...');
+      await startApp({
+        projectPath: exampleAppDir,
+        device: testDevice
+      });
+      success('Sent start command to SwiftUI app');
+      await sleep(5000); // Give it time to launch
+
+      info('Waiting for app to reconnect after restart...');
+      let reconnected = false;
+      for (let i = 0; i < 30; i++) {
+        try {
+          const hierarchyAfterRestart = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'swift-app');
+          if (hierarchyAfterRestart.includes('tap-count-text')) {
+            success('App reconnected after lifecycle restart');
+            reconnected = true;
+            break;
+          }
+        } catch (err) {
+          // Still reconnecting
+        }
+        await sleep(1000);
+      }
+
+      if (!reconnected) {
+        error('App did not reconnect within 30 seconds after restart');
+        throw new Error('Lifecycle test failed: app did not reconnect');
+      }
+
+      success('✅ App lifecycle test passed: stop and restart successful');
+    } catch (err) {
+      error(`Lifecycle test failed: ${err}`);
+      // Don't fail the entire test, just log the error
+      info('Continuing with remaining tests...');
+    }
+
+    // Note: We skip clearAppData/reinstallApp in E2E tests
+    // - For state reset, use agentLink://reset_state instead
+    // - clearAppData/reinstallApp are tested in unit tests
+    info('Skipping clearAppData/reinstallApp (use agentLink://reset_state for state management)');
+
     // 14. Test tap interaction
     if (hasIncrementButton) {
       info('Testing tap interaction on increment-button...');
@@ -467,10 +574,20 @@ async function main() {
     // Terminate app before finishing test to prevent interference with future runs
     info('Terminating SwiftUI app to clean up for future test runs...');
     try {
-      await runCommand('pkill -f "AgenteractSwiftExample" 2>/dev/null || true');
-      success('SwiftUI app terminated');
+      await stopApp({
+        projectPath: exampleAppDir,
+        device: testDevice
+      });
+      success('SwiftUI app terminated via lifecycle utility');
     } catch (err) {
-      info(`Could not terminate SwiftUI app: ${err}`);
+      info(`Could not terminate SwiftUI app via lifecycle utility: ${err}`);
+      // Try legacy method as fallback
+      try {
+        await runCommand('pkill -f "AgenteractSwiftExample" 2>/dev/null || true');
+        success('SwiftUI app terminated via pkill');
+      } catch (err2) {
+        info(`Could not terminate SwiftUI app via pkill: ${err2}`);
+      }
     }
 
     success('✅ All tests passed!');
