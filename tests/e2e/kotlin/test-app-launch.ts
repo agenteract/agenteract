@@ -186,9 +186,9 @@ async function main() {
             }
             
             info(`Found ${devices.length} available Android device(s)`);
-            
-            // Use the first available device
-            const testDevice = devices[0];
+
+            // Use the first available device (reuse outer testDevice for later lifecycle tests)
+            testDevice = devices[0];
             info(`Using Android device: ${testDevice.name} (${testDevice.id})`);
             
             // Test getDeviceState - verify device is accessible
