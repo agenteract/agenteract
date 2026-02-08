@@ -25,6 +25,7 @@ import {
   spawnBackground,
   sleep,
   setupCleanup,
+  installCLIPackages,
 } from '../common/helpers.js'; import { assert } from 'node:console';
 
 let agentServer: ChildProcess | null = null;
@@ -287,17 +288,19 @@ async function main() {
     // This is needed because dev.ts spawns npx from the project directory (cwd: projectPath)
     // Without this, npx prompts to install the package
     info('Installing @agenteract/flutter-cli in Flutter app directory for npx...');
-    await runCommand(`cd ${exampleAppDir} && npm init -y`);
-    await runCommand(`cd ${exampleAppDir} && npm install @agenteract/flutter-cli --registry http://localhost:4873`);
+    await installCLIPackages(exampleAppDir, ['@agenteract/flutter-cli']);
     success('@agenteract/flutter-cli installed in Flutter app directory');
 
     // 9. Install CLI packages in separate config directory
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `/tmp/agenteract-e2e-test-flutter-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/flutter-cli --registry http://localhost:4873`);
+    await installCLIPackages(testConfigDir, [
+      '@agenteract/cli',
+      '@agenteract/agents',
+      '@agenteract/server',
+      '@agenteract/flutter-cli'
+    ]);
     success('CLI packages installed from Verdaccio');
 
     // 10. Create agenteract config pointing to the /tmp app

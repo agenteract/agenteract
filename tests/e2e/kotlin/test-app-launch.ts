@@ -28,6 +28,7 @@ import {
     sleep,
     setupCleanup,
     getTmpDir,
+    installCLIPackages,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -89,10 +90,12 @@ async function main() {
         // 3. Install CLI tools
         info('Installing CLI packages...');
         if (existsSync(testConfigDir)) rmSync(testConfigDir, { recursive: true, force: true });
-        mkdirSync(testConfigDir, { recursive: true });
-
-        await runCommand(`cd "${testConfigDir}" && npm init -y`);
-        await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server --registry http://localhost:4873`);
+        
+        await installCLIPackages(testConfigDir, [
+            '@agenteract/cli',
+            '@agenteract/agents',
+            '@agenteract/server'
+        ]);
 
         // 4. Setup Agenteract Config
         // We point to the local example app. 

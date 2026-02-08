@@ -12,7 +12,7 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, cpSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const exec = promisify(execCallback);
@@ -32,6 +32,7 @@ import {
   sleep,
   setupCleanup,
   getTmpDir,
+  preparePackageForVerdaccio,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -57,7 +58,10 @@ async function cleanup() {
 
   // Clean up temp directories (skip in CI to preserve artifacts)
   if (!process.env.CI) {
-    await stopVerdaccio();
+    // Keep Verdaccio running for faster subsequent test runs (cache optimization)
+    // Verdaccio storage persists packages between runs
+    // Use 'pnpm verdaccio:stop' to manually stop if needed
+    info('Keeping Verdaccio running for cache optimization');
 
     if (testConfigDir) {
       try {
@@ -74,6 +78,9 @@ async function cleanup() {
         // Ignore cleanup errors
       }
     }
+  } else {
+    // In CI, stop Verdaccio to clean up
+    await stopVerdaccio();
   }
 }
 
@@ -139,34 +146,8 @@ async function main() {
       rmSync(packageLockPath, { force: true });
     }
 
-    // Replace workspace:* dependencies with * for Verdaccio
-    info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = join(exampleAppDir, 'package.json');
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-
-    let replacedCount = 0;
-    ['dependencies', 'devDependencies'].forEach(depType => {
-      if (pkgJson[depType]) {
-        Object.keys(pkgJson[depType]).forEach(key => {
-          if (pkgJson[depType][key] === 'workspace:*') {
-            pkgJson[depType][key] = '*';
-            replacedCount++;
-          }
-        });
-      }
-    });
-
-    // Write the file with explicit encoding
-    const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
-    writeFileSync(pkgJsonPath, newContent, 'utf8');
-
-    // Verify the file was written correctly
-    await sleep(200); // Small delay to ensure file system sync on Windows
-    const verifyContent = readFileSync(pkgJsonPath, 'utf8');
-    if (verifyContent.includes('workspace:')) {
-      throw new Error('Failed to replace workspace dependencies');
-    }
-    success(`Workspace dependencies replaced (${replacedCount} replacements)`);
+    // Prepare package.json for Verdaccio (replace workspace:* with actual versions, create .npmrc)
+    await preparePackageForVerdaccio(exampleAppDir);
 
     // Copy mock files from monorepo to temp app
     info('Copying React Native mocks...');
