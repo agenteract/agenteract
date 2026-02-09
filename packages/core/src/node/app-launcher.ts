@@ -2,7 +2,7 @@ import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import * as path from 'path';
-import { PlatformType } from './platform-detector.js';
+import { ProjectType } from './platform-detector.js';
 import { BundleInfo } from './bundle-resolver.js';
 import { Device } from './device-manager.js';
 import { 
@@ -51,7 +51,7 @@ async function findGradle(projectPath: string): Promise<string> {
  * Launch an app on a device or simulator
  */
 export async function launchApp(
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   projectPath: string,
@@ -222,7 +222,7 @@ async function launchKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
  * Stop a running app
  */
 export async function stopApp(
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   launchResult: LaunchResult,
@@ -288,7 +288,7 @@ async function stopAndroidApp(device: Device, bundleInfo: BundleInfo, force: boo
  */
 export async function buildApp(
   projectPath: string,
-  platform: PlatformType,
+  platform: ProjectType,
   options: BuildOptions
 ): Promise<void> {
   const config = options.configuration || 'debug';
@@ -417,7 +417,7 @@ async function buildSwiftApp(projectPath: string, options: BuildOptions): Promis
  */
 export async function performSetup(
   projectPath: string,
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   options: SetupOptions
@@ -448,7 +448,7 @@ export async function performSetup(
  */
 async function installApp(
   projectPath: string,
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
@@ -479,7 +479,7 @@ async function installApp(
  */
 async function reinstallApp(
   projectPath: string,
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
@@ -510,7 +510,7 @@ async function reinstallApp(
  * Clear app data
  */
 async function clearAppData(
-  platform: PlatformType,
+  platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {

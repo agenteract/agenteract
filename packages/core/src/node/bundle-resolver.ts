@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
-import { PlatformType } from './platform-detector.js';
+import { ProjectType } from './platform-detector.js';
 import type { ProjectConfig } from '../config-types.js';
 
 export interface BundleInfo {
@@ -16,7 +16,7 @@ export interface BundleInfo {
  */
 export async function resolveBundleInfo(
   projectPath: string,
-  platform: PlatformType,
+  platform: ProjectType,
   lifecycleConfig?: ProjectConfig['lifecycle'],
   scheme?: string
 ): Promise<BundleInfo> {

@@ -2,7 +2,7 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import * as path from 'path';
 
-export type PlatformType = 
+export type ProjectType = 
   | 'vite'           // Vite/React web app
   | 'expo'           // Expo/React Native app
   | 'flutter'        // Flutter app
@@ -13,7 +13,7 @@ export type PlatformType =
 /**
  * Detect the platform type from a project directory
  */
-export async function detectPlatform(projectPath: string): Promise<PlatformType> {
+export async function detectPlatform(projectPath: string): Promise<ProjectType> {
   // Check for Flutter
   if (existsSync(path.join(projectPath, 'pubspec.yaml'))) {
     return 'flutter';
@@ -128,7 +128,7 @@ export async function detectPlatform(projectPath: string): Promise<PlatformType>
  * Detect platform from dev server command hint
  * This is a fallback when file-based detection isn't sufficient
  */
-export function detectPlatformFromCommand(command: string): PlatformType | null {
+export function detectPlatformFromCommand(command: string): ProjectType | null {
   const lowerCommand = command.toLowerCase();
   
   if (lowerCommand.includes('expo')) {
