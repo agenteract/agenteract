@@ -35,7 +35,8 @@ import {
   startApp, 
   bootDevice, 
   getDeviceState,
-  listIOSDevices
+  listIOSDevices,
+  loadConfig
 } from '@agenteract/core/node';
 
 let agentServer: ChildProcess | null = null;
@@ -221,7 +222,7 @@ async function main() {
     info('Creating agenteract config for swift-app in /tmp...');
     // using --wait-log-timeout 500 to simulate deprecated usage
     await runCommand(
-      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native --wait-log-timeout 500`
+      `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} swift-app native --scheme agenteract-swift-example --wait-log-timeout 500`
     );
     success(`Config created in ${testConfigDir}`);
 
@@ -434,11 +435,22 @@ async function main() {
 
     // 13.5. Test app lifecycle: stop and restart app
     info('Testing app lifecycle: stopping and restarting app...');
+    
+    // Load the config to get the project settings
+    info('Loading agenteract config...');
+    const config = await loadConfig(testConfigDir!);
+    const project = config.projects.find(p => p.name === 'swift-app');
+    if (!project) {
+      throw new Error('swift-app project not found in config');
+    }
+    info(`Loaded project config with scheme: ${project.scheme}`);
+    
     try {
       // Stop the app on device using lifecycle utility
       await stopApp({
         projectPath: exampleAppDir,
-        device: testDevice
+        device: testDevice,
+        projectConfig: project
       });
       success('SwiftUI app stopped via lifecycle utility');
       await sleep(2000);
@@ -447,7 +459,8 @@ async function main() {
       info('Restarting SwiftUI app...');
       await startApp({
         projectPath: exampleAppDir,
-        device: testDevice
+        device: testDevice,
+        projectConfig: project
       });
       success('Sent start command to SwiftUI app');
       await sleep(5000); // Give it time to launch
@@ -576,7 +589,8 @@ async function main() {
     try {
       await stopApp({
         projectPath: exampleAppDir,
-        device: testDevice
+        device: testDevice,
+        projectConfig: project
       });
       success('SwiftUI app terminated via lifecycle utility');
     } catch (err) {

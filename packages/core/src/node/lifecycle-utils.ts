@@ -5,6 +5,7 @@ import { join } from 'path';
 import type { Device } from './device-manager.js';
 import { detectPlatform } from './platform-detector.js';
 import { resolveBundleInfo } from './bundle-resolver.js';
+import type { ProjectConfig } from '../config-types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +33,13 @@ export interface AppLifecycleOptions {
    * If not provided, will attempt to resolve from projectPath
    */
   projectName?: string;
+  
+  /**
+   * Optional project config from agenteract.config.js
+   * Required for Swift apps to resolve bundle ID via URL scheme
+   * Provides access to scheme, lifecycle config, and other project settings
+   */
+  projectConfig?: ProjectConfig;
 }
 
 /**
@@ -385,7 +393,7 @@ export async function bootDevice(options: DeviceBootOptions): Promise<void> {
  * ```
  */
 export async function clearAppData(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, projectConfig } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string'
@@ -413,7 +421,12 @@ export async function clearAppData(options: AppLifecycleOptions): Promise<void> 
   // Resolve bundle ID if not provided
   let bundleId = bundleIdOverride;
   if (!bundleId) {
-    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+    const bundleInfo = await resolveBundleInfo(
+      projectPath, 
+      platformInfo, 
+      projectConfig?.lifecycle,
+      projectConfig?.scheme
+    );
     bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
     
     if (!bundleId) {
@@ -595,7 +608,7 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * ```
  */
 export async function startApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName, projectConfig } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string' 
@@ -625,7 +638,12 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
       // For Expo Go, use the Expo Go bundle ID
       bundleId = platform === 'ios' ? 'host.exp.Exponent' : 'host.exp.exponent';
     } else {
-      const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+      const bundleInfo = await resolveBundleInfo(
+        projectPath, 
+        platformInfo, 
+        projectConfig?.lifecycle,
+        projectConfig?.scheme
+      );
       bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
       
       if (!bundleId) {
@@ -669,7 +687,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
  * ```
  */
 export async function stopApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, force = true } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, force = true, projectConfig } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string'
@@ -690,7 +708,12 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
       // For Expo Go, use the Expo Go bundle ID
       bundleId = platform === 'ios' ? 'host.exp.Exponent' : 'host.exp.exponent';
     } else {
-      const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+      const bundleInfo = await resolveBundleInfo(
+        projectPath, 
+        platformInfo, 
+        projectConfig?.lifecycle,
+        projectConfig?.scheme
+      );
       bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
       
       if (!bundleId) {
@@ -1033,7 +1056,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
  * ```
  */
 export async function uninstallApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, projectConfig } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string'
@@ -1056,7 +1079,12 @@ export async function uninstallApp(options: AppLifecycleOptions): Promise<void> 
   // Resolve bundle ID
   let bundleId = bundleIdOverride;
   if (!bundleId) {
-    const bundleInfo = await resolveBundleInfo(projectPath, platformInfo);
+    const bundleInfo = await resolveBundleInfo(
+      projectPath, 
+      platformInfo, 
+      projectConfig?.lifecycle,
+      projectConfig?.scheme
+    );
     bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
     
     if (!bundleId) {

@@ -19,9 +19,32 @@ export async function detectPlatform(projectPath: string): Promise<PlatformType>
     return 'flutter';
   }
   
-  // Check for Swift/iOS
+  // Check for Swift/iOS - look for Package.swift or .xcodeproj
   if (existsSync(path.join(projectPath, 'Package.swift'))) {
     return 'swift';
+  }
+  
+  // Check for Xcode project (Swift/iOS apps using Xcode)
+  try {
+    const { glob } = await import('glob');
+    const xcodeProjects = await glob('*.xcodeproj', { 
+      cwd: projectPath,
+      absolute: false
+    });
+    if (xcodeProjects.length > 0) {
+      return 'swift';
+    }
+    
+    // Also check one level deep for Xcode projects
+    const nestedXcodeProjects = await glob('*/*.xcodeproj', { 
+      cwd: projectPath,
+      absolute: false
+    });
+    if (nestedXcodeProjects.length > 0) {
+      return 'swift';
+    }
+  } catch {
+    // Ignore glob errors
   }
   
   // Check for Kotlin Multiplatform

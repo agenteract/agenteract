@@ -946,7 +946,7 @@ yargs(hideBin(process.argv))
         }
         
         // Resolve bundle info
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
         
         console.log(`Launching ${argv.project}...`);
         if (device) {
@@ -1026,7 +1026,7 @@ yargs(hideBin(process.argv))
           device = await getDefaultDeviceInfo(argv.project);
         }
         
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
         
         console.log(`Stopping ${argv.project}...`);
         await stopAppInternal(platform, device, bundleInfo, {}, argv.force);
@@ -1151,7 +1151,7 @@ yargs(hideBin(process.argv))
           device = await getDefaultDeviceInfo(argv.project);
         }
         
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle);
+        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
         
         console.log(`Performing ${argv.action} for ${argv.project}...`);
         

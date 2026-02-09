@@ -17,7 +17,8 @@ export interface BundleInfo {
 export async function resolveBundleInfo(
   projectPath: string,
   platform: PlatformType,
-  lifecycleConfig?: ProjectConfig['lifecycle']
+  lifecycleConfig?: ProjectConfig['lifecycle'],
+  scheme?: string
 ): Promise<BundleInfo> {
   const bundleInfo: BundleInfo = {};
   
@@ -49,7 +50,7 @@ export async function resolveBundleInfo(
     case 'kmp-android':
       return resolveKMPBundleInfo(projectPath, bundleInfo);
     case 'swift':
-      return resolveSwiftBundleInfo(projectPath, bundleInfo);
+      return resolveSwiftBundleInfo(projectPath, bundleInfo, scheme);
     default:
       return bundleInfo;
   }
@@ -218,16 +219,97 @@ async function resolveKMPBundleInfo(projectPath: string, bundleInfo: BundleInfo)
 }
 
 /**
- * Resolve Swift bundle info from Info.plist or Package.swift
+ * Resolve Swift bundle info from Info.plist or Xcode project
+ * 
+ * Strategy:
+ * 1. If scheme is provided, search for Info.plist containing that URL scheme
+ * 2. Look in the same directory for the Xcode project to get PRODUCT_BUNDLE_IDENTIFIER
+ * 3. Fallback to common Info.plist locations
  */
-async function resolveSwiftBundleInfo(projectPath: string, bundleInfo: BundleInfo): Promise<BundleInfo> {
+async function resolveSwiftBundleInfo(projectPath: string, bundleInfo: BundleInfo, scheme?: string): Promise<BundleInfo> {
   const result = { ...bundleInfo };
   
   if (result.ios) {
+    console.log(`[bundle-resolver] iOS bundle ID already provided: ${result.ios}`);
     return result; // Already have iOS bundle ID from config
   }
   
-  // Look for Info.plist in common locations
+  // Strategy 1: If scheme is provided, find Info.plist containing that scheme
+  if (scheme) {
+    console.log(`[bundle-resolver] Searching for Info.plist with URL scheme: ${scheme}`);
+    try {
+      const { glob } = await import('glob');
+      const infoPlistFiles = await glob('**/Info.plist', { 
+        cwd: projectPath,
+        absolute: true,
+        ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**']
+      });
+      
+      for (const plistPath of infoPlistFiles) {
+        try {
+          const content = await readFile(plistPath, 'utf8');
+          
+          // Check if this Info.plist contains the matching URL scheme
+          if (content.includes(`<string>${scheme}</string>`)) {
+            console.log(`[bundle-resolver] ✓ Found Info.plist with scheme "${scheme}": ${plistPath}`);
+            
+            // Try to find the associated Xcode project to get PRODUCT_BUNDLE_IDENTIFIER
+            const plistDir = path.dirname(plistPath);
+            
+            // Look for .xcodeproj in parent directories (up to 3 levels)
+            let searchDir = plistDir;
+            for (let i = 0; i < 3; i++) {
+              const xcodeProjects = await glob('*.xcodeproj', {
+                cwd: searchDir,
+                absolute: true
+              });
+              
+              if (xcodeProjects.length > 0) {
+                // Try to read PRODUCT_BUNDLE_IDENTIFIER from project.pbxproj
+                const pbxprojPath = path.join(xcodeProjects[0], 'project.pbxproj');
+                if (existsSync(pbxprojPath)) {
+                  try {
+                    const pbxContent = await readFile(pbxprojPath, 'utf8');
+                    const match = pbxContent.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);/);
+                    if (match) {
+                      const raw = match[1].trim();
+                      result.ios = raw.replace(/^"|"$/g, '').trim();
+                      console.log(`[bundle-resolver] ✓ Resolved iOS bundle ID from Xcode project: ${result.ios}`);
+                      return result;
+                    }
+                  } catch (error) {
+                    console.error(`Failed to read ${pbxprojPath}: ${error}`);
+                  }
+                }
+                break;
+              }
+              
+              searchDir = path.dirname(searchDir);
+            }
+            
+            // If we didn't find the Xcode project, fall back to reading CFBundleIdentifier from Info.plist
+            // (but only if it's a literal value, not a variable like $(PRODUCT_BUNDLE_IDENTIFIER))
+            const bundleIdMatch = content.match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/);
+            if (bundleIdMatch) {
+              const raw = bundleIdMatch[1].trim();
+              // Only use if it's not a variable reference
+              if (!/\$\(.*\)/.test(raw)) {
+                result.ios = raw;
+                console.log(`[bundle-resolver] ✓ Resolved iOS bundle ID from Info.plist: ${result.ios}`);
+                return result;
+              }
+            }
+          }
+        } catch (error) {
+          // Ignore individual file read errors, continue searching
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to search for Info.plist with scheme "${scheme}": ${error}`);
+    }
+  }
+  
+  // Strategy 2: Fallback to common Info.plist locations (original behavior)
   const infoPlistLocations = [
     path.join(projectPath, 'Info.plist'),
     path.join(projectPath, 'Resources', 'Info.plist'),
@@ -242,8 +324,12 @@ async function resolveSwiftBundleInfo(projectPath: string, bundleInfo: BundleInf
         // Look for CFBundleIdentifier
         const match = content.match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/);
         if (match) {
-          result.ios = match[1].replace('$(PRODUCT_BUNDLE_IDENTIFIER)', '').trim();
-          break;
+          const raw = match[1].trim();
+          // Only use if it's not a variable reference
+          if (!/\$\(.*\)/.test(raw)) {
+            result.ios = raw;
+            break;
+          }
         }
       } catch (error) {
         console.error(`Failed to resolve iOS bundle ID from ${plistPath}: ${error}`);
