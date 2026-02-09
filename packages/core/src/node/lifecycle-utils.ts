@@ -1229,7 +1229,7 @@ export async function buildApp(options: BuildOptions): Promise<void> {
         await buildKMPDesktopApp(projectPath, configuration, silent);
         break;
       
-      case 'swift':
+      case 'xcode':
         await buildSwiftApp(projectPath, configuration, silent);
         break;
       

@@ -581,7 +581,7 @@ pnpm agenteract-agents launch <project> [options]
 
 **Options:**
 - `--device <id>`: Target specific device/simulator ID
-- `--platform <type>`: Override platform detection (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--platform <type>`: Override platform detection (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
 - `--headless`: Launch browser in headless mode (web apps only)
 
 **Examples:**
@@ -643,7 +643,7 @@ pnpm agenteract-agents build <project> [options]
 ```
 
 **Options:**
-- `--platform <type>`: Target platform (vite, expo, flutter, swift, kmp-android, kmp-desktop)
+- `--platform <type>`: Target platform (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
 - `--config <type>`: Build configuration: `debug` (default) or `release`
 
 **Examples:**
@@ -655,7 +655,7 @@ pnpm agenteract-agents build flutter-app
 pnpm agenteract-agents build flutter-app --platform flutter --config release
 
 # Build Swift iOS app
-pnpm agenteract-agents build swift-app --platform swift --config debug
+pnpm agenteract-agents build swift-app --platform xcode --config debug
 ```
 
 **When to use:**
@@ -763,7 +763,7 @@ Agenteract auto-detects platforms by scanning for marker files:
 | Vite | `vite.config.ts`, `vite.config.js` |
 | Expo | `app.json` with `expo` key |
 | Flutter | `pubspec.yaml` |
-| Swift | `Package.swift` |
+| Xcode (Swift/Objective-C) | `Package.swift`, `.xcodeproj` |
 | KMP Android | `build.gradle.kts` with Kotlin/Android |
 | KMP Desktop | `build.gradle.kts` with Compose Desktop |
 

@@ -34,7 +34,7 @@ export async function resolveBundleInfo(
   }
   
   // If we have all the info from config, return early
-  const needsIos = !bundleInfo.ios && (platform === 'flutter' || platform === 'expo' || platform === 'swift');
+  const needsIos = !bundleInfo.ios && (platform === 'flutter' || platform === 'expo' || platform === 'xcode');
   const needsAndroid = !bundleInfo.android && (platform === 'flutter' || platform === 'expo' || platform === 'kmp-android');
   
   if (!needsIos && !needsAndroid) {
@@ -49,7 +49,7 @@ export async function resolveBundleInfo(
       return resolveExpoBundleInfo(projectPath, bundleInfo);
     case 'kmp-android':
       return resolveKMPBundleInfo(projectPath, bundleInfo);
-    case 'swift':
+    case 'xcode':
       return resolveSwiftBundleInfo(projectPath, bundleInfo, scheme);
     default:
       return bundleInfo;

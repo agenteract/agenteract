@@ -8,7 +8,7 @@ export type PlatformType =
   | 'flutter'        // Flutter app
   | 'kmp-android'    // Kotlin Multiplatform Android
   | 'kmp-desktop'    // Kotlin Multiplatform Desktop (JVM)
-  | 'swift';         // Swift/iOS app
+  | 'xcode';         // Xcode project (iOS/macOS, Swift/Objective-C)
 
 /**
  * Detect the platform type from a project directory
@@ -19,9 +19,9 @@ export async function detectPlatform(projectPath: string): Promise<PlatformType>
     return 'flutter';
   }
   
-  // Check for Swift/iOS - look for Package.swift or .xcodeproj
+  // Check for Xcode projects (Swift/Objective-C/iOS/macOS) - look for Package.swift or .xcodeproj
   if (existsSync(path.join(projectPath, 'Package.swift'))) {
-    return 'swift';
+    return 'xcode';
   }
   
   // Check for Xcode project (Swift/iOS apps using Xcode)
@@ -32,7 +32,7 @@ export async function detectPlatform(projectPath: string): Promise<PlatformType>
       absolute: false
     });
     if (xcodeProjects.length > 0) {
-      return 'swift';
+      return 'xcode';
     }
     
     // Also check one level deep for Xcode projects
@@ -41,7 +41,7 @@ export async function detectPlatform(projectPath: string): Promise<PlatformType>
       absolute: false
     });
     if (nestedXcodeProjects.length > 0) {
-      return 'swift';
+      return 'xcode';
     }
   } catch {
     // Ignore glob errors
@@ -144,7 +144,7 @@ export function detectPlatformFromCommand(command: string): PlatformType | null 
     return 'kmp-desktop'; // Default to desktop for gradle
   }
   if (lowerCommand.includes('xcodebuild')) {
-    return 'swift';
+    return 'xcode';
   }
   
   return null;

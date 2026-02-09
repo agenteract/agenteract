@@ -79,7 +79,7 @@ export async function launchApp(
     case 'kmp-desktop':
       return launchKMPDesktopApp(projectPath);
     
-    case 'swift':
+    case 'xcode':
       if (!device) {
         throw new Error('No device available for iOS app launch');
       }
@@ -257,7 +257,7 @@ export async function stopApp(
         }
         break;
       
-      case 'swift':
+      case 'xcode':
         if (!device) return;
         await stopIOSApp(device, bundleInfo);
         break;
@@ -310,7 +310,7 @@ export async function buildApp(
       await buildViteApp(projectPath);
       break;
     
-    case 'swift':
+    case 'xcode':
       await buildSwiftApp(projectPath, options);
       break;
     

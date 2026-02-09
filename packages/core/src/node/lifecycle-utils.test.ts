@@ -1308,7 +1308,7 @@ describe('lifecycle-utils', () => {
         state: 'booted',
       };
 
-      mockDetectPlatform.mockResolvedValue('swift');
+      mockDetectPlatform.mockResolvedValue('xcode');
       mockReaddir.mockResolvedValue(['MyApp.xcworkspace', 'MyApp.xcodeproj']);
       mockExecFileAsync.mockResolvedValue({ stdout: 'BUILD SUCCEEDED', stderr: '' });
 
