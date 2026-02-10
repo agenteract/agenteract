@@ -2,11 +2,21 @@
 /**
  * E2E Test: Kotlin KMP App Launch
  *
- * Tests that the Kotlin example app:
+ * NOTE: This test uses the CLI-based approach (runAgentCommand) for testing interactions.
+ * This is intentional to maintain coverage of the legacy CLI command interface.
+ * 
+ * For AgentClient-based examples, see:
+ * - tests/e2e/vite/test-app-launch.ts
+ * - tests/e2e/expo/test-app-launch.ts
+ * - tests/e2e/flutter/test-app-launch-ios.ts
+ * - tests/e2e/node-client/test-agent-client.ts
+ * 
+ * Tests that the Kotlin KMP example app:
  * 1. Builds successfully
  * 2. Starts (via ./gradlew run)
  * 3. AgentDebugBridge connects
  * 4. UI hierarchy can be fetched
+ * 5. All interactions work (tap, input, longPress, scroll, swipe, agentLink)
  */
 
 import { ChildProcess } from 'child_process';

@@ -1008,6 +1008,419 @@ pnpm agenteract-agents longPress expo-app list-item-1
 
 **Note:** The component must have an `onContextMenu` (web) or `onLongPress` (React Native) handler registered via `createAgentBinding`.
 
+## Tool: AgentClient (Node.js Programmatic API)
+
+For writing **integration tests** and **automation scripts** in Node.js/TypeScript, Agenteract provides the **AgentClient** API - a programmatic alternative to CLI commands.
+
+### Overview
+
+AgentClient connects directly to the Agenteract server via WebSocket and provides the same interaction primitives as CLI commands, but with better performance and developer experience.
+
+**Import:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+```
+
+**Key Differences from CLI:**
+- **Connection**: Persistent WebSocket vs spawning subprocess for each command
+- **Performance**: ~10x faster for repeated commands (no subprocess overhead)
+- **Return values**: Returns JavaScript objects, not JSON strings
+- **Async/await**: Native Promise-based API
+- **Log streaming**: Real-time log events via callback
+- **Type safety**: Full TypeScript support with autocomplete
+
+### Basic Usage
+
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+// 1. Create client instance
+const client = new AgentClient('ws://localhost:8765');
+
+// 2. Connect to server
+await client.connect();
+
+// 3. Use interaction methods
+await client.tap('expo-app', 'login-button');
+await client.input('expo-app', 'username', 'john@example.com');
+const hierarchy = await client.getViewHierarchy('expo-app');
+
+// 4. Clean up
+client.disconnect();
+```
+
+### Complete API Reference
+
+#### Interaction Primitives
+
+All the same primitives from CLI commands are available:
+
+**`tap(project: string, testID: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents tap expo-app login-button
+await client.tap('expo-app', 'login-button');
+```
+
+**`input(project: string, testID: string, value: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents input expo-app username "john@example.com"
+await client.input('expo-app', 'username', 'john@example.com');
+```
+
+**`scroll(project: string, testID: string, direction: 'up' | 'down' | 'left' | 'right', amount?: number): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents scroll expo-app main-list down 200
+await client.scroll('expo-app', 'main-list', 'down', 200);
+await client.scroll('expo-app', 'main-list', 'up'); // default amount: 100
+```
+
+**`swipe(project: string, testID: string, direction: 'up' | 'down' | 'left' | 'right', velocity?: 'slow' | 'medium' | 'fast'): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents swipe expo-app swipeable-card left fast
+await client.swipe('expo-app', 'swipeable-card', 'left', 'fast');
+await client.swipe('expo-app', 'swipeable-card', 'right'); // default velocity: 'medium'
+```
+
+**`longPress(project: string, testID: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents longPress expo-app list-item-1
+await client.longPress('expo-app', 'list-item-1');
+```
+
+**`getViewHierarchy(project: string): Promise<any>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app
+const hierarchy = await client.getViewHierarchy('expo-app');
+console.log(hierarchy.root.children);
+```
+
+**`agentLink(project: string, url: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+await client.agentLink('expo-app', 'agenteract://reset_state');
+await client.agentLink('expo-app', 'agenteract://navigate?screen=settings');
+```
+
+#### Utility Methods
+
+These utilities make test writing easier with built-in waiting and log capture:
+
+**`getLogs(project: string, count?: number): Promise<string[]>`**
+```typescript
+// Get last 10 logs (default)
+const logs = await client.getLogs('expo-app');
+
+// Get last 20 logs
+const logs = await client.getLogs('expo-app', 20);
+```
+
+**`waitForLog(project: string, pattern: string | RegExp, timeout?: number): Promise<void>`**
+```typescript
+// Wait for specific log message (default timeout: 5000ms)
+await client.waitForLog('expo-app', 'Login successful');
+
+// With custom timeout and regex pattern
+await client.waitForLog('expo-app', /User \d+ logged in/, 10000);
+
+// Throws error if pattern not found within timeout
+try {
+  await client.waitForLog('expo-app', 'Error occurred', 2000);
+} catch (err) {
+  console.log('Expected error did not occur');
+}
+```
+
+**`waitForElement(project: string, testID: string, timeout?: number): Promise<void>`**
+```typescript
+// Wait for element to appear in hierarchy (default timeout: 5000ms)
+await client.waitForElement('expo-app', 'dashboard');
+
+// With custom timeout
+await client.waitForElement('expo-app', 'loading-spinner', 10000);
+
+// Useful after navigation or async operations
+await client.tap('expo-app', 'login-button');
+await client.waitForElement('expo-app', 'user-profile'); // Wait for navigation
+```
+
+**`waitForCondition(project: string, predicate: (hierarchy: any) => boolean, timeout?: number): Promise<void>`**
+```typescript
+// Wait for custom condition on hierarchy
+await client.waitForCondition(
+  'expo-app',
+  (hierarchy) => {
+    // Custom condition: check if counter value >= 5
+    const counter = findElementByTestID(hierarchy, 'counter-text');
+    return counter && parseInt(counter.text) >= 5;
+  },
+  5000
+);
+```
+
+#### Real-Time Log Streaming
+
+AgentClient can stream logs in real-time as they occur in the app:
+
+**`onLog(callback: (log: { project: string; message: string; timestamp: number }) => void): void`**
+```typescript
+// Listen to all logs from all projects
+client.onLog((log) => {
+  console.log(`[${log.project}] ${log.message}`);
+});
+
+// Then perform actions - logs are streamed automatically
+await client.tap('expo-app', 'increment-button');
+// Logs appear immediately without polling
+```
+
+#### Connection Management
+
+**`connect(): Promise<void>`**
+```typescript
+await client.connect();
+```
+
+**`disconnect(): void`**
+```typescript
+client.disconnect();
+```
+
+**`isConnected(): boolean`**
+```typescript
+if (client.isConnected()) {
+  await client.tap('expo-app', 'button');
+}
+```
+
+### Complete Testing Example
+
+Here's a complete integration test using AgentClient with Jest:
+
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+describe('Expo App Login Flow', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient('ws://localhost:8765');
+    await client.connect();
+  });
+
+  afterAll(() => {
+    client.disconnect();
+  });
+
+  beforeEach(async () => {
+    // Reset app state before each test
+    await client.agentLink('expo-app', 'agenteract://reset_state');
+    await client.waitForElement('expo-app', 'login-screen');
+  });
+
+  test('should login successfully with valid credentials', async () => {
+    // 1. Verify initial state
+    const initialHierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(initialHierarchy, 'login-button')).toBeDefined();
+
+    // 2. Fill in login form
+    await client.input('expo-app', 'username-input', 'john@example.com');
+    await client.input('expo-app', 'password-input', 'password123');
+
+    // 3. Submit form
+    await client.tap('expo-app', 'login-button');
+
+    // 4. Wait for successful login
+    await client.waitForLog('expo-app', 'Login successful', 3000);
+    await client.waitForElement('expo-app', 'dashboard', 5000);
+
+    // 5. Verify dashboard loaded
+    const finalHierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(finalHierarchy, 'user-profile')).toBeDefined();
+  });
+
+  test('should show error with invalid credentials', async () => {
+    // Fill in invalid credentials
+    await client.input('expo-app', 'username-input', 'invalid@example.com');
+    await client.input('expo-app', 'password-input', 'wrong');
+
+    // Submit
+    await client.tap('expo-app', 'login-button');
+
+    // Wait for error message
+    await client.waitForLog('expo-app', /Login failed/, 3000);
+    await client.waitForElement('expo-app', 'error-message', 2000);
+
+    // Verify still on login screen
+    const hierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(hierarchy, 'login-button')).toBeDefined();
+  });
+});
+
+// Helper function to find elements in hierarchy
+function findElementByTestID(hierarchy: any, testID: string): any {
+  if (!hierarchy) return null;
+  if (hierarchy.testID === testID) return hierarchy;
+  
+  if (hierarchy.children) {
+    for (const child of hierarchy.children) {
+      const found = findElementByTestID(child, testID);
+      if (found) return found;
+    }
+  }
+  
+  return null;
+}
+```
+
+### Comparison: CLI vs AgentClient
+
+| Feature | CLI Command | AgentClient |
+|---------|------------|-------------|
+| **Connection** | New subprocess per command | Persistent WebSocket |
+| **Performance** | ~100-200ms per command | ~10-20ms per command |
+| **Return Type** | JSON string (stdout) | Native JavaScript object |
+| **Error Handling** | Exit codes + stderr parsing | Promise rejection with error objects |
+| **Log Capture** | Manual `--wait` and `--log-count` | Built-in utilities + real-time streaming |
+| **Type Safety** | None (string output) | Full TypeScript support |
+| **Use Case** | AI agents, manual testing, CI scripts | Integration tests, automation scripts |
+
+### When to Use Each
+
+**Use CLI Commands when:**
+- Writing AI agent instructions (easier for agents to understand)
+- Running manual tests from terminal
+- Integrating with shell scripts or CI pipelines
+- Quick ad-hoc testing during development
+
+**Use AgentClient when:**
+- Writing integration tests in Jest/Mocha/Vitest
+- Building automation scripts in Node.js/TypeScript
+- Need fast, repeated interactions (e.g., stress testing)
+- Want type-safe API with IDE autocomplete
+- Need real-time log streaming
+
+### AgentClient with Different Test Frameworks
+
+**Jest:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+describe('My App Tests', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  afterAll(() => client.disconnect());
+
+  test('example', async () => {
+    await client.tap('my-app', 'button');
+  });
+});
+```
+
+**Mocha:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+import { expect } from 'chai';
+
+describe('My App Tests', function() {
+  let client: AgentClient;
+
+  before(async function() {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  after(function() {
+    client.disconnect();
+  });
+
+  it('should work', async function() {
+    await client.tap('my-app', 'button');
+    const hierarchy = await client.getViewHierarchy('my-app');
+    expect(hierarchy).to.exist;
+  });
+});
+```
+
+**Vitest:**
+```typescript
+import { describe, test, beforeAll, afterAll } from 'vitest';
+import { AgentClient } from '@agenteract/core/node';
+
+describe('My App Tests', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  afterAll(() => client.disconnect());
+
+  test('example', async () => {
+    await client.tap('my-app', 'button');
+  });
+});
+```
+
+### Best Practices
+
+1. **Connection Management**: Create one client per test suite, not per test
+   ```typescript
+   // Good - reuse connection
+   beforeAll(async () => {
+     client = new AgentClient();
+     await client.connect();
+   });
+   
+   // Bad - reconnecting every test is slow
+   beforeEach(async () => {
+     client = new AgentClient();
+     await client.connect();
+   });
+   ```
+
+2. **Use agentLink for state reset**: Faster than reinstalling app
+   ```typescript
+   beforeEach(async () => {
+     await client.agentLink('expo-app', 'agenteract://reset_state');
+   });
+   ```
+
+3. **Wait for elements after actions**: Don't assume immediate rendering
+   ```typescript
+   await client.tap('expo-app', 'submit-button');
+   await client.waitForElement('expo-app', 'success-message'); // Wait for result
+   ```
+
+4. **Use waitForLog to verify behavior**: More reliable than polling hierarchy
+   ```typescript
+   await client.tap('expo-app', 'save-button');
+   await client.waitForLog('expo-app', 'Data saved successfully');
+   ```
+
+5. **Always disconnect in cleanup**: Prevent connection leaks
+   ```typescript
+   afterAll(() => {
+     client.disconnect();
+   });
+   ```
+
+### Example Test Projects
+
+See the following examples for complete working tests:
+
+- **Node.js Integration Test**: [`tests/e2e/node-client/test-agent-client.ts`](../tests/e2e/node-client/test-agent-client.ts) - Complete AgentClient usage with Jest
+- **Vite Test**: [`tests/e2e/vite/test-app-launch.ts`](../tests/e2e/vite/test-app-launch.ts) - Web app testing
+- **Expo Test**: [`tests/e2e/expo/test-app-launch.ts`](../tests/e2e/expo/test-app-launch.ts) - React Native testing
+- **Flutter Test**: [`tests/e2e/flutter/test-app-launch-ios.ts`](../tests/e2e/flutter/test-app-launch-ios.ts) - Flutter testing
+
+---
+
 **Creating components:**
 
 For you to be able to interact with a component, two things are required

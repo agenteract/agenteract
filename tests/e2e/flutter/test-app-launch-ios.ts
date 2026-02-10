@@ -2,12 +2,20 @@
 /**
  * E2E Test: Flutter App Launch (iOS)
  *
+ * NOTE: This test uses AgentClient for testing interactions (WebSocket-based approach).
+ * This provides faster, more reliable testing compared to CLI commands.
+ * 
+ * For CLI-based examples, see:
+ * - tests/e2e/swiftui/test-app-launch-ios.ts
+ * - tests/e2e/kotlin/test-app-launch.ts
+ * 
  * Tests that the Flutter example app:
  * 1. Installs dependencies from Verdaccio
  * 2. Launches on iOS simulator
  * 3. AgentDebugBridge connects
  * 4. UI hierarchy can be fetched
- * 5. Interactions work (tap, input, etc.)
+ * 5. All interactions work via AgentClient (tap, input, longPress, scroll, swipe, agentLink)
+ * 6. App lifecycle utilities work (stopApp, startApp)
  */
 
 import { ChildProcess } from 'child_process';
@@ -34,13 +42,15 @@ import {
   startApp,
   bootDevice, 
   getDeviceState,
-  listIOSDevices
+  listIOSDevices,
+  AgentClient
 } from '@agenteract/core/node';
 
 let agentServer: ChildProcess | null = null;
 let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
 let cleanupExecuted = false;
+let client: AgentClient | null = null;
 
 async function cleanup() {
   if (cleanupExecuted) {
@@ -56,6 +66,16 @@ async function cleanup() {
   }
   if (testConfigDir) {
     await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-flutter');
+  }
+
+  // Disconnect AgentClient first
+  if (client) {
+    try {
+      client.disconnect();
+      info('AgentClient disconnected');
+    } catch (err) {
+      // Ignore cleanup errors
+    }
   }
 
   // First, try to quit Flutter gracefully via agenteract CLI
@@ -424,6 +444,12 @@ async function main() {
     info('Waiting for agenteract server and Flutter PTY to initialize...');
     await sleep(8000); // Give more time for server to fully start
 
+    // Connect AgentClient
+    info('Connecting AgentClient...');
+    client = new AgentClient('ws://localhost:8765');
+    await client.connect();
+    success('AgentClient connected');
+
     // Kill any existing instances of the app
     // Flutter iOS apps run as "Runner.app/Runner" in the simulator
     await runCommand(`pkill -f "Runner.app/Runner" 2>/dev/null || true`);
@@ -503,7 +529,8 @@ async function main() {
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Flutter app is connected...`);
-        hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'flutter-example');
+        const hierarchyResult = await client!.getViewHierarchy('flutter-example');
+        hierarchy = JSON.stringify(hierarchyResult);
 
         // Check if this is an actual hierarchy (should contain widget/element info)
         // Not just an error message
@@ -619,8 +646,8 @@ async function main() {
       let reconnected = false;
       for (let i = 0; i < 30; i++) {
         try {
-          const hierarchyAfterRestart = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'flutter-example');
-          if (hierarchyAfterRestart.includes('Agenteract Flutter Demo')) {
+          const hierarchyAfterRestart = await client!.getViewHierarchy('flutter-example');
+          if (JSON.stringify(hierarchyAfterRestart).includes('Agenteract Flutter Demo')) {
             success('App reconnected after lifecycle restart');
             reconnected = true;
             break;
@@ -651,26 +678,23 @@ async function main() {
     // 14. Test tap interaction
     if (hasIncrementButton) {
       info('Testing tap interaction on increment-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'increment-button');
-      assertContains(tapResult, 'success', 'Tap command executed successfully');
+      const tapResult = await client!.tap('flutter-example', 'increment-button');
+      assertContains(JSON.stringify(tapResult), 'ok', 'Tap command executed successfully');
       success('Button tap successful');
 
       // 15. Verify tap was logged and counter incremented
-      await sleep(500);
-      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-      assertContains(logsAfterTap, 'Counter incremented to 1', 'Counter increment was logged');
+      info('Waiting for counter increment log...');
+      await client!.waitForLog('flutter-example', 'Counter incremented to 1', 5000);
       success('Button tap verified in logs');
     } else {
       info('Skipping increment-button tap test (button not in hierarchy)');
       info('Trying alternative: tap on reset-button instead...');
       try {
-        const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'flutter-example', 'reset-button');
-        assertContains(tapResult, 'success', 'Tap command executed successfully');
+        const tapResult = await client!.tap('flutter-example', 'reset-button');
+        assertContains(JSON.stringify(tapResult), 'ok', 'Tap command executed successfully');
         success('Reset button tap successful');
 
-        await sleep(500);
-        const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-        assertContains(logsAfterTap, 'All values reset', 'Reset was logged');
+        await client!.waitForLog('flutter-example', 'All values reset', 5000);
         success('Reset button tap verified in logs');
       } catch (err) {
         info(`Alternative tap test also failed: ${err}`);
@@ -680,87 +704,59 @@ async function main() {
 
     // 16. Test input interaction
     info('Testing input interaction on text-input...');
-    const inputResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'input',
-      'flutter-example',
-      'text-input',
-      'Hello from E2E test'
-    );
-    assertContains(inputResult, 'success', 'Input command executed successfully');
+    const inputResult = await client!.input('flutter-example', 'text-input', 'Hello from E2E test');
+    assertContains(JSON.stringify(inputResult), 'ok', 'Input command executed successfully');
     success('Text input successful');
 
     // 17. Verify input was logged
-    await sleep(500);
-    const logsAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterInput, 'Hello from E2E test', 'Input text was logged');
+    info('Waiting for input log...');
+    await client!.waitForLog('flutter-example', 'Hello from E2E test', 5000);
     success('Text input verified in logs');
 
     // 18. Test long press interaction
     info('Testing long press interaction on long-press-view...');
-    const longPressResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'longPress',
-      'flutter-example',
-      'long-press-view'
-    );
-    assertContains(longPressResult, 'success', 'Long press command executed successfully');
+    const longPressResult = await client!.longPress('flutter-example', 'long-press-view');
+    assertContains(JSON.stringify(longPressResult), 'ok', 'Long press command executed successfully');
     success('Long press successful');
 
     // 19. Verify long press was logged
-    await sleep(500);
-    const logsAfterLongPress = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterLongPress, 'Long pressed', 'Long press was logged');
+    info('Waiting for long press log...');
+    await client!.waitForLog('flutter-example', 'Long pressed', 5000);
     success('Long press verified in logs');
 
     // 20. Test scroll interaction
     info('Testing scroll interaction on horizontal-scroll...');
-    const scrollResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'scroll',
-      'flutter-example',
-      'horizontal-scroll',
-      'right',
-      '100'
-    );
-    assertContains(scrollResult, 'success', 'Scroll command executed successfully');
+    const scrollResult = await client!.scroll('flutter-example', 'horizontal-scroll', 'right', 100);
+    assertContains(JSON.stringify(scrollResult), 'ok', 'Scroll command executed successfully');
     success('Scroll successful');
 
     // 21. Test swipe interaction
     info('Testing swipe interaction on swipeable-card...');
-    const swipeResult = await runAgentCommand(
-      `cwd:${testConfigDir}`,
-      'swipe',
-      'flutter-example',
-      'swipeable-card',
-      'left'
-    );
-    assertContains(swipeResult, 'success', 'Swipe command executed successfully');
+    const swipeResult = await client!.swipe('flutter-example', 'swipeable-card', 'left');
+    assertContains(JSON.stringify(swipeResult), 'ok', 'Swipe command executed successfully');
     success('Swipe successful');
 
     // 22. Verify swipe was logged
-    await sleep(500);
-    const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterSwipe, 'Card swiped', 'Swipe was logged');
+    info('Waiting for swipe log...');
+    await client!.waitForLog('flutter-example', 'Card swiped', 5000);
     success('Swipe verified in logs');
 
     // 23. Test agentLink command for reset_state
     info('Testing agentLink command: reset_state...');
-    const agentLinkResult = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'flutter-example', 'agenteract://reset_state');
+    const agentLinkResult = await client!.agentLink('flutter-example', 'agenteract://reset_state');
     console.log(agentLinkResult);
-    assertContains(agentLinkResult, '"status":"ok"', 'AgentLink command executed successfully');
+    assertContains(JSON.stringify(agentLinkResult), '"status":"ok"', 'AgentLink command executed successfully');
     success('AgentLink reset_state successful');
 
     // 24. Verify agentLink was logged
-    await sleep(500); // Give app time to log the agentLink
-    const logsAfterAgentLink = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '5');
-    assertContains(logsAfterAgentLink, 'Agent link received', 'AgentLink was logged');
-    assertContains(logsAfterAgentLink, 'reset_state', 'Reset state action was logged');
+    info('Waiting for agentLink logs...');
+    await client!.waitForLog('flutter-example', 'Agent link received', 5000);
+    await client!.waitForLog('flutter-example', 'reset_state', 5000);
     success('AgentLink verified in logs');
 
     // 25. Get all logs to verify app is running
     info('Fetching app logs...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '20');
+    const logs = await client!.getLogs('flutter-example');
     info('Recent logs:');
     console.log(logs);
 
@@ -776,8 +772,8 @@ async function main() {
 
     // ensure app logs are sent to the server
     info('Checking if app logs are sent to the server...');
-    const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'flutter-example', '--since', '30');
-    assertContains(appLogs, 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
+    const appLogs = await client!.getLogs('flutter-example');
+    assertContains(JSON.stringify(appLogs), 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
     success('App config working in hybrid mode (logging from dev server and app)');
 
     // 26.5. Terminate app before finishing test to prevent interference with future runs

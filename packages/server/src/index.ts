@@ -78,7 +78,9 @@ if (isLogServer) {
     const app = express();
     app.use(express.json());
 
-    const pendingRequests = new Map<string, http.ServerResponse>();
+    type PendingRequest = { type: 'http'; res: http.ServerResponse } | { type: 'ws'; socket: WebSocket };
+    const pendingRequests = new Map<string, PendingRequest>();
+    const subscribedAgents = new Map<string, Set<WebSocket>>();
 
     // Mask token for logging - show only last 4 chars
     function maskToken(token: string): string {
@@ -297,6 +299,70 @@ if (isLogServer) {
 
         wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
             const parsedUrl = url.parse(req.url || '', true);
+            const role = parsedUrl.query.role as string;
+
+            if (role === 'agent') {
+                console.log(`[Agent] Connected from ${req.socket.remoteAddress}`);
+
+                ws.on('message', async (message: Buffer) => {
+                    try {
+                        const data = JSON.parse(message.toString());
+
+                        if (data.action === 'subscribeLogs') {
+                            const projectToSubscribe = data.project;
+                            if (projectToSubscribe) {
+                                if (!subscribedAgents.has(projectToSubscribe)) {
+                                    subscribedAgents.set(projectToSubscribe, new Set());
+                                }
+                                subscribedAgents.get(projectToSubscribe)!.add(ws);
+                                console.log(`[Agent] Subscribed to logs for ${projectToSubscribe}`);
+                                ws.send(JSON.stringify({ id: data.id, status: 'subscribed', project: projectToSubscribe }));
+                            }
+                        } else if (data.project) {
+                             // Forward command to app
+                             const projectTarget = data.project;
+                             const requestedDevice = data.device;
+                             
+                             // Resolve device connection
+                             const result = await resolveDeviceConnection(projectTarget, requestedDevice);
+                             if ('error' in result) {
+                                 ws.send(JSON.stringify({
+                                     id: data.id,
+                                     error: result.error,
+                                     status: result.status
+                                 }));
+                                 return;
+                             }
+
+                             const { connection } = result;
+                             
+                             // Ensure ID exists
+                             if (!data.id) data.id = uuidv4();
+                             
+                             // Forward the whole message (excluding project/device if needed, but app might ignore extra fields)
+                             connection.socket.send(JSON.stringify(data));
+                             
+                             // Track pending request to forward response back to agent
+                             pendingRequests.set(data.id, { type: 'ws', socket: ws });
+                        }
+                    } catch (e) {
+                        console.error('[Agent] Error handling message:', e);
+                    }
+                });
+
+                ws.on('close', () => {
+                    console.log(`[Agent] Disconnected`);
+                    // Remove from all subscriptions
+                    for (const [project, agents] of subscribedAgents.entries()) {
+                        if (agents.has(ws)) {
+                            agents.delete(ws);
+                        }
+                    }
+                });
+
+                return;
+            }
+
             const projectName = parsedUrl.pathname?.substring(1);
             const clientToken = parsedUrl.query.token as string;
             const clientDeviceId = parsedUrl.query.deviceId as string;
@@ -452,6 +518,21 @@ if (isLogServer) {
 
                     // Check if this is a streaming log message
                     if (response.status === 'log' && response.logs) {
+                        // Forward to subscribed agents
+                        if (subscribedAgents.has(projectName)) {
+                            const agents = subscribedAgents.get(projectName)!;
+                            const agentMessage = JSON.stringify({
+                                type: 'log',
+                                project: projectName,
+                                logs: response.logs
+                            });
+                            for (const agent of agents) {
+                                if (agent.readyState === WebSocket.OPEN) {
+                                    agent.send(agentMessage);
+                                }
+                            }
+                        }
+
                         // Print streaming logs to stdout (shows in dev command)
                         response.logs.forEach((logEntry: any) => {
                             const logPayload = {
@@ -466,9 +547,20 @@ if (isLogServer) {
                     // Handle command responses
                     if (response.id && pendingRequests.has(response.id)) {
                         console.log(`[DEBUG] Received response from ${projectName}, id: ${response.id}, status: ${response.status}`);
-                        const res = pendingRequests.get(response.id)!;
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify(response));
+                        const pending = pendingRequests.get(response.id)!;
+                        
+                        if (pending.type === 'http') {
+                            pending.res.writeHead(200, { 'Content-Type': 'application/json' });
+                            pending.res.end(JSON.stringify(response));
+                        } else if (pending.type === 'ws') {
+                            if (pending.socket.readyState === WebSocket.OPEN) {
+                                pending.socket.send(JSON.stringify({
+                                    type: 'response',
+                                    payload: response
+                                }));
+                            }
+                        }
+                        
                         pendingRequests.delete(response.id);
                     } else if (response.id) {
                         console.log(`[DEBUG] Received response with unknown id: ${response.id} from ${projectName}`);
@@ -563,7 +655,7 @@ if (isLogServer) {
             command.id = id;
             connection.socket.send(JSON.stringify(command));
 
-            pendingRequests.set(id, res);
+            pendingRequests.set(id, { type: 'http', res });
 
             setTimeout(() => {
                 if (pendingRequests.has(id)) {
@@ -601,7 +693,7 @@ if (isLogServer) {
             console.log(`[DEBUG] Requesting logs from ${connectionKey} via WebSocket, id: ${id}`);
             connection.socket.send(JSON.stringify(command));
 
-            pendingRequests.set(id, res);
+            pendingRequests.set(id, { type: 'http', res });
 
             setTimeout(async () => {
                 if (pendingRequests.has(id)) {

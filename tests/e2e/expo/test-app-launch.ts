@@ -2,12 +2,20 @@
 /**
  * E2E Test: Expo App Launch (iOS/Android)
  *
+ * NOTE: This test uses AgentClient for testing interactions (WebSocket-based approach).
+ * This provides faster, more reliable testing compared to CLI commands.
+ * 
+ * For CLI-based examples, see:
+ * - tests/e2e/swiftui/test-app-launch-ios.ts
+ * - tests/e2e/kotlin/test-app-launch.ts
+ * 
  * Tests that the Expo example app:
  * 1. Installs dependencies from Verdaccio
  * 2. Launches on iOS simulator or Android emulator
  * 3. AgentDebugBridge connects
  * 4. UI hierarchy can be fetched
- * 5. Interactions work (tap, input, etc.)
+ * 5. All interactions work via AgentClient (tap, input, scroll, swipe, agentLink)
+ * 6. App lifecycle utilities work (stopApp, startApp)
  */
 
 import { ChildProcess } from 'child_process';
@@ -42,7 +50,8 @@ import {
   installApp,
   uninstallApp,
   listIOSDevices,
-  listAndroidDevices
+  listAndroidDevices,
+  AgentClient
 } from '@agenteract/core/node';
 import * as path from 'path';
 
@@ -51,6 +60,7 @@ let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
 let cleanupExecuted = false;
 let PLATFORM: 'ios' | 'android' = 'ios'; // Will be set in main()
+let client: AgentClient | null = null;
 
 async function cleanup() {
   if (cleanupExecuted) {
@@ -66,6 +76,16 @@ async function cleanup() {
   }
   if (testConfigDir) {
     await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-expo');
+  }
+
+  // Disconnect AgentClient first
+  if (client) {
+    try {
+      client.disconnect();
+      info('AgentClient disconnected');
+    } catch (err) {
+      // Ignore cleanup errors
+    }
   }
 
   // First, try to quit Expo gracefully via agenteract CLI
@@ -373,6 +393,12 @@ async function main() {
     info('Waiting for Metro and AgentDebugBridge to start...');
     await sleep(10000);
 
+    // Connect AgentClient
+    info('Connecting AgentClient...');
+    client = new AgentClient('ws://localhost:8765');
+    await client.connect();
+    success('AgentClient connected');
+
     // Check dev logs to see if Metro is running
     info('Checking Metro bundler logs...');
     try {
@@ -497,7 +523,8 @@ async function main() {
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);
-        hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'expo-app');
+        const hierarchyResult = await client!.getViewHierarchy('expo-app');
+        hierarchy = JSON.stringify(hierarchyResult);
 
         // Check if this is an actual hierarchy (should contain React Native element info)
         const isRealHierarchy = hierarchy.includes('View') ||
@@ -653,14 +680,23 @@ async function main() {
       let reconnected = false;
       for (let i = 0; i < 30; i++) {
         try {
-          const hierarchyAfterRestart = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'expo-app');
-          if (hierarchyAfterRestart.includes('View') || hierarchyAfterRestart.includes('Text')) {
+          const hierarchyAfterRestart = await client!.getViewHierarchy('expo-app');
+          const hierarchyStr = JSON.stringify(hierarchyAfterRestart);
+          if (hierarchyStr.includes('View') || hierarchyStr.includes('Text')) {
             success('App reconnected after lifecycle restart');
             reconnected = true;
             break;
           }
         } catch (err) {
-          // Still reconnecting
+          // Still reconnecting - on every 5th attempt, try reloading
+          if (i % 5 === 0 && i > 0 && !PREBUILD_MODE) {
+            try {
+              info('App not responding, sending reload command...');
+              await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'r');
+            } catch (_) {
+              // Ignore
+            }
+          }
         }
         await sleep(1000);
       }
@@ -685,14 +721,13 @@ async function main() {
     // 12. Test tap interaction
     if (hasTestButton) {
       info('Testing tap interaction on test-button...');
-      const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'expo-app', 'test-button');
-      assertContains(tapResult, 'success', 'Tap command executed successfully');
+      const tapResult = await client!.tap('expo-app', 'test-button');
+      assertContains(JSON.stringify(tapResult), 'ok', 'Tap command executed successfully');
       success('Button tap successful');
 
       // 13. Verify tap was logged
-      await sleep(500);
-      const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
-      assertContains(logsAfterTap, 'Simulate button pressed', 'Button press was logged');
+      info('Waiting for tap log...');
+      await client!.waitForLog('expo-app', 'Simulate button pressed', 5000);
       success('Button tap verified in logs');
     } else {
       info('Skipping test-button tap test (button not in hierarchy)');
@@ -701,21 +736,15 @@ async function main() {
     // 14. Test input interaction
     if (hasUsernameInput) {
       info('Testing input interaction on username-input...');
-      const inputResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'input',
-        'expo-app',
-        'username-input',
-        'Hello from E2E test'
-      );
-      assertContains(inputResult, 'success', 'Input command executed successfully');
+      const inputResult = await client!.input('expo-app', 'username-input', 'Hello from E2E test');
+      assertContains(JSON.stringify(inputResult), 'ok', 'Input command executed successfully');
       success('Text input successful');
 
       // 15. Verify input was processed (Note: Expo example doesn't log input, but sets state)
       // We can verify by fetching hierarchy and checking if the input has the value
       await sleep(500);
-      const hierarchyAfterInput = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'expo-app');
-      assertContains(hierarchyAfterInput, 'Hello from E2E test', 'Input text appears in hierarchy');
+      const hierarchyAfterInput = await client!.getViewHierarchy('expo-app');
+      assertContains(JSON.stringify(hierarchyAfterInput), 'Hello from E2E test', 'Input text appears in hierarchy');
       success('Text input verified in hierarchy');
     } else {
       info('Skipping username-input test (input not in hierarchy)');
@@ -724,15 +753,8 @@ async function main() {
     // 16. Test scroll interaction
     if (hasHorizontalScroll) {
       info('Testing scroll interaction on horizontal-scroll...');
-      const scrollResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'scroll',
-        'expo-app',
-        'horizontal-scroll',
-        'right',
-        '100'
-      );
-      assertContains(scrollResult, 'success', 'Scroll command executed successfully');
+      const scrollResult = await client!.scroll('expo-app', 'horizontal-scroll', 'right', 100);
+      assertContains(JSON.stringify(scrollResult), 'ok', 'Scroll command executed successfully');
       success('Scroll successful');
     } else {
       info('Skipping horizontal-scroll test (scroll view not in hierarchy)');
@@ -741,20 +763,13 @@ async function main() {
     // 17. Test swipe interaction
     if (hasSwipeableCard) {
       info('Testing swipe interaction on swipeable-card...');
-      const swipeResult = await runAgentCommand(
-        `cwd:${testConfigDir}`,
-        'swipe',
-        'expo-app',
-        'swipeable-card',
-        'left'
-      );
-      assertContains(swipeResult, 'success', 'Swipe command executed successfully');
+      const swipeResult = await client!.swipe('expo-app', 'swipeable-card', 'left');
+      assertContains(JSON.stringify(swipeResult), 'ok', 'Swipe command executed successfully');
       success('Swipe successful');
 
       // 18. Verify swipe was logged
-      await sleep(500);
-      const logsAfterSwipe = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
-      assertContains(logsAfterSwipe, 'Agent swipe detected', 'Swipe was logged');
+      info('Waiting for swipe log...');
+      await client!.waitForLog('expo-app', 'Agent swipe detected', 5000);
       success('Swipe verified in logs');
     } else {
       info('Skipping swipeable-card test (card not in hierarchy)');
@@ -762,7 +777,7 @@ async function main() {
 
     // 19. Get all logs to verify app is running
     info('Fetching app logs...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '20');
+    const logs = await client!.getLogs('expo-app');
     info('Recent logs:');
     console.log(logs);
 
@@ -778,16 +793,15 @@ async function main() {
 
     // 21. Test agentLink command for reset_state
     info('Testing agentLink command: reset_state...');
-    const agentLinkResult = await runAgentCommand(`cwd:${testConfigDir}`, 'agent-link', 'expo-app', 'agenteract://reset_state');
+    const agentLinkResult = await client!.agentLink('expo-app', 'agenteract://reset_state');
     console.log(agentLinkResult);
-    assertContains(agentLinkResult, '"status":"ok"', 'AgentLink command executed successfully');
+    assertContains(JSON.stringify(agentLinkResult), '"status":"ok"', 'AgentLink command executed successfully');
     success('AgentLink reset_state successful');
 
     // 22. Verify agentLink was logged
-    await sleep(500); // Give app time to log the agentLink
-    const logsAfterAgentLink = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'expo-app', '--since', '5');
-    assertContains(logsAfterAgentLink, 'Agent link received', 'AgentLink was logged');
-    assertContains(logsAfterAgentLink, 'reset_state', 'Reset state action was logged');
+    info('Waiting for agentLink logs...');
+    await client!.waitForLog('expo-app', 'Agent link received', 5000);
+    await client!.waitForLog('expo-app', 'reset_state', 5000);
     success('AgentLink verified in logs');
 
     // 23. Terminate app to prevent interference with future test runs

@@ -3,6 +3,7 @@ export * from './pnpm.js';
 export * from './device-manager.js';
 export * from './platform-detector.js';
 export * from './bundle-resolver.js';
+export * from './agent-client.js';
 
 // Re-export from app-launcher (internal - used by CLI/server)
 export { 

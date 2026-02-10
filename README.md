@@ -425,6 +425,55 @@ AI agents can now connect to the Agenteract server using the tools described in 
 
 Your agent is now ready to Agenteract!
 
+### Programmatic Testing with AgentClient
+
+For Node.js integration tests and automation scripts, Agenteract provides the **AgentClient** API - a programmatic alternative to CLI commands:
+
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+const client = new AgentClient('ws://localhost:8765');
+await client.connect();
+
+// Interaction primitives
+await client.tap('expo-app', 'login-button');
+await client.input('expo-app', 'username', 'john@example.com');
+const hierarchy = await client.getViewHierarchy('expo-app');
+
+// Utilities with real-time streaming
+await client.waitForLog('expo-app', 'Login successful', 5000);
+await client.waitForElement('expo-app', 'dashboard', 5000);
+
+// Cleanup
+client.disconnect();
+```
+
+**Benefits of AgentClient:**
+- **Faster execution**: WebSocket connection vs subprocess overhead
+- **Real-time log streaming**: Stream logs as they happen
+- **Type-safe**: Full TypeScript support with IDE autocomplete
+- **Better error handling**: Promise-based with structured errors
+- **Native async/await**: Clean, readable test code
+
+**When to use each approach:**
+- **CLI commands** (`pnpm agenteract-agents tap ...`): For AI agents, manual testing, CI scripts
+- **AgentClient** (TypeScript/Node.js): For integration tests, test frameworks (Jest/Mocha), automation
+
+**Complete example:** See [`tests/e2e/node-client/test-agent-client.ts`](tests/e2e/node-client/test-agent-client.ts) for a full testing workflow.
+
+**All methods available:**
+- `tap(project, testID)` - Tap a component
+- `input(project, testID, value)` - Input text into a field
+- `scroll(project, testID, direction, amount?)` - Scroll a view
+- `swipe(project, testID, direction, velocity?)` - Swipe gesture
+- `longPress(project, testID)` - Long press a component
+- `getViewHierarchy(project)` - Get UI hierarchy
+- `agentLink(project, url)` - Send deep link action
+- `getLogs(project, count?)` - Get console logs
+- `waitForLog(project, pattern, timeout?)` - Wait for log message
+- `waitForElement(project, testID, timeout?)` - Wait for element
+- `waitForCondition(project, predicate, timeout?)` - Wait for custom condition
+
 ### Agent Links (agentLink)
 
 **Agent Links** provide a way to trigger app-specific actions through deep link-style URLs sent over the WebSocket connection. Unlike pairing deep links (which configure the server connection), agentLinks are sent to already-connected apps to trigger custom behaviors.

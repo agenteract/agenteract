@@ -1,13 +1,22 @@
 #!/usr/bin/env node
 /**
- * E2E Test: Flutter App Launch (iOS)
+ * E2E Test: SwiftUI App Launch (iOS)
  *
- * Tests that the Flutter example app:
+ * NOTE: This test uses the CLI-based approach (runAgentCommand) for testing interactions.
+ * This is intentional to maintain coverage of the legacy CLI command interface.
+ * 
+ * For AgentClient-based examples, see:
+ * - tests/e2e/vite/test-app-launch.ts
+ * - tests/e2e/expo/test-app-launch.ts
+ * - tests/e2e/flutter/test-app-launch-ios.ts
+ * - tests/e2e/node-client/test-agent-client.ts
+ * 
+ * Tests that the SwiftUI example app:
  * 1. Installs dependencies from Verdaccio
  * 2. Launches on iOS simulator
  * 3. AgentDebugBridge connects
  * 4. UI hierarchy can be fetched
- * 5. Interactions work (tap, input, etc.)
+ * 5. Interactions work (tap, input, longPress, scroll, swipe)
  */
 
 import { ChildProcess } from 'child_process';
