@@ -237,6 +237,15 @@ async function main() {
 
     // Remove node_modules to avoid workspace symlinks
     await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
+    
+    // Remove old agenteract.config.js if it exists (will be created by add-config in test directory)
+    await runCommand(`rm -f ${exampleAppDir}/agenteract.config.js`);
+    
+    // For Expo Go mode (non-PREBUILD), remove ios/android directories to ensure isExpoGo() detection works
+    if (!PREBUILD_MODE) {
+      info('Removing native directories for Expo Go mode...');
+      await runCommand(`rm -rf ${exampleAppDir}/ios ${exampleAppDir}/android`);
+    }
 
     // Prepare package.json for Verdaccio (replace workspace:* with actual versions, create .npmrc)
     await preparePackageForVerdaccio(exampleAppDir);
@@ -280,14 +289,15 @@ async function main() {
     success('CLI packages installed from Verdaccio');
 
     if (PREBUILD_MODE) {
-      // For prebuild mode, use expo start (Metro) - expo run:ios will connect to it
+      // For prebuild mode, use expo start (Metro) - expo run:ios/android will connect to it
       await runCommand(
         `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --localhost' --wait-log-timeout 500`
       );
     } else {
-      // For Expo Go mode, use expo start with --ios flag to auto-launch Expo Go
+      // For Expo Go mode, use expo start with platform flag to auto-launch Expo Go
+      const platformFlag = PLATFORM === 'ios' ? '--ios' : '--android';
       await runCommand(
-        `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start --ios --localhost' --wait-log-timeout 500`
+        `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} expo-app 'npx expo start ${platformFlag} --localhost' --wait-log-timeout 500`
       );
     }
     success('Config created');
@@ -462,11 +472,18 @@ async function main() {
         throw err;
       }
     } else {
-      // Expo Go mode: Launch Expo Go
-      const launchCommand = PLATFORM === 'ios' ? 'i' : 'a';
-      info(`Launching Expo Go app on ${PLATFORM}...`);
-      await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', launchCommand);
-      success('Expo Go launch initiated');
+      // Expo Go mode: Launch Expo Go using startApp
+      info(`Launching Expo Go app on ${PLATFORM} using startApp...`);
+      const launchResult = await startApp({
+        projectPath: exampleAppDir,
+        device: testDevice,
+        projectName: 'expo-app'
+      });
+      
+      if (launchResult.process) {
+        info(`Expo Go launch process started (PID: ${launchResult.process.pid})`);
+      }
+      success('Expo Go launch initiated via startApp');
     }
 
     await sleep(1000);

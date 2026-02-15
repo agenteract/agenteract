@@ -43,7 +43,8 @@ import {
   bootDevice, 
   getDeviceState,
   listIOSDevices,
-  AgentClient
+  AgentClient,
+  loadConfig
 } from '@agenteract/core/node';
 
 let agentServer: ChildProcess | null = null;
@@ -358,6 +359,15 @@ async function main() {
       `cd ${testConfigDir} && npx @agenteract/cli add-config ${exampleAppDir} flutter-example 'flutter run' --scheme agenteract-flutter-example --wait-log-timeout 500`
     );
     success('Config created');
+
+    // 10.1. Load the config so we can pass projectConfig to lifecycle functions
+    info('Loading agenteract config...');
+    const config = await loadConfig(testConfigDir);
+    const flutterProject = config.projects.find((p: any) => p.name === 'flutter-example');
+    if (!flutterProject) {
+      throw new Error('flutter-example project not found in config');
+    }
+    success(`Config loaded, PTY port: ${flutterProject.ptyPort || flutterProject.devServer?.port || 8792}`);
 
     // 10.5. Test Phase 1 lifecycle utilities (before launching app)
     info('Testing Phase 1 lifecycle utilities...');
@@ -781,7 +791,8 @@ async function main() {
     try {
       await stopApp({
         projectPath: exampleAppDir,
-        device: testDevice
+        device: testDevice,
+        projectName: 'flutter-example' // Required for graceful Flutter shutdown via 'q' command
       });
       success('Flutter app terminated via lifecycle utility');
     } catch (err) {

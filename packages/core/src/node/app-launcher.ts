@@ -9,6 +9,7 @@ import {
   stopIOSApp as stopIOSAppUtil, 
   stopAndroidApp as stopAndroidAppUtil 
 } from './lifecycle-utils.js';
+import { parseGradleTasks } from './gradle.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -57,6 +58,7 @@ export async function launchApp(
   projectPath: string,
   launchTimeout: number = DEFAULT_LAUNCH_TIMEOUT
 ): Promise<LaunchResult> {
+  isValidAppControlDevice(device);
   switch (platform) {
     case 'vite':
       return launchViteApp(projectPath);
@@ -194,16 +196,16 @@ async function launchKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
     
     // Try to detect the correct run task
     let runTask = 'run';
-    try {
-      const { stdout } = await execFileAsync(gradle, ['tasks', '--all'], { cwd: projectPath });
-      
-      if (stdout.includes('runDebug')) {
-        runTask = 'runDebug';
-      } else if (stdout.includes('desktopRun')) {
-        runTask = 'desktopRun';
-      }
-    } catch {
-      // Use default 'run' task
+
+    const { stdout } = await execFileAsync(gradle, ['tasks'], { cwd: projectPath });
+    let tasks = parseGradleTasks(stdout).get('Compose desktop tasks');
+
+    if (!tasks) {
+      throw Error('No "Compose desktop tasks" section found in gradle tasks output');
+    }
+
+    if (!tasks.some(t => t.name === runTask)) {
+      throw Error('No "run" task found in Compose desktop tasks');
     }
     
     console.log(`Launching KMP desktop app with task: ${runTask}`);
@@ -219,6 +221,16 @@ async function launchKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
 }
 
 /**
+ * Checks if device !== null && device !== undefined
+ * @param device 
+ */
+export function isValidAppControlDevice(device: Device | null): asserts device is Device {
+  if (!device) {
+    throw Error('Device required for app control operations.');
+  }
+}
+
+/**
  * Stop a running app
  */
 export async function stopApp(
@@ -228,42 +240,40 @@ export async function stopApp(
   launchResult: LaunchResult,
   force: boolean = false
 ): Promise<void> {
-  try {
-    switch (platform) {
-      case 'vite':
-        if (launchResult.browser) {
-          await launchResult.browser.close();
-        }
-        break;
-      
-      case 'flutter':
-      case 'expo':
-        if (!device) return;
-        if (device.type === 'ios') {
-          await stopIOSApp(device, bundleInfo);
-        } else {
-          await stopAndroidApp(device, bundleInfo, force);
-        }
-        break;
-      
-      case 'kmp-android':
-        if (!device) return;
-        await stopAndroidApp(device, bundleInfo, force);
-        break;
-      
-      case 'kmp-desktop':
-        if (launchResult.process) {
-          launchResult.process.kill(force ? 'SIGKILL' : 'SIGTERM');
-        }
-        break;
-      
-      case 'xcode':
-        if (!device) return;
+  isValidAppControlDevice(device);
+
+  switch (platform) {
+    case 'vite':
+      if (launchResult.browser) {
+        await launchResult.browser.close();
+      }
+      break;
+    
+    case 'flutter':
+    case 'expo':
+      if (!device) return;
+      if (device.type === 'ios') {
         await stopIOSApp(device, bundleInfo);
-        break;
-    }
-  } catch (error) {
-    console.warn(`Failed to stop app: ${error instanceof Error ? error.message : String(error)}`);
+      } else {
+        await stopAndroidApp(device, bundleInfo, force);
+      }
+      break;
+    
+    case 'kmp-android':
+      if (!device) return;
+      await stopAndroidApp(device, bundleInfo, force);
+      break;
+    
+    case 'kmp-desktop':
+      if (launchResult.process) {
+        launchResult.process.kill(force ? 'SIGKILL' : 'SIGTERM');
+      }
+      break;
+    
+    case 'xcode':
+      if (!device) return;
+      await stopIOSApp(device, bundleInfo);
+      break;
   }
 }
 
@@ -452,10 +462,7 @@ async function installApp(
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
-  if (!device) {
-    console.log('Skipping install - no device specified');
-    return;
-  }
+  isValidAppControlDevice(device);
   
   if (device.type === 'ios') {
     console.log('iOS app installation is handled by Xcode/dev build - skipping');
@@ -483,7 +490,7 @@ async function reinstallApp(
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
-  if (!device) return;
+  isValidAppControlDevice(device);
   
   // Uninstall first
   if (device.type === 'android' && bundleInfo.android) {
@@ -514,7 +521,7 @@ async function clearAppData(
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
-  if (!device) return;
+  isValidAppControlDevice(device);
   
   if (device.type === 'android' && bundleInfo.android) {
     console.log(`Clearing data for ${bundleInfo.android}`);

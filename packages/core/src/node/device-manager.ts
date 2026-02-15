@@ -1,9 +1,8 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, mkdir } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import * as path from 'path';
-import { homedir } from 'os';
+import { getRuntimeConfigPath } from './config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -22,32 +21,19 @@ interface RuntimeConfig {
   };
 }
 
-const RUNTIME_CONFIG_PATH = path.join(homedir(), '.agenteract-runtime.json');
-
 /**
  * Load runtime configuration
  */
 async function loadRuntimeConfig(): Promise<RuntimeConfig> {
   try {
-    if (!existsSync(RUNTIME_CONFIG_PATH)) {
+    if (!existsSync(getRuntimeConfigPath())) {
       return {};
     }
-    const content = await readFile(RUNTIME_CONFIG_PATH, 'utf8');
+    const content = await readFile(getRuntimeConfigPath(), 'utf8');
     return JSON.parse(content);
   } catch (error) {
     return {};
   }
-}
-
-/**
- * Save runtime configuration
- */
-async function saveRuntimeConfig(config: RuntimeConfig): Promise<void> {
-  const dir = path.dirname(RUNTIME_CONFIG_PATH);
-  if (!existsSync(dir)) {
-    await mkdir(dir, { recursive: true });
-  }
-  await writeFile(RUNTIME_CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 /**

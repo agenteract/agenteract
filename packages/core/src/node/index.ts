@@ -49,6 +49,8 @@ export {
   stopAndroidApp,
   startAndroidApp,
   restartAndroidApp,
+  startKMPApp,
+  startKMPDesktopApp, // deprecated, use startKMPApp
   
   // Utilities
   findGradle,
@@ -59,5 +61,5 @@ export {
   type DeviceBootOptions,
   type PortForwardingOptions,
   type InstallOptions,
-  // Note: BuildOptions is exported from app-launcher above
+  // Note: BuildOptions and LaunchResult are exported from app-launcher above
 } from './lifecycle-utils.js';

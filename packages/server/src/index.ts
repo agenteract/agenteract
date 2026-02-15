@@ -7,8 +7,10 @@ import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
+import axios from 'axios';
 
-import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary } from '@agenteract/core/node';
+import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary, startApp, loadConfig } from '@agenteract/core/node';
+import type { Browser } from 'puppeteer';
 
 const isLogServer = process.argv.includes('--log-only');
 
@@ -614,6 +616,9 @@ if (isLogServer) {
 
         // --- HTTP Server (for the Agent) ---
         const HTTP_PORT = args.port;
+        
+        // Track browser instances for web apps (key: projectName)
+        const browserInstances: Map<string, Browser> = new Map();
 
         // Update runtime config with HTTP port
         try {
@@ -760,6 +765,235 @@ if (isLogServer) {
                 defaultDevice: defaultDeviceId,
                 totalConnected: devices.length
             });
+        });
+
+        app.post('/launch', async (req, res) => {
+            const { projectName, deviceId } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({ error: 'projectName is required' });
+            }
+            
+            log(`Received launch request for project "${projectName}"${deviceId ? `, device "${deviceId}"` : ''}`);
+            
+            try {
+                // Load config to get project details
+                const config = await loadConfig(args.cwd);
+                const project = config.projects.find((p: any) => p.name === projectName);
+                
+                if (!project) {
+                    return res.status(404).json({ error: `Project "${projectName}" not found in config` });
+                }
+                
+                // Determine if this is a web app or mobile app
+                const isWebApp = project.type === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
+                
+                if (!isWebApp && !deviceId) {
+                    return res.status(400).json({ error: 'deviceId is required for mobile apps' });
+                }
+                
+                // Get PTY port from project config
+                const ptyPort = project.devServer?.port || project.ptyPort;
+                
+                if (!ptyPort) {
+                    return res.status(400).json({ error: `Project "${projectName}" has no PTY port configured` });
+                }
+                
+                // Check if PTY server is running
+                let ptyRunning = false;
+                try {
+                    await axios.get(`http://localhost:${ptyPort}/logs?since=0`, { timeout: 1000 });
+                    ptyRunning = true;
+                } catch (err: any) {
+                    if (err.code === 'ECONNREFUSED') {
+                        ptyRunning = false;
+                    } else {
+                        throw err;
+                    }
+                }
+                
+                log(`PTY server for "${projectName}" on port ${ptyPort}: ${ptyRunning ? 'running' : 'not running'}`);
+                
+                // If PTY is not running, request restart by outputting a message to the dev process
+                if (!ptyRunning) {
+                    log(`Requesting PTY restart for "${projectName}"`);
+                    
+                    // Output a special message that the dev process will monitor and handle
+                    console.log(`RESTART_PTY::${JSON.stringify({ project: projectName })}`);
+                    
+                    // Wait for PTY to start
+                    let attempts = 0;
+                    const maxAttempts = 30;
+                    while (attempts < maxAttempts) {
+                        await new Promise(resolve => setTimeout(resolve, 1000));
+                        try {
+                            await axios.get(`http://localhost:${ptyPort}/logs?since=0`, { timeout: 1000 });
+                            ptyRunning = true;
+                            break;
+                        } catch (err: any) {
+                            if (err.code !== 'ECONNREFUSED') {
+                                throw err;
+                            }
+                        }
+                        attempts++;
+                    }
+                    
+                    if (!ptyRunning) {
+                        return res.status(500).json({ error: 'PTY server failed to start after restart' });
+                    }
+                    
+                    log(`PTY server for "${projectName}" started successfully`);
+                }
+                
+                // Handle platform-specific launch logic
+                if (isWebApp) {
+                    // For web apps: launch browser with Puppeteer
+                    log(`Launching browser for web app "${projectName}"...`);
+                    
+                    try {
+                        // Close existing browser if any
+                        const existingBrowser = browserInstances.get(projectName);
+                        if (existingBrowser) {
+                            log(`Closing existing browser for "${projectName}"`);
+                            try {
+                                await existingBrowser.close();
+                            } catch (err) {
+                                log(`Failed to close existing browser: ${err}`);
+                            }
+                            browserInstances.delete(projectName);
+                        }
+                        
+                        // Dynamic import of puppeteer
+                        const puppeteer = await import('puppeteer');
+                        
+                        const browser = await puppeteer.default.launch({
+                            headless: false, // Show browser for dev workflow
+                            args: [
+                                '--no-sandbox',
+                                '--disable-setuid-sandbox',
+                                '--disable-web-security',
+                                '--disable-features=IsolateOrigins,site-per-process',
+                            ],
+                        });
+                        
+                        // Store browser instance
+                        browserInstances.set(projectName, browser);
+                        
+                        // Open the Vite dev server URL
+                        const page = await browser.newPage();
+                        await page.goto('http://localhost:5173', {
+                            waitUntil: 'networkidle0',
+                            timeout: 30000,
+                        });
+                        
+                        log(`Browser launched successfully for "${projectName}"`);
+                        
+                        res.json({ 
+                            status: 'success',
+                            message: `Browser launched for "${projectName}"`,
+                            ptyWasRestarted: !ptyRunning
+                        });
+                    } catch (err: any) {
+                        log(`Failed to launch browser: ${err.message}`);
+                        return res.status(500).json({ 
+                            error: 'Failed to launch browser', 
+                            details: err.message 
+                        });
+                    }
+                } else {
+                    // For mobile apps (Flutter): handle device selection
+                    log(`Mobile app "${projectName}" PTY is running. Checking if device selection is needed...`);
+                    
+                    try {
+                        // Get PTY logs to check if Flutter is prompting for device selection
+                        const logsRes = await axios.get(`http://localhost:${ptyPort}/logs?since=50`, { timeout: 2000 });
+                        const devLogs = logsRes.data.lines.join('\n');
+                        
+                        // Check if Flutter is waiting for device selection
+                        if (devLogs.includes('Please choose one') || devLogs.includes('Please choose')) {
+                            log(`Flutter is waiting for device selection. Device ID: ${deviceId}`);
+                            
+                            // Parse the dev logs to find which number corresponds to the deviceId
+                            const lines = devLogs.split('\n');
+                            let deviceNumber = '1'; // Default to 1 if we can't find it
+                            
+                            for (const line of lines) {
+                                // Look for lines like: [1]: iPhone 16 Pro (1AAAA41C-E0AA-4460-889D-724CA5F75F5C)
+                                const match = line.match(/\[(\d+)\]:.*\(([A-F0-9-]+)\)/i);
+                                if (match && match[2].toUpperCase() === deviceId.toUpperCase()) {
+                                    deviceNumber = match[1];
+                                    log(`Found device ${deviceId} at position ${deviceNumber}`);
+                                    break;
+                                }
+                            }
+                            
+                            // Send the device selection via /cmd endpoint
+                            log(`Sending device selection: ${deviceNumber}`);
+                            await axios.post(`http://localhost:${ptyPort}/cmd`, { 
+                                cmd: deviceNumber + '\n' 
+                            }, { timeout: 2000 });
+                            
+                            log(`Device selection sent, waiting for Flutter to start...`);
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                        } else {
+                            log(`Flutter not waiting for device selection (already running or auto-selected)`);
+                        }
+                    } catch (err: any) {
+                        log(`Could not check/send device selection: ${err.message}`);
+                        // Don't fail the entire request - Flutter might have auto-selected
+                    }
+                    
+                    res.json({ 
+                        status: 'success',
+                        message: `Dev server ready for "${projectName}"`,
+                        ptyWasRestarted: !ptyRunning
+                    });
+                }
+                
+            } catch (error: any) {
+                log(`Launch error: ${error.message}`);
+                res.status(500).json({ 
+                    error: 'Failed to launch app', 
+                    details: error.message 
+                });
+            }
+        });
+        
+        app.post('/stop', async (req, res) => {
+            const { projectName } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({ error: 'projectName is required' });
+            }
+            
+            log(`Received stop request for project "${projectName}"`);
+            
+            try {
+                // Check if there's a browser instance for this project
+                const browser = browserInstances.get(projectName);
+                
+                if (browser) {
+                    log(`Closing browser for "${projectName}"`);
+                    await browser.close();
+                    browserInstances.delete(projectName);
+                    
+                    res.json({ 
+                        status: 'success',
+                        message: `Browser closed for "${projectName}"`
+                    });
+                } else {
+                    res.json({ 
+                        status: 'success',
+                        message: `No browser instance found for "${projectName}"`
+                    });
+                }
+            } catch (error: any) {
+                log(`Stop error: ${error.message}`);
+                res.status(500).json({ 
+                    error: 'Failed to stop browser', 
+                    details: error.message 
+                });
+            }
         });
 
         app.listen(HTTP_PORT, '0.0.0.0', () => {

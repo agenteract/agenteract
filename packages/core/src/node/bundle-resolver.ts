@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import * as path from 'path';
 import { ProjectType } from './platform-detector.js';
 import type { ProjectConfig } from '../config-types.js';
+import { isExpoGo } from './lifecycle-utils.js';
 
 export interface BundleInfo {
   ios?: string;                // iOS bundle ID (e.g., 'com.example.app')
@@ -135,30 +136,33 @@ async function resolveFlutterBundleInfo(projectPath: string, bundleInfo: BundleI
  */
 async function resolveExpoBundleInfo(projectPath: string, bundleInfo: BundleInfo): Promise<BundleInfo> {
   const result = { ...bundleInfo };
+
+  // If using Expo Go (no ios/android dirs), set Expo Go bundle IDs
+  if (isExpoGo(projectPath)) {
+    result.ios = 'host.exp.Exponent';
+    result.android = 'host.exp.exponent';
+  }
   
   const appJsonPath = path.join(projectPath, 'app.json');
   if (!existsSync(appJsonPath)) {
     return result;
   }
   
-  try {
-    const appJson = JSON.parse(await readFile(appJsonPath, 'utf8'));
-    const expo = appJson.expo || {};
-    
-    if (!result.ios && expo.ios?.bundleIdentifier) {
-      result.ios = expo.ios.bundleIdentifier;
-    }
-    
-    if (!result.android && expo.android?.package) {
-      result.android = expo.android.package;
-    }
-    
-    // Default main activity for Expo
-    if (!result.androidMainActivity) {
-      result.androidMainActivity = 'MainActivity';
-    }
-  } catch (error) {
-    console.error(`Failed to resolve Expo bundle info from app.json: ${error}`);
+  const appJsonContent = await readFile(appJsonPath, 'utf8');
+  const appJson = JSON.parse(appJsonContent);
+  const expo = appJson.expo || {};
+  
+  if (!result.ios && expo.ios?.bundleIdentifier) {
+    result.ios = expo.ios.bundleIdentifier;
+  }
+  
+  if (!result.android && expo.android?.package) {
+    result.android = expo.android.package;
+  }
+  
+  // Default main activity for Expo (relative to package)
+  if (!result.androidMainActivity) {
+    result.androidMainActivity = '.MainActivity';
   }
   
   return result;
@@ -210,9 +214,9 @@ async function resolveKMPBundleInfo(projectPath: string, bundleInfo: BundleInfo)
     }
   }
   
-  // Default main activity
+  // Default main activity (with dot prefix for relative class name)
   if (!result.androidMainActivity) {
-    result.androidMainActivity = 'MainActivity';
+    result.androidMainActivity = '.MainActivity';
   }
   
   return result;

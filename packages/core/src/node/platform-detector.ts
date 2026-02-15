@@ -19,6 +19,34 @@ export async function detectPlatform(projectPath: string): Promise<ProjectType> 
     return 'flutter';
   }
   
+  // Check for Expo BEFORE checking for Xcode, because Expo prebuilt apps
+  // will have .xcodeproj files but should still be treated as Expo apps
+  const packageJsonPath = path.join(projectPath, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    try {
+      const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+      
+      // Check for Expo
+      if (packageJson.dependencies?.expo || packageJson.devDependencies?.expo) {
+        return 'expo';
+      }
+      
+      // Check for app.json (Expo marker)
+      if (existsSync(path.join(projectPath, 'app.json'))) {
+        try {
+          const appJson = JSON.parse(await readFile(path.join(projectPath, 'app.json'), 'utf8'));
+          if (appJson.expo) {
+            return 'expo';
+          }
+        } catch {
+          // Ignore app.json parse errors
+        }
+      }
+    } catch {
+      // Ignore package.json parse errors - continue to check other platforms
+    }
+  }
+  
   // Check for Xcode projects (Swift/Objective-C/iOS/macOS) - look for Package.swift or .xcodeproj
   if (existsSync(path.join(projectPath, 'Package.swift'))) {
     return 'xcode';
@@ -72,28 +100,10 @@ export async function detectPlatform(projectPath: string): Promise<ProjectType> 
     }
   }
   
-  // Check for Expo or React Native
-  const packageJsonPath = path.join(projectPath, 'package.json');
+  // Check for Vite (after Expo check since both use package.json)
   if (existsSync(packageJsonPath)) {
     try {
       const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
-      
-      // Check for Expo
-      if (packageJson.dependencies?.expo || packageJson.devDependencies?.expo) {
-        return 'expo';
-      }
-      
-      // Check for app.json (Expo marker)
-      if (existsSync(path.join(projectPath, 'app.json'))) {
-        try {
-          const appJson = JSON.parse(await readFile(path.join(projectPath, 'app.json'), 'utf8'));
-          if (appJson.expo) {
-            return 'expo';
-          }
-        } catch {
-          // Ignore app.json parse errors
-        }
-      }
       
       // Check for Vite
       if (packageJson.dependencies?.vite || packageJson.devDependencies?.vite) {

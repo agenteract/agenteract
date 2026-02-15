@@ -53,6 +53,8 @@ import {
 let agentServer: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let testConfigDir: string | null = null;
+let exampleAppDir: string | null = null;
+let testDevice: any = null;
 
 const platform = process.argv.find(arg => arg.startsWith('--platform='))?.split('=')[1] || 'desktop';
 
@@ -64,10 +66,19 @@ async function cleanup() {
         await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-kotlin');
     }
 
-    if (platform === 'android') {
+    // Use stopApp for Android cleanup if we have the device and app path
+    if (platform === 'android' && testDevice && exampleAppDir) {
         try {
-            await runCommand('adb shell am force-stop io.agenteract.kmp_example');
-        } catch (e) { /* ignore */ }
+            await stopApp({
+                projectPath: exampleAppDir,
+                device: testDevice
+            });
+        } catch (e) { 
+            // Fallback to raw adb command
+            try {
+                await runCommand('adb shell am force-stop io.agenteract.kmp_example');
+            } catch (e2) { /* ignore */ }
+        }
     }
 
     if (appProcess) {
@@ -128,7 +139,7 @@ async function main() {
         // 4. Setup Agenteract Config
         // We point to the local example app. 
         // The app itself uses `includeBuild` to find the local kotlin package, so we don't need to publish it.
-        const exampleAppDir = join(process.cwd(), 'examples', 'kmp-example');
+        exampleAppDir = join(process.cwd(), 'examples', 'kmp-example');
 
         info(`Configuring agenteract for app at: ${exampleAppDir}`);
         // using --wait-log-timeout 500 to simulate deprecated usage
@@ -148,17 +159,21 @@ async function main() {
         await sleep(5000);
 
         // 6. Run the Kotlin App
-        let testDevice: any = null; // Will be set for Android/iOS platforms
         
         if (platform === 'desktop') {
             info('Starting KMP App (Desktop)...');
-            // We use 'run' task from the compose plugin
-            appProcess = spawnBackground(
-                './gradlew',
-                ['run', '--quiet'],
-                'kmp-app',
-                { cwd: exampleAppDir }
-            );
+            // Use startApp to launch the desktop app
+            const desktopDevice = {
+                id: 'test-desktop',
+                name: 'Test Desktop',
+                type: 'desktop' as const,
+                state: 'booted' as const
+            };
+            const launchResult = await startApp({ 
+                projectPath: exampleAppDir,
+                device: desktopDevice
+            });
+            appProcess = launchResult.process || null; // Desktop returns process handle
         } else if (platform === 'ios') {
             info('Building KMP iOS framework via Gradle...');
 
@@ -234,26 +249,16 @@ async function main() {
             info('Checking for connected Android devices/emulators...');
             await runCommand('adb devices');
 
-            // 1. Install the debug APK
-            info(`Running ./gradlew installDebug in ${exampleAppDir}`);
-            await runCommand(`cd "${exampleAppDir}" && ./gradlew installDebug`);
-            success('✅ Android app installed successfully!');
-
-            // 2. Launch the app using adb
-            const androidAppId = 'io.agenteract.kmp_example'; // From build.gradle.kts
-            const mainActivity = '.MainActivity'; // Common main activity name
-
-            // ADB Reverse for AgentDebugBridge connection
+            // ADB Reverse for AgentDebugBridge connection (must be done before app launch)
             info('Setting up adb reverse port forwarding (8765 -> 8765)...');
             await runCommand('adb reverse tcp:8765 tcp:8765');
 
-            info(`Launching Android app: ${androidAppId}/${mainActivity}`);
-            appProcess = spawnBackground(
-                'adb',
-                ['shell', 'am', 'start', '-n', `${androidAppId}/${mainActivity}`],
-                'kmp-android-app',
-                { cwd: exampleAppDir } // Adb command doesn't need cwd but good practice
-            );
+            // Launch the app using startApp (handles gradle installDebug + adb am start)
+            info(`Launching Android app via startApp()...`);
+            await startApp({
+                projectPath: exampleAppDir,
+                device: testDevice
+            });
             success('✅ Android app launched successfully!');
         }
 

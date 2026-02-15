@@ -316,32 +316,25 @@ async function main() {
       { cwd: testConfigDir }
     );
 
-    // build the app
-    info('Building the Swift-App app...');
-    const derivedDataPath = `${exampleAppDir}/build/DerivedData`;
-    await runCommand(`rm -rf ${derivedDataPath}`);
-    await runCommand(`mkdir -p ${derivedDataPath}`);
-    await runCommand(`cd ${exampleAppDir} && xcodebuild -project AgenteractSwiftExample/AgenteractSwiftExample.xcodeproj -scheme AgenteractSwiftExample -destination 'platform=iOS Simulator,id=${testDevice.id}' -derivedDataPath ${derivedDataPath} build`);
-    success('Swift-App app built');
-
     info(`test app path: ${testConfigDir}`)
 
-    // Install and launch the app on simulator
-    info('Installing and launching the Swift-App app on simulator...');
+    // Load the config to get the project settings
+    info('Loading agenteract config...');
+    const config = await loadConfig(testConfigDir!);
+    const project = config.projects.find(p => p.name === 'swift-app');
+    if (!project) {
+      throw new Error('swift-app project not found in config');
+    }
+    info(`Loaded project config with scheme: ${project.scheme}`);
 
-    // Boot the simulator if not already running (should be booted from Phase 1 test)
-    await runCommand(`xcrun simctl boot "${testDevice.id}" 2>/dev/null || true`);
-    await sleep(2000);
-
-    // Get the app bundle path from the build
-    const appBundlePath = `${derivedDataPath}/Build/Products/Debug-iphonesimulator/AgenteractSwiftExample.app`;
-
-    // Install the app on the simulator
-    await runCommand(`xcrun simctl install "${testDevice.id}" "${appBundlePath}"`);
-
-    // Launch the app
-    await runCommand(`xcrun simctl launch "${testDevice.id}" com.example.AgenteractSwiftExample`);
-    success('Swift-App app installed and launched');
+    // Build, install, and launch the app using startApp()
+    info('Building, installing, and launching the Swift-App app on simulator...');
+    await startApp({
+      projectPath: exampleAppDir,
+      device: testDevice,
+      projectConfig: project
+    });
+    success('Swift-App app built, installed, and launched via startApp()');
 
     // we don't have a pty wrapper for Swift since it's a native app, so we just wait for the app to start
     while (true) {
@@ -444,15 +437,6 @@ async function main() {
 
     // 13.5. Test app lifecycle: stop and restart app
     info('Testing app lifecycle: stopping and restarting app...');
-    
-    // Load the config to get the project settings
-    info('Loading agenteract config...');
-    const config = await loadConfig(testConfigDir!);
-    const project = config.projects.find(p => p.name === 'swift-app');
-    if (!project) {
-      throw new Error('swift-app project not found in config');
-    }
-    info(`Loaded project config with scheme: ${project.scheme}`);
     
     try {
       // Stop the app on device using lifecycle utility

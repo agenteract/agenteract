@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'child_process';
+import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -6,8 +6,19 @@ import type { Device } from './device-manager.js';
 import { detectPlatform } from './platform-detector.js';
 import { resolveBundleInfo } from './bundle-resolver.js';
 import type { ProjectConfig } from '../config-types.js';
+import { parseGradleTasks } from './gradle.js';
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Result returned from launching an app
+ */
+export interface LaunchResult {
+  /** Browser instance (for web apps like Vite) */
+  browser?: any;
+  /** Process instance (for desktop apps like KMP desktop) */
+  process?: ChildProcess;
+}
 
 /**
  * Options for app lifecycle operations
@@ -101,13 +112,23 @@ export interface BuildOptions extends AppLifecycleOptions {
 }
 
 /**
- * Detect if an Expo project uses Expo Go (no prebuild) or has custom native code
+ * Determine if an Expo project is using Expo Go (no native directories)
  * 
- * @param projectPath - Path to Expo project root
- * @returns true if using Expo Go, false if prebuilt
+ * @param projectPath - Path to the Expo project
+ * @param platform - Target platform (ios or android)
+ * @returns true if the project is using Expo Go, false if prebuilt
  */
-export function isExpoGo(projectPath: string): boolean {
-  // If ios/ or android/ directories exist, it's prebuilt
+export function isExpoGo(projectPath: string, platform?: 'ios' | 'android'): boolean {
+  // If a specific platform is requested, check only that platform
+  if (platform === 'ios') {
+    return !existsSync(join(projectPath, 'ios'));
+  }
+  
+  if (platform === 'android') {
+    return !existsSync(join(projectPath, 'android'));
+  }
+
+  // If ios/ or android/ directories exist, it's prebuilt (legacy behavior)
   return !existsSync(join(projectPath, 'ios')) && !existsSync(join(projectPath, 'android'));
 }
 
@@ -413,7 +434,8 @@ export async function clearAppData(options: AppLifecycleOptions): Promise<void> 
   const platformInfo = await detectPlatform(projectPath);
   
   // Expo Go apps cannot have data cleared
-  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Cannot clear data for Expo Go apps (NOOP)');
     return;
   }
@@ -607,8 +629,8 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * });
  * ```
  */
-export async function startApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, mainActivity, projectName, projectConfig } = options;
+export async function startApp(options: AppLifecycleOptions): Promise<LaunchResult> {
+  const { projectPath, device, bundleId: bundleIdOverride, mainActivity: mainActivityOverride, projectName, projectConfig } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string' 
@@ -628,11 +650,43 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
   // Detect project type
   const platformInfo = await detectPlatform(projectPath);
   
+  // Handle KMP projects - they can be multi-target (both android and desktop)
+  // Use device type to determine which target to launch
+  if (platformInfo === 'kmp-android' || platformInfo === 'kmp-desktop') {
+    if (platform === 'desktop') {
+      return await startKMPApp(projectPath);
+    } else if (platform === 'android') {
+      // For KMP Android, install the app first, then use standard Android launch
+      const gradle = await findGradle(projectPath);
+      console.log(`Installing KMP Android app via gradle task: installDebug`);
+      await execFileAsync(gradle, ['installDebug'], {
+        cwd: projectPath,
+      });
+      
+      // Continue to standard Android launch flow below using resolveBundleInfo
+      // (don't return here - fall through to use bundleInfo resolution)
+    }
+  }
+  
+  // For KMP desktop that already returned above, we won't reach here
+  // For KMP Android, we continue to resolve bundle info and launch normally
+  const effectiveProjectType = platformInfo === 'kmp-android' ? 'kmp-android' : platformInfo;
+  
+  // Handle Swift/Xcode projects - build and install to simulator
+  if (effectiveProjectType === 'xcode' && platform === 'ios') {
+    console.log('Building and installing Swift/Xcode app to iOS simulator...');
+    await buildAndInstallXcodeApp(projectPath, deviceObj);
+    // Continue to standard iOS launch flow below using resolveBundleInfo
+  }
+  
   // Check if Expo Go
-  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  const isExpoGoApp = effectiveProjectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   // Resolve bundle IDs if not provided
   let bundleId = bundleIdOverride;
+  let mainActivity = mainActivityOverride;
+  
   if (!bundleId) {
     if (isExpoGoApp) {
       // For Expo Go, use the Expo Go bundle ID
@@ -640,11 +694,12 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
     } else {
       const bundleInfo = await resolveBundleInfo(
         projectPath, 
-        platformInfo, 
+        effectiveProjectType, 
         projectConfig?.lifecycle,
         projectConfig?.scheme
       );
       bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
+      mainActivity = bundleInfo.androidMainActivity || mainActivity;
       
       if (!bundleId) {
         throw new Error(`Bundle ID not found for ${platform}. Configure lifecycle.bundleId in agenteract.config.js or pass bundleId option.`);
@@ -661,7 +716,8 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
     }
     
     const keystroke = platform === 'ios' ? 'i' : 'a';
-    await sendExpoCLICommand(projectName, keystroke, projectPath);
+    const process = await sendExpoCLICommand(projectName, keystroke, projectPath);
+    return { process };
     // Wait for the app to start - the Expo CLI will trigger the launch
   } else {
     // Prebuilt apps - use platform commands
@@ -670,6 +726,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
     } else {
       await startAndroidApp(deviceObj, bundleId, mainActivity);
     }
+    return {};
   }
 }
 
@@ -687,7 +744,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<void> {
  * ```
  */
 export async function stopApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, force = true, projectConfig } = options;
+  const { projectPath, device, bundleId: bundleIdOverride, force = true, projectConfig, projectName } = options;
   
   // Get device info
   const deviceObj = typeof device === 'string'
@@ -699,8 +756,53 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
   // Detect project type and resolve bundle ID
   const platformInfo = await detectPlatform(projectPath);
   
+  // Check if Flutter app - if so, try to quit gracefully via 'q' command first
+  if (platformInfo === 'flutter' && projectName && projectConfig) {
+    try {
+      // Get PTY port from projectConfig
+      const ptyPort = projectConfig.devServer?.port || projectConfig.ptyPort || 8792;
+      
+      console.log('Sending quit command to Flutter dev server...');
+      await sendFlutterCommand(projectName, 'q', projectPath);
+      
+      // Wait for the PTY server to actually shut down
+      console.log('Waiting for Flutter PTY server to shut down...');
+      const maxWaitTime = 10000; // 10 seconds max
+      const startTime = Date.now();
+      
+      while (Date.now() - startTime < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Check if PTY server is still running by trying to fetch logs
+        try {
+          const response = await fetch(`http://localhost:${ptyPort}/logs?since=0`);
+          if (!response.ok) {
+            // Server responded but with error - it's still running
+            continue;
+          }
+          // Server is still running
+        } catch (error: any) {
+          // ECONNREFUSED means server has shut down
+          if (error.code === 'ECONNREFUSED' || error.cause?.code === 'ECONNREFUSED') {
+            console.log('✓ Flutter PTY server has shut down');
+            return; // Flutter PTY and app have terminated
+          }
+          // Other errors - keep waiting
+        }
+      }
+      
+      console.warn(`Flutter PTY server did not shut down within ${maxWaitTime}ms, falling back to platform termination...`);
+      // Fall through to platform-specific termination
+    } catch (error: any) {
+      console.warn(`Failed to send Flutter quit command: ${error.message}`);
+      console.warn('Falling back to platform-specific termination...');
+      // Fall through to platform-specific termination below
+    }
+  }
+  
   // Check if Expo Go
-  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   let bundleId = bundleIdOverride;
   if (!bundleId) {
@@ -932,6 +1034,62 @@ export async function restartAndroidApp(
   await startAndroidApp(device, bundleId, mainActivity);
 }
 
+/**
+ * Start (launch) a KMP app via gradle
+ * 
+ * Uses gradle to run KMP apps for both desktop and Android targets.
+ * For desktop: Uses the 'run' task from Compose desktop tasks
+ * For Android: Uses 'installDebug' task followed by launching via adb
+ * 
+ * @param projectPath - Path to KMP project root
+ * @param target - Target platform ('desktop' or 'android')
+ * @param device - Android device (required for android target)
+ * @returns LaunchResult with process handle
+ * @throws Error if gradle tasks fail or run task not found
+ */
+/**
+ * Start a KMP desktop app using gradle
+ * 
+ * For KMP Android apps, use startApp() which handles installation and launch properly.
+ * 
+ * @param projectPath - Path to KMP project root
+ * @returns LaunchResult with process handle
+ */
+export async function startKMPApp(projectPath: string): Promise<LaunchResult> {
+  try {
+    const gradle = await findGradle(projectPath);
+    
+    // Desktop: Use 'run' task from Compose desktop tasks
+    const { stdout } = await execFileAsync(gradle, ['tasks'], { cwd: projectPath });
+    const tasks = parseGradleTasks(stdout).get('Compose desktop tasks');
+
+    if (!tasks) {
+      throw Error('No "Compose desktop tasks" section found in gradle tasks output');
+    }
+
+    if (!tasks.some(t => t.name === 'run')) {
+      throw Error('No "run" task found in Compose desktop tasks');
+    }
+    
+    console.log(`Launching KMP desktop app with gradle task: run`);
+    const process = spawn(gradle, ['run', '--quiet'], {
+      cwd: projectPath,
+      stdio: 'inherit',
+    });
+    
+    return { process };
+  } catch (error) {
+    throw new Error(`Failed to launch KMP desktop app: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * @deprecated Use startKMPApp instead
+ */
+export async function startKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
+  return startKMPApp(projectPath);
+}
+
 //
 // Install/Uninstall/Reinstall operations - Platform and framework agnostic
 //
@@ -975,7 +1133,8 @@ export async function installApp(options: InstallOptions): Promise<void> {
   const platformInfo = await detectPlatform(projectPath);
   
   // Check if Expo Go
-  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Cannot install Expo Go apps via this method (NOOP)');
     return;
   }
@@ -1069,7 +1228,8 @@ export async function uninstallApp(options: AppLifecycleOptions): Promise<void> 
   const platformInfo = await detectPlatform(projectPath);
   
   // Check if Expo Go
-  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath);
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   if (isExpoGoApp) {
     console.log('ℹ️  Cannot uninstall Expo Go apps via this method (NOOP)');
@@ -1199,7 +1359,8 @@ export async function buildApp(options: BuildOptions): Promise<void> {
   const platformInfo = await detectPlatform(projectPath);
   
   // Check if Expo Go
-  if (platformInfo === 'expo' && isExpoGo(projectPath)) {
+  const expoGoPlatform = (targetPlatform === 'ios' || targetPlatform === 'android') ? targetPlatform : undefined;
+  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Expo Go apps use OTA updates, no build required (NOOP)');
     return;
   }
@@ -1433,6 +1594,69 @@ async function buildSwiftApp(
 }
 
 /**
+ * Build and install Swift/Xcode app to iOS simulator
+ * This uses xcodebuild with -destination to build and automatically install to the simulator
+ */
+async function buildAndInstallXcodeApp(
+  projectPath: string,
+  device: Device
+): Promise<void> {
+  const { glob } = await import('glob');
+  const path = await import('path');
+  
+  // Search for .xcworkspace files (they take precedence over .xcodeproj)
+  // Exclude project.xcworkspace files that are inside .xcodeproj directories
+  const workspaces = await glob('**/*.xcworkspace', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**', '**/*.xcodeproj/**']
+  });
+  
+  // Search for .xcodeproj files
+  const projects = await glob('**/*.xcodeproj', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**']
+  });
+  
+  if (workspaces.length === 0 && projects.length === 0) {
+    throw new Error('No Xcode project or workspace found');
+  }
+  
+  // Use workspace if available, otherwise use project
+  const workspaceOrProject = workspaces[0] || projects[0];
+  const isWorkspace = workspaceOrProject.endsWith('.xcworkspace');
+  
+  // Extract scheme name from the .xcworkspace or .xcodeproj filename
+  const fileName = path.basename(workspaceOrProject);
+  const baseName = fileName.replace(isWorkspace ? '.xcworkspace' : '.xcodeproj', '');
+  const workingDir = path.dirname(workspaceOrProject);
+  
+  const args = [
+    isWorkspace ? '-workspace' : '-project',
+    path.basename(workspaceOrProject),
+    '-scheme', baseName,
+    '-configuration', 'Debug',
+    '-sdk', 'iphonesimulator',
+    '-destination', `id=${device.id}`,
+    'build',
+  ];
+  
+  console.log(`Building and installing Swift app: ${baseName}`);
+  console.log(`Target device: ${device.name} (${device.id})`);
+  console.log(`Working directory: ${workingDir}`);
+  
+  const execOptions: any = { 
+    cwd: workingDir, 
+    maxBuffer: 50 * 1024 * 1024,
+    stdio: 'inherit'
+  };
+  
+  await execFileAsync('xcodebuild', args, execOptions);
+  console.log('✓ Swift app built and installed successfully');
+}
+
+/**
  * Build Vite app
  */
 async function buildViteApp(projectPath: string, silent: boolean): Promise<void> {
@@ -1471,7 +1695,7 @@ async function buildViteApp(projectPath: string, silent: boolean): Promise<void>
  * @param keystroke - Single character command ('i' for iOS, 'a' for Android, etc.)
  * @param projectPath - Path to the Expo project directory (where .agenteract-runtime.json is located)
  */
-async function sendExpoCLICommand(projectName: string | undefined, keystroke: string, projectPath: string): Promise<void> {
+async function sendExpoCLICommand(projectName: string | undefined, keystroke: string, projectPath: string): Promise<ChildProcess> {
   // The Expo CLI is typically running in the background via the PTY server
   // We need to send the keystroke through the PTY interface
   // This is handled by the agent-server's PTY functionality
@@ -1485,21 +1709,90 @@ async function sendExpoCLICommand(projectName: string | undefined, keystroke: st
   }
   
   try {
-    const { execFile: execFileCb } = await import('child_process');
-    const util = await import('util');
-    const execFilePromise = util.promisify(execFileCb);
+    const { detectInvoker } = await import('../index.js');
+    
+    // Detect if we're running in pnpm monorepo (same logic as dev.ts)
+    const { pkgManager } = detectInvoker();
+    
+    // If we're in the agenteract monorepo, use pnpm with the local package name
+    // Otherwise use npx with the published package name
+    const spawnBin = pkgManager === 'pnpm' ? 'pnpm' : 'npx';
+    const agentsPackage = pkgManager === 'pnpm' ? 'agenteract-agents' : '@agenteract/agents';
     
     // Call the agents CLI to send the command
-    // Format: npx @agenteract/agents cmd [project-name] [keystroke]
+    // Format: pnpm agenteract-agents cmd [project-name] [keystroke]
+    // or: npx @agenteract/agents cmd [project-name] [keystroke]
     // Run from the project directory to ensure correct .agenteract-runtime.json token is used
-    const execOptions: any = { 
-      timeout: 5000,
-      cwd: projectPath
-    };
+    const childProcess = spawn(spawnBin, [agentsPackage, 'cmd', projectName, keystroke], {
+      cwd: projectPath,
+      stdio: 'inherit', // Inherit stdio to see any error output
+    });
     
-    await execFilePromise('npx', ['@agenteract/agents', 'cmd', projectName, keystroke], execOptions);
+    return childProcess;
   } catch (error: any) {
     // Propagate the error with context
     throw new Error(`Failed to send Expo CLI command '${keystroke}' to project '${projectName}' at ${projectPath}: ${error.message}`);
+  }
+}
+
+/**
+ * Send a command to Flutter dev server via the PTY interface
+ * Similar to Expo, Flutter runs in a PTY and accepts keyboard commands (r, R, q, etc.)
+ */
+async function sendFlutterCommand(projectName: string | undefined, keystroke: string, projectPath: string): Promise<void> {
+  // The Flutter dev server is running in the background via the PTY server
+  // We send the keystroke through the PTY interface (e.g., 'q' to quit, 'r' to hot reload)
+  
+  if (!projectName) {
+    throw new Error('projectName is required for Flutter apps. Pass projectName option.');
+  }
+  
+  if (!projectPath) {
+    throw new Error('projectPath is required for Flutter apps. Pass projectPath option.');
+  }
+  
+  try {
+    const { detectInvoker } = await import('../index.js');
+    
+    // Detect if we're running in pnpm monorepo (same logic as dev.ts)
+    const { pkgManager } = detectInvoker();
+    
+    // If we're in the agenteract monorepo, use pnpm with the local package name
+    // Otherwise use npx with the published package name
+    const spawnBin = pkgManager === 'pnpm' ? 'pnpm' : 'npx';
+    const agentsPackage = pkgManager === 'pnpm' ? 'agenteract-agents' : '@agenteract/agents';
+    
+    // Call the agents CLI to send the command
+    // Format: pnpm agenteract-agents cmd [project-name] [keystroke]
+    // or: npx @agenteract/agents cmd [project-name] [keystroke]
+    // Run from the project directory to ensure correct .agenteract-runtime.json token is used
+    const childProcess = spawn(spawnBin, [agentsPackage, 'cmd', projectName, keystroke], {
+      cwd: projectPath,
+      stdio: 'pipe', // Capture output to detect errors
+    });
+    
+    // Wait for the command to complete
+    await new Promise<void>((resolve, reject) => {
+      let stderr = '';
+      
+      childProcess.stderr?.on('data', (data) => {
+        stderr += data.toString();
+      });
+      
+      childProcess.on('exit', (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Command exited with code ${code}. ${stderr ? 'Error: ' + stderr : ''}`));
+        }
+      });
+      
+      childProcess.on('error', (error) => {
+        reject(error);
+      });
+    });
+  } catch (error: any) {
+    // Propagate the error with context
+    throw new Error(`Failed to send Flutter command '${keystroke}' to project '${projectName}' at ${projectPath}: ${error.message}`);
   }
 }

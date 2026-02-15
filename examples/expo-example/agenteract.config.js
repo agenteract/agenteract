@@ -5,8 +5,8 @@ export default {
       "name": "expo-app",
       "path": ".",
       "devServer": {
-        "command": "npx expo",
-        "port": 8757
+        "command": "npx expo start --ios --localhost",
+        "port": 8790
       },
       "scheme": "exp"
     }
