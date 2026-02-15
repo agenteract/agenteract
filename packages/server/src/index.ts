@@ -767,7 +767,7 @@ if (isLogServer) {
             });
         });
 
-        app.post('/launch', async (req, res) => {
+        app.post('/start-app', async (req, res) => {
             const { projectName, deviceId } = req.body;
             
             if (!projectName) {

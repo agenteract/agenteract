@@ -576,7 +576,7 @@ Launch an application on a device or simulator. The platform is auto-detected, a
 
 **Command:**
 ```bash
-pnpm agenteract-agents launch <project> [options]
+pnpm agenteract-agents start-app <project> [options]
 ```
 
 **Options:**
@@ -587,16 +587,16 @@ pnpm agenteract-agents launch <project> [options]
 **Examples:**
 ```bash
 # Launch with auto-detected platform and default device
-pnpm agenteract-agents launch expo-app
+pnpm agenteract-agents start-app expo-app
 
 # Launch on specific iOS simulator
-pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
 
 # Launch Flutter app on Android
-pnpm agenteract-agents launch flutter-app --platform flutter --device emulator-5554
+pnpm agenteract-agents start-app flutter-app --platform flutter --device emulator-5554
 
 # Launch web app in headless mode
-pnpm agenteract-agents launch vite-app --headless
+pnpm agenteract-agents start-app vite-app --headless
 ```
 
 **When to use:**
@@ -612,7 +612,7 @@ Stop a running application gracefully or forcefully.
 
 **Command:**
 ```bash
-pnpm agenteract-agents stop <project> [options]
+pnpm agenteract-agents stop-app <project> [options]
 ```
 
 **Options:**
@@ -622,10 +622,10 @@ pnpm agenteract-agents stop <project> [options]
 **Examples:**
 ```bash
 # Stop app gracefully
-pnpm agenteract-agents stop expo-app
+pnpm agenteract-agents stop-app expo-app
 
 # Force stop on specific device
-pnpm agenteract-agents stop expo-app --device emulator-5554 --force
+pnpm agenteract-agents stop-app expo-app --device emulator-5554 --force
 ```
 
 **When to use:**
@@ -721,11 +721,11 @@ When you use the `--device` flag, that device is automatically saved as the defa
 
 ```bash
 # First launch with explicit device
-pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
 
 # Future commands use this device by default
-pnpm agenteract-agents launch expo-app
-pnpm agenteract-agents stop expo-app
+pnpm agenteract-agents start-app expo-app
+pnpm agenteract-agents stop-app expo-app
 ```
 
 ### Lifecycle Configuration
@@ -777,27 +777,27 @@ Override detection with the `--platform` flag when needed.
 pnpm agenteract-agents setup expo-app reinstall
 
 # 2. Launch the app
-pnpm agenteract-agents launch expo-app
+pnpm agenteract-agents start-app expo-app
 
 # 3. Run your tests (hierarchy, tap, input, etc.)
 pnpm agenteract-agents hierarchy expo-app
 pnpm agenteract-agents tap expo-app login-button
 
 # 4. Clean up
-pnpm agenteract-agents stop expo-app
+pnpm agenteract-agents stop-app expo-app
 ```
 
 **Multi-Device Testing:**
 ```bash
 # Test on iOS
-pnpm agenteract-agents launch expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
 pnpm agenteract-agents hierarchy expo-app --device "iPhone 15 Pro"
-pnpm agenteract-agents stop expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents stop-app expo-app --device "iPhone 15 Pro"
 
 # Test on Android
-pnpm agenteract-agents launch expo-app --device emulator-5554
+pnpm agenteract-agents start-app expo-app --device emulator-5554
 pnpm agenteract-agents hierarchy expo-app --device emulator-5554
-pnpm agenteract-agents stop expo-app --device emulator-5554
+pnpm agenteract-agents stop-app expo-app --device emulator-5554
 ```
 
 **Build and Deploy:**
@@ -809,7 +809,7 @@ pnpm agenteract-agents build flutter-app --config release
 pnpm agenteract-agents setup flutter-app install --device <device-id>
 
 # Launch and verify
-pnpm agenteract-agents launch flutter-app --device <device-id>
+pnpm agenteract-agents start-app flutter-app --device <device-id>
 ```
 
 ## Tool: Get View Hierarchy

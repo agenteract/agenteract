@@ -775,7 +775,7 @@ Agenteract provides CLI commands to manage app launching, stopping, building, an
 Launch your app on a device or simulator:
 
 ```bash
-npx @agenteract/agents launch <project> [options]
+npx @agenteract/agents start-app <project> [options]
 ```
 
 **Options:**
@@ -786,16 +786,16 @@ npx @agenteract/agents launch <project> [options]
 **Examples:**
 ```bash
 # Launch with auto-detected platform and default device
-npx @agenteract/agents launch expo-app
+npx @agenteract/agents start-app expo-app
 
 # Launch on specific iOS simulator
-npx @agenteract/agents launch expo-app --device "iPhone 15 Pro"
+npx @agenteract/agents start-app expo-app --device "iPhone 15 Pro"
 
 # Launch Flutter app on Android with explicit platform
-npx @agenteract/agents launch flutter-app --platform flutter --device emulator-5554
+npx @agenteract/agents start-app flutter-app --platform flutter --device emulator-5554
 
 # Launch web app in headless mode
-npx @agenteract/agents launch vite-app --headless
+npx @agenteract/agents start-app vite-app --headless
 ```
 
 ### **Stop an App**
@@ -803,7 +803,7 @@ npx @agenteract/agents launch vite-app --headless
 Stop a running application:
 
 ```bash
-npx @agenteract/agents stop <project> [options]
+npx @agenteract/agents stop-app <project> [options]
 ```
 
 **Options:**
@@ -813,10 +813,10 @@ npx @agenteract/agents stop <project> [options]
 **Examples:**
 ```bash
 # Stop app gracefully
-npx @agenteract/agents stop expo-app
+npx @agenteract/agents stop-app expo-app
 
 # Force stop on specific device
-npx @agenteract/agents stop expo-app --device emulator-5554 --force
+npx @agenteract/agents stop-app expo-app --device emulator-5554 --force
 ```
 
 ### **Build an App**
@@ -916,10 +916,10 @@ Agenteract automatically detects and manages devices:
 **Set Default Device:**
 ```bash
 # Device info is automatically saved when you use --device flag
-npx @agenteract/agents launch expo-app --device "iPhone 15 Pro"
+npx @agenteract/agents start-app expo-app --device "iPhone 15 Pro"
 
 # Future launches will use this device by default
-npx @agenteract/agents launch expo-app
+npx @agenteract/agents start-app expo-app
 ```
 
 Default device configuration is stored in `.agenteract-runtime.json` (should not be committed to SCM).

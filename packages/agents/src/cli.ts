@@ -880,7 +880,7 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'launch <project>',
+    'start-app <project>',
     'Launch an app on a device or simulator',
     (yargs) => {
       return yargs
@@ -976,7 +976,7 @@ yargs(hideBin(process.argv))
               requestBody.deviceName = device.name;
             }
             
-            const response = await axios.post(`${agentServerUrl}/launch`, requestBody);
+            const response = await axios.post(`${agentServerUrl}/start-app`, requestBody);
             
             console.log('✓ App launched successfully');
             if (response.data.ptyWasRestarted) {
@@ -998,10 +998,10 @@ yargs(hideBin(process.argv))
           
           // Note: For web apps, the browser will remain open. User must stop manually.
           if (result.browser) {
-            console.log('  Browser is running (use stop command to close)');
+            console.log('  Browser is running (use stop-app command to close)');
           }
           if (result.process) {
-            console.log('  Process is running (use stop command to terminate)');
+            console.log('  Process is running (use stop-app command to terminate)');
           }
         }
         
@@ -1012,7 +1012,7 @@ yargs(hideBin(process.argv))
     }
   )
   .command(
-    'stop <project>',
+    'stop-app <project>',
     'Stop a running app',
     (yargs) => {
       return yargs

@@ -11,9 +11,9 @@ import { parseGradleTasks } from './gradle.js';
 const execFileAsync = promisify(execFile);
 
 /**
- * Result returned from launching an app
+ * Result returned from starting an app
  */
-export interface LaunchResult {
+export interface StartAppResult {
   /** Browser instance (for web apps like Vite) */
   browser?: any;
   /** Process instance (for desktop apps like KMP desktop) */
@@ -629,7 +629,7 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * });
  * ```
  */
-export async function startApp(options: AppLifecycleOptions): Promise<LaunchResult> {
+export async function startApp(options: AppLifecycleOptions): Promise<StartAppResult> {
   const { projectPath, device, bundleId: bundleIdOverride, mainActivity: mainActivityOverride, projectName, projectConfig } = options;
   
   // Get device info
@@ -1044,7 +1044,7 @@ export async function restartAndroidApp(
  * @param projectPath - Path to KMP project root
  * @param target - Target platform ('desktop' or 'android')
  * @param device - Android device (required for android target)
- * @returns LaunchResult with process handle
+ * @returns StartAppResult with process handle
  * @throws Error if gradle tasks fail or run task not found
  */
 /**
@@ -1053,9 +1053,9 @@ export async function restartAndroidApp(
  * For KMP Android apps, use startApp() which handles installation and launch properly.
  * 
  * @param projectPath - Path to KMP project root
- * @returns LaunchResult with process handle
+ * @returns StartAppResult with process handle
  */
-export async function startKMPApp(projectPath: string): Promise<LaunchResult> {
+export async function startKMPApp(projectPath: string): Promise<StartAppResult> {
   try {
     const gradle = await findGradle(projectPath);
     
@@ -1086,7 +1086,7 @@ export async function startKMPApp(projectPath: string): Promise<LaunchResult> {
 /**
  * @deprecated Use startKMPApp instead
  */
-export async function startKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
+export async function startKMPDesktopApp(projectPath: string): Promise<StartAppResult> {
   return startKMPApp(projectPath);
 }
 

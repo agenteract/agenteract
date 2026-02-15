@@ -11,7 +11,7 @@ export {
   stopApp as stopAppInternal,
   buildApp, 
   performSetup,
-  type LaunchResult,
+  type StartAppResult,
   type BuildOptions,
   type SetupOptions
 } from './app-launcher.js';
@@ -61,5 +61,5 @@ export {
   type DeviceBootOptions,
   type PortForwardingOptions,
   type InstallOptions,
-  // Note: BuildOptions and LaunchResult are exported from app-launcher above
+  // Note: BuildOptions and StartAppResult are exported from app-launcher above
 } from './lifecycle-utils.js';

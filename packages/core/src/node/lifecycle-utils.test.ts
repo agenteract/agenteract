@@ -1675,7 +1675,7 @@ describe('lifecycle-utils', () => {
   });
 
   describe('startIOSApp with auto-boot', () => {
-    it('should auto-boot device if shutdown before launching', async () => {
+    it('should auto-boot device if shutdown before starting', async () => {
       const device: Device = {
         id: 'ABC123',
         name: 'iPhone 14',
@@ -1860,7 +1860,7 @@ describe('lifecycle-utils', () => {
       );
     });
 
-    it('should launch with custom main activity', async () => {
+    it('should start with custom main activity', async () => {
       const device: Device = {
         id: 'emulator-5554',
         name: 'Pixel 5',

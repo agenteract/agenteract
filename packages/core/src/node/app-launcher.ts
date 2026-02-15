@@ -13,7 +13,7 @@ import { parseGradleTasks } from './gradle.js';
 
 const execFileAsync = promisify(execFile);
 
-export interface LaunchResult {
+export interface StartAppResult {
   browser?: any;      // Puppeteer Browser instance (for web apps)
   process?: ChildProcess; // For desktop apps
 }
@@ -57,7 +57,7 @@ export async function launchApp(
   bundleInfo: BundleInfo,
   projectPath: string,
   launchTimeout: number = DEFAULT_LAUNCH_TIMEOUT
-): Promise<LaunchResult> {
+): Promise<StartAppResult> {
   isValidAppControlDevice(device);
   switch (platform) {
     case 'vite':
@@ -95,7 +95,7 @@ export async function launchApp(
 /**
  * Launch Vite web app with Puppeteer
  */
-async function launchViteApp(projectPath: string): Promise<LaunchResult> {
+async function launchViteApp(projectPath: string): Promise<StartAppResult> {
   try {
     // Dynamic import of puppeteer
     const puppeteer = await import('puppeteer');
@@ -121,7 +121,7 @@ async function launchIOSApp(
   device: Device,
   bundleInfo: BundleInfo,
   timeout: number
-): Promise<LaunchResult> {
+): Promise<StartAppResult> {
   if (!bundleInfo.ios) {
     throw new Error('iOS bundle ID not found. Configure lifecycle.bundleId.ios in agenteract.config.js');
   }
@@ -156,7 +156,7 @@ async function launchAndroidApp(
   device: Device,
   bundleInfo: BundleInfo,
   timeout: number
-): Promise<LaunchResult> {
+): Promise<StartAppResult> {
   if (!bundleInfo.android) {
     throw new Error('Android package name not found. Configure lifecycle.bundleId.android in agenteract.config.js');
   }
@@ -190,7 +190,7 @@ async function launchAndroidApp(
 /**
  * Launch KMP desktop app via gradle
  */
-async function launchKMPDesktopApp(projectPath: string): Promise<LaunchResult> {
+async function launchKMPDesktopApp(projectPath: string): Promise<StartAppResult> {
   try {
     const gradle = await findGradle(projectPath);
     
@@ -237,7 +237,7 @@ export async function stopApp(
   platform: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
-  launchResult: LaunchResult,
+  launchResult: StartAppResult,
   force: boolean = false
 ): Promise<void> {
   isValidAppControlDevice(device);
