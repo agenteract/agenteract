@@ -917,9 +917,9 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const platform = await detectPlatform(projectPath);
+        const projectType = await detectPlatform(projectPath);
         
-        console.log(`Detected platform: ${platform}`);
+        console.log(`Detected project type: ${projectType}`);
         
         // Resolve device
         let device = null;
@@ -934,7 +934,7 @@ yargs(hideBin(process.argv))
             console.error(`Device "${argv.device}" not found`);
             process.exit(1);
           }
-        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
           // Get default device for mobile/iOS apps
           device = await getDefaultDeviceInfo(argv.project);
           if (!device) {
@@ -951,7 +951,7 @@ yargs(hideBin(process.argv))
         }
         
         // Resolve bundle info
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
+        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
         
         console.log(`Launching ${argv.project}...`);
         if (device) {
@@ -961,7 +961,7 @@ yargs(hideBin(process.argv))
         const launchTimeout = project.lifecycle?.launchTimeout || 60000;
         
         // Determine if this is a web app
-        const isWebApp = platform === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
+        const isWebApp = projectType === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
         
         // For projects with devServer (Flutter, web apps), use the central server's launch endpoint
         if (project.devServer) {
@@ -993,7 +993,7 @@ yargs(hideBin(process.argv))
           }
         } else {
           // For legacy configs without devServer, use direct launch
-          const result = await launchApp(platform, device, bundleInfo, projectPath, launchTimeout);
+          const result = await launchApp(projectType, device, bundleInfo, projectPath, launchTimeout);
           console.log('✓ App launched successfully');
           
           // Note: For web apps, the browser will remain open. User must stop manually.
@@ -1045,7 +1045,7 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const platform = await detectPlatform(projectPath);
+        const projectType = await detectPlatform(projectPath);
         
         // Resolve device
         let device = null;
@@ -1055,16 +1055,16 @@ yargs(hideBin(process.argv))
             ...(await listDevices('android').catch(() => [])),
           ];
           device = allDevices.find(d => d.id === argv.device) || null;
-        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
           device = await getDefaultDeviceInfo(argv.project);
         }
         
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
+        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
         
         // Handle Expo Go special case: override bundle ID
         const expoGoPlatform = device?.type === 'ios' || device?.type === 'android' ? device.type : undefined;
         // @ts-ignore - isExpoGo signature updated in core but types might lag
-        if (platform === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+        if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
           if (device?.type === 'ios') {
             bundleInfo.ios = 'host.exp.Exponent';
           } else if (device?.type === 'android') {
@@ -1075,7 +1075,7 @@ yargs(hideBin(process.argv))
         console.log(`Stopping ${argv.project}...`);
         
         // Determine if this is a web app
-        const isWebApp = platform === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
+        const isWebApp = projectType === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
         
         // For web apps with devServer, use the central server's stop endpoint to close browser
         if (isWebApp && project.devServer) {
@@ -1094,7 +1094,7 @@ yargs(hideBin(process.argv))
           }
         } else {
           // For mobile apps or legacy configs, use direct stop
-          await stopAppInternal(platform, device, bundleInfo, {}, argv.force);
+          await stopAppInternal(projectType, device, bundleInfo, {}, argv.force);
           console.log('✓ App stopped successfully');
         }
       } catch (error) {
@@ -1137,11 +1137,11 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const platform = await detectPlatform(projectPath);
+        const projectType = await detectPlatform(projectPath);
         
-        console.log(`Building ${argv.project} (${platform})...`);
+        console.log(`Building ${argv.project} (${projectType})...`);
         
-        await buildApp(projectPath, platform, {
+        await buildApp(projectPath, projectType, {
           configuration: argv.config,
           platform: argv.platform as 'ios' | 'android' | undefined,
         });
@@ -1192,7 +1192,7 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const platform = await detectPlatform(projectPath);
+        const projectType = await detectPlatform(projectPath);
         
         // Resolve device
         let device = null;
@@ -1202,15 +1202,15 @@ yargs(hideBin(process.argv))
             ...(await listDevices('android').catch(() => [])),
           ];
           device = allDevices.find(d => d.id === argv.device) || null;
-        } else if (platform !== 'vite' && platform !== 'kmp-desktop') {
+        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
           device = await getDefaultDeviceInfo(argv.project);
         }
         
-        const bundleInfo = await resolveBundleInfo(projectPath, platform, project.lifecycle, project.scheme);
+        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
         
         console.log(`Performing ${argv.action} for ${argv.project}...`);
         
-        await performSetup(projectPath, platform, device, bundleInfo, {
+        await performSetup(projectPath, projectType, device, bundleInfo, {
           action: argv.action as 'install' | 'reinstall' | 'clearData',
           platform: argv.platform as 'ios' | 'android' | undefined,
         });

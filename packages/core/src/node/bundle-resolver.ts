@@ -17,7 +17,7 @@ export interface BundleInfo {
  */
 export async function resolveBundleInfo(
   projectPath: string,
-  platform: ProjectType,
+  projectType: ProjectType,
   lifecycleConfig?: ProjectConfig['lifecycle'],
   scheme?: string
 ): Promise<BundleInfo> {
@@ -35,15 +35,15 @@ export async function resolveBundleInfo(
   }
   
   // If we have all the info from config, return early
-  const needsIos = !bundleInfo.ios && (platform === 'flutter' || platform === 'expo' || platform === 'xcode');
-  const needsAndroid = !bundleInfo.android && (platform === 'flutter' || platform === 'expo' || platform === 'kmp-android');
+  const needsIos = !bundleInfo.ios && (projectType === 'flutter' || projectType === 'expo' || projectType === 'xcode');
+  const needsAndroid = !bundleInfo.android && (projectType === 'flutter' || projectType === 'expo' || projectType === 'kmp-android');
   
   if (!needsIos && !needsAndroid) {
     return bundleInfo;
   }
   
   // Resolve from platform files
-  switch (platform) {
+  switch (projectType) {
     case 'flutter':
       return resolveFlutterBundleInfo(projectPath, bundleInfo);
     case 'expo':

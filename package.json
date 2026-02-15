@@ -45,8 +45,7 @@
     "version:alpha": "tsx scripts/version.ts alpha",
     "version:beta": "tsx scripts/version.ts beta",
     "version:rc": "tsx scripts/version.ts rc",
-    "test:full_integration": "pnpm verdaccio:start && pnpm verdaccio:publish && pnpm test:integration && pnpm verdaccio:stop",
-    "lifecycle:dev": "nodemon -e ts,js --exec \"tsx scripts/test-app-lifecycle.ts\""
+    "test:full_integration": "pnpm verdaccio:start && pnpm verdaccio:publish && pnpm test:integration && pnpm verdaccio:stop"
   },
   "keywords": [
     "agent",

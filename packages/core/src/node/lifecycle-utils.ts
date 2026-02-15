@@ -431,11 +431,11 @@ export async function clearAppData(options: AppLifecycleOptions): Promise<void> 
   }
   
   // Detect project type
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Expo Go apps cannot have data cleared
   const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Cannot clear data for Expo Go apps (NOOP)');
     return;
   }
@@ -445,7 +445,7 @@ export async function clearAppData(options: AppLifecycleOptions): Promise<void> 
   if (!bundleId) {
     const bundleInfo = await resolveBundleInfo(
       projectPath, 
-      platformInfo, 
+      projectType, 
       projectConfig?.lifecycle,
       projectConfig?.scheme
     );
@@ -648,11 +648,11 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
   }
   
   // Detect project type
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Handle KMP projects - they can be multi-target (both android and desktop)
   // Use device type to determine which target to launch
-  if (platformInfo === 'kmp-android' || platformInfo === 'kmp-desktop') {
+  if (projectType === 'kmp-android' || projectType === 'kmp-desktop') {
     if (platform === 'desktop') {
       return await startKMPApp(projectPath);
     } else if (platform === 'android') {
@@ -670,7 +670,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
   
   // For KMP desktop that already returned above, we won't reach here
   // For KMP Android, we continue to resolve bundle info and launch normally
-  const effectiveProjectType = platformInfo === 'kmp-android' ? 'kmp-android' : platformInfo;
+  const effectiveProjectType = projectType === 'kmp-android' ? 'kmp-android' : projectType;
   
   // Handle Swift/Xcode projects - build and install to simulator
   if (effectiveProjectType === 'xcode' && platform === 'ios') {
@@ -754,10 +754,10 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
   const platform = deviceObj.type;
   
   // Detect project type and resolve bundle ID
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Check if Flutter app - if so, try to quit gracefully via 'q' command first
-  if (platformInfo === 'flutter' && projectName && projectConfig) {
+  if (projectType === 'flutter' && projectName && projectConfig) {
     try {
       // Get PTY port from projectConfig
       const ptyPort = projectConfig.devServer?.port || projectConfig.ptyPort || 8792;
@@ -802,7 +802,7 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
   
   // Check if Expo Go
   const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform);
+  const isExpoGoApp = projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   let bundleId = bundleIdOverride;
   if (!bundleId) {
@@ -812,7 +812,7 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
     } else {
       const bundleInfo = await resolveBundleInfo(
         projectPath, 
-        platformInfo, 
+        projectType, 
         projectConfig?.lifecycle,
         projectConfig?.scheme
       );
@@ -1130,11 +1130,11 @@ export async function installApp(options: InstallOptions): Promise<void> {
   const platform = deviceObj.type;
   
   // Detect project type first
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Check if Expo Go
   const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Cannot install Expo Go apps via this method (NOOP)');
     return;
   }
@@ -1142,7 +1142,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
   // iOS installation
   if (platform === 'ios') {
     // For prebuilt Expo apps, we need to install the built .app
-    if (platformInfo === 'expo') {
+    if (projectType === 'expo') {
       console.log('📦 Installing prebuilt Expo iOS app...');
       const iosPath = join(projectPath, 'ios');
       const buildPath = join(iosPath, 'build', 'Build', 'Products', 
@@ -1181,7 +1181,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
     console.log('✓ APK installed successfully');
   } else {
     // Install via gradle
-    const androidPath = platformInfo === 'flutter' 
+    const androidPath = projectType === 'flutter' 
       ? join(projectPath, 'android')
       : projectPath;
     
@@ -1225,11 +1225,11 @@ export async function uninstallApp(options: AppLifecycleOptions): Promise<void> 
   const platform = deviceObj.type;
   
   // Detect project type
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Check if Expo Go
   const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  const isExpoGoApp = platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform);
+  const isExpoGoApp = projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   if (isExpoGoApp) {
     console.log('ℹ️  Cannot uninstall Expo Go apps via this method (NOOP)');
@@ -1241,7 +1241,7 @@ export async function uninstallApp(options: AppLifecycleOptions): Promise<void> 
   if (!bundleId) {
     const bundleInfo = await resolveBundleInfo(
       projectPath, 
-      platformInfo, 
+      projectType, 
       projectConfig?.lifecycle,
       projectConfig?.scheme
     );
@@ -1356,23 +1356,23 @@ export async function buildApp(options: BuildOptions): Promise<void> {
   const targetPlatform = platformOverride || deviceObj.type;
   
   // Detect project type
-  const platformInfo = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath);
   
   // Check if Expo Go
   const expoGoPlatform = (targetPlatform === 'ios' || targetPlatform === 'android') ? targetPlatform : undefined;
-  if (platformInfo === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
     console.log('ℹ️  Expo Go apps use OTA updates, no build required (NOOP)');
     return;
   }
   
   // Build based on project type
-  const buildMessage = `🔨 Building ${platformInfo} ${targetPlatform} app (${configuration})...`;
+  const buildMessage = `🔨 Building ${projectType} ${targetPlatform} app (${configuration})...`;
   if (!silent) {
     console.log(buildMessage);
   }
   
   try {
-    switch (platformInfo) {
+    switch (projectType) {
       case 'flutter':
         await buildFlutterApp(projectPath, targetPlatform, configuration, silent);
         break;
@@ -1399,7 +1399,7 @@ export async function buildApp(options: BuildOptions): Promise<void> {
         break;
       
       default:
-        throw new Error(`Build not supported for platform: ${platformInfo}`);
+        throw new Error(`Build not supported for project type: ${projectType}`);
     }
     
     console.log(`✓ Build completed successfully`);

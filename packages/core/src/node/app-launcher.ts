@@ -52,14 +52,14 @@ async function findGradle(projectPath: string): Promise<string> {
  * Launch an app on a device or simulator
  */
 export async function launchApp(
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   projectPath: string,
   launchTimeout: number = DEFAULT_LAUNCH_TIMEOUT
 ): Promise<StartAppResult> {
   isValidAppControlDevice(device);
-  switch (platform) {
+  switch (projectType) {
     case 'vite':
       return launchViteApp(projectPath);
     
@@ -88,7 +88,7 @@ export async function launchApp(
       return launchIOSApp(device, bundleInfo, launchTimeout);
     
     default:
-      throw new Error(`Unsupported platform: ${platform}`);
+      throw new Error(`Unsupported project type: ${projectType}`);
   }
 }
 
@@ -234,7 +234,7 @@ export function isValidAppControlDevice(device: Device | null): asserts device i
  * Stop a running app
  */
 export async function stopApp(
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   launchResult: StartAppResult,
@@ -242,7 +242,7 @@ export async function stopApp(
 ): Promise<void> {
   isValidAppControlDevice(device);
 
-  switch (platform) {
+  switch (projectType) {
     case 'vite':
       if (launchResult.browser) {
         await launchResult.browser.close();
@@ -298,12 +298,12 @@ async function stopAndroidApp(device: Device, bundleInfo: BundleInfo, force: boo
  */
 export async function buildApp(
   projectPath: string,
-  platform: ProjectType,
+  projectType: ProjectType,
   options: BuildOptions
 ): Promise<void> {
   const config = options.configuration || 'debug';
   
-  switch (platform) {
+  switch (projectType) {
     case 'flutter':
       await buildFlutterApp(projectPath, options);
       break;
@@ -328,7 +328,7 @@ export async function buildApp(
       throw new Error('Expo builds not yet supported. Use EAS Build or expo prebuild.');
     
     default:
-      throw new Error(`Build not supported for platform: ${platform}`);
+      throw new Error(`Build not supported for project type: ${projectType}`);
   }
 }
 
@@ -427,7 +427,7 @@ async function buildSwiftApp(projectPath: string, options: BuildOptions): Promis
  */
 export async function performSetup(
   projectPath: string,
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo,
   options: SetupOptions
@@ -440,15 +440,15 @@ export async function performSetup(
   
   switch (options.action) {
     case 'install':
-      await installApp(projectPath, platform, device, bundleInfo);
+      await installApp(projectPath, projectType, device, bundleInfo);
       break;
     
     case 'reinstall':
-      await reinstallApp(projectPath, platform, device, bundleInfo);
+      await reinstallApp(projectPath, projectType, device, bundleInfo);
       break;
     
     case 'clearData':
-      await clearAppData(platform, device, bundleInfo);
+      await clearAppData(projectType, device, bundleInfo);
       break;
   }
 }
@@ -458,7 +458,7 @@ export async function performSetup(
  */
 async function installApp(
   projectPath: string,
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
@@ -470,11 +470,11 @@ async function installApp(
   }
   
   // Android installation
-  if (platform === 'flutter') {
+  if (projectType === 'flutter') {
     const gradle = await findGradle(path.join(projectPath, 'android'));
     console.log('Installing Flutter Android app');
     await execFileAsync(gradle, ['installDebug'], { cwd: path.join(projectPath, 'android') });
-  } else if (platform === 'kmp-android') {
+  } else if (projectType === 'kmp-android') {
     const gradle = await findGradle(projectPath);
     console.log('Installing KMP Android app');
     await execFileAsync(gradle, ['installDebug'], { cwd: projectPath });
@@ -486,7 +486,7 @@ async function installApp(
  */
 async function reinstallApp(
   projectPath: string,
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
@@ -510,14 +510,14 @@ async function reinstallApp(
   }
   
   // Then install
-  await installApp(projectPath, platform, device, bundleInfo);
+  await installApp(projectPath, projectType, device, bundleInfo);
 }
 
 /**
  * Clear app data
  */
 async function clearAppData(
-  platform: ProjectType,
+  projectType: ProjectType,
   device: Device | null,
   bundleInfo: BundleInfo
 ): Promise<void> {
