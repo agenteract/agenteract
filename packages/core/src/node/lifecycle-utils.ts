@@ -716,7 +716,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
           requestBody.platform = platform;
           requestBody.deviceName = deviceObj.name;
         }
-        const response = await axios.post(`${defaultServerUrl}/start-app`, requestBody, { timeout: 10000 });
+        const response = await axios.post(`${defaultServerUrl}/start-app`, requestBody, { timeout: 30000 });
         console.log('✅ PTY-based restart successful');
         if (response.data.ptyWasRestarted) {
           console.log('   Dev server was restarted');
@@ -726,13 +726,11 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
         if (httpError.code === 'ECONNREFUSED') {
           console.log('ℹ️  Central agent server not running, falling back to direct platform launch');
         } else if (httpError.response) {
-          console.warn(`⚠️  PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
-          console.warn('   Falling back to direct platform launch');
+          throw new Error(`PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
         } else {
-          console.warn(`⚠️  PTY restart request failed: ${httpError.message}`);
-          console.warn('   Falling back to direct platform launch');
+          throw new Error(`PTY restart request failed: ${httpError.message}`);
         }
-        // Fall through to config-discovery path below
+        // Fall through to config-discovery path below (only reached on ECONNREFUSED)
       }
     }
     
@@ -798,7 +796,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
               }
               
               const response = await axios.post(`${agentServerUrl}/start-app`, requestBody, {
-                timeout: 10000
+                timeout: 30000
               });
               
               console.log('✅ PTY-based restart successful');
@@ -812,13 +810,11 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
               if (httpError.code === 'ECONNREFUSED') {
                 console.log('ℹ️  Central agent server not running, falling back to direct platform launch');
               } else if (httpError.response) {
-                console.warn(`⚠️  PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
-                console.warn('   Falling back to direct platform launch');
+                throw new Error(`PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
               } else {
-                console.warn(`⚠️  PTY restart request failed: ${httpError.message}`);
-                console.warn('   Falling back to direct platform launch');
+                throw new Error(`PTY restart request failed: ${httpError.message}`);
               }
-              // Fall through to direct platform launch below
+              // Fall through to direct platform launch below (only reached on ECONNREFUSED)
             }
           } else {
             console.log(`ℹ️  Project has dev server but doesn't benefit from PTY restart (${projectType}${projectType === 'expo' ? ' prebuild' : ''}), using direct platform launch`);

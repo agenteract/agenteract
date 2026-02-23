@@ -683,7 +683,7 @@ async function main() {
 
       info('Waiting for app to reconnect after restart...');
       let reconnected = false;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 90; i++) {  // 90s budget: Expo Go re-downloads the OTA bundle on every restart
         try {
           const hierarchyAfterRestart = await client!.getViewHierarchy('expo-app');
           const hierarchyStr = JSON.stringify(hierarchyAfterRestart);
@@ -707,7 +707,7 @@ async function main() {
       }
 
       if (!reconnected) {
-        error('App did not reconnect within 30 seconds after restart');
+        error('App did not reconnect within 90 seconds after restart');
         throw new Error('Lifecycle test failed: app did not reconnect');
       }
 

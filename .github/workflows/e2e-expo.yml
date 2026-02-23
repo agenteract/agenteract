@@ -86,15 +86,6 @@ jobs:
             tests/e2e/expo/*.log
           retention-days: 7
 
-      - name: Upload screenshots (always, for debugging)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-expo-screenshots
-          path: e2e-test-expo-temp/
-          retention-days: 7
-          if-no-files-found: ignore
-
       - name: Cleanup
         if: always()
         run: |
