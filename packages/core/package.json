@@ -51,8 +51,15 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "puppeteer": "^21.0.0",
     "ws": "^8.18.3"
+  },
+  "peerDependencies": {
+    "puppeteer": ">=21.0.0"
+  },
+  "peerDependenciesMeta": {
+    "puppeteer": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",
