@@ -26,6 +26,10 @@ import {
   sleep,
   setupCleanup,
   takeSimulatorScreenshot,
+  preparePackageForVerdaccio,
+  installCLIPackages,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -40,6 +44,14 @@ async function cleanup() {
   cleanupExecuted = true;
 
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (exampleAppDir) {
+    await saveNodeModulesCache(exampleAppDir, 'agenteract-e2e-expo-app');
+  }
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-expo');
+  }
 
   // First, try to quit Expo gracefully via agenteract CLI
   if (testConfigDir && agentServer && agentServer.pid) {
@@ -164,23 +176,8 @@ async function main() {
     // Remove node_modules to avoid workspace symlinks
     await runCommand(`rm -rf ${exampleAppDir}/node_modules package-lock.json`);
 
-    // Replace workspace:* dependencies with * for Verdaccio
-    info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = `${exampleAppDir}/package.json`;
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-
-    ['dependencies', 'devDependencies'].forEach(depType => {
-      if (pkgJson[depType]) {
-        Object.keys(pkgJson[depType]).forEach(key => {
-          if (pkgJson[depType][key] === 'workspace:*') {
-            pkgJson[depType][key] = '*';
-          }
-        });
-      }
-    });
-
-    writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + '\n');
-    success('Workspace dependencies replaced');
+    // Prepare package.json for Verdaccio (replace workspace:* with actual versions, create .npmrc)
+    await preparePackageForVerdaccio(exampleAppDir);
 
     // Fix app.json to remove web output (causes expo-router requirement)
     info('Fixing app.json to remove web output...');
@@ -194,6 +191,9 @@ async function main() {
       success('app.json fixed - removed web.output');
     }
 
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(exampleAppDir, 'agenteract-e2e-expo-app');
+
     // Install dependencies from Verdaccio
     info('Installing expo-example dependencies from Verdaccio...');
     await runCommand(`cd ${exampleAppDir} && npm install --registry http://localhost:4873`);
@@ -203,9 +203,16 @@ async function main() {
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `${e2eBase}/test-expo-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/expo --registry http://localhost:4873`);
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-expo');
+    
+    await installCLIPackages(testConfigDir, [
+      '@agenteract/cli',
+      '@agenteract/agents',
+      '@agenteract/server',
+      '@agenteract/expo'
+    ]);
     success('CLI packages installed from Verdaccio');
 
     // using --wait-log-timeout 500 to simulate deprecated usage

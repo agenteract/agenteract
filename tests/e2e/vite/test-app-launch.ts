@@ -12,7 +12,7 @@
 import { ChildProcess, exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
-import { readFileSync, writeFileSync, existsSync, cpSync, rmSync, mkdirSync } from 'fs';
+import { readFileSync, existsSync, cpSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const exec = promisify(execCallback);
@@ -32,6 +32,9 @@ import {
   sleep,
   setupCleanup,
   getTmpDir,
+  preparePackageForVerdaccio,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -41,6 +44,14 @@ let exampleAppDir: string | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (exampleAppDir) {
+    await saveNodeModulesCache(exampleAppDir, 'agenteract-e2e-vite-app');
+  }
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-vite');
+  }
 
   if (browser) {
     try {
@@ -57,7 +68,10 @@ async function cleanup() {
 
   // Clean up temp directories (skip in CI to preserve artifacts)
   if (!process.env.CI) {
-    await stopVerdaccio();
+    // Keep Verdaccio running for faster subsequent test runs (cache optimization)
+    // Verdaccio storage persists packages between runs
+    // Use 'pnpm verdaccio:stop' to manually stop if needed
+    info('Keeping Verdaccio running for cache optimization');
 
     if (testConfigDir) {
       try {
@@ -74,6 +88,9 @@ async function cleanup() {
         // Ignore cleanup errors
       }
     }
+  } else {
+    // In CI, stop Verdaccio to clean up
+    await stopVerdaccio();
   }
 }
 
@@ -139,34 +156,8 @@ async function main() {
       rmSync(packageLockPath, { force: true });
     }
 
-    // Replace workspace:* dependencies with * for Verdaccio
-    info('Replacing workspace:* dependencies...');
-    const pkgJsonPath = join(exampleAppDir, 'package.json');
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
-
-    let replacedCount = 0;
-    ['dependencies', 'devDependencies'].forEach(depType => {
-      if (pkgJson[depType]) {
-        Object.keys(pkgJson[depType]).forEach(key => {
-          if (pkgJson[depType][key] === 'workspace:*') {
-            pkgJson[depType][key] = '*';
-            replacedCount++;
-          }
-        });
-      }
-    });
-
-    // Write the file with explicit encoding
-    const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
-    writeFileSync(pkgJsonPath, newContent, 'utf8');
-
-    // Verify the file was written correctly
-    await sleep(200); // Small delay to ensure file system sync on Windows
-    const verifyContent = readFileSync(pkgJsonPath, 'utf8');
-    if (verifyContent.includes('workspace:')) {
-      throw new Error('Failed to replace workspace dependencies');
-    }
-    success(`Workspace dependencies replaced (${replacedCount} replacements)`);
+    // Prepare package.json for Verdaccio (replace workspace:* with actual versions, create .npmrc)
+    await preparePackageForVerdaccio(exampleAppDir);
 
     // Copy mock files from monorepo to temp app
     info('Copying React Native mocks...');
@@ -199,6 +190,9 @@ export default defineConfig({
     writeFileSync(viteConfigPath, newViteConfig);
     success('Vite config fixed');
 
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(exampleAppDir, 'agenteract-e2e-vite-app');
+
     // Install dependencies from Verdaccio
     info('Installing react-example dependencies from Verdaccio...');
     await runCommand(`cd "${exampleAppDir}" && npm install --registry http://localhost:4873`);
@@ -215,6 +209,10 @@ export default defineConfig({
 
     // Create directory
     mkdirSync(testConfigDir, { recursive: true });
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-vite');
+    
     await runCommand(`cd "${testConfigDir}" && npm init -y`);
     // install packages so latest are used with npx
     await runCommand(`cd "${testConfigDir}" && npm install @agenteract/cli @agenteract/agents @agenteract/server @agenteract/pty --registry http://localhost:4873`);
@@ -360,7 +358,7 @@ export default defineConfig({
     error(`Test failed: ${err}`);
     process.exit(1);
   } finally {
-    // await cleanup();
+    await cleanup();
     process.exit(0);
   }
 }

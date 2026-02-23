@@ -5,8 +5,9 @@
 
 import { spawn, exec, execSync, ChildProcess } from 'child_process';
 import { promisify } from 'util';
-import { tmpdir } from 'os';
-import { realpathSync } from 'fs';
+import { tmpdir, homedir } from 'os';
+import { realpathSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { join } from 'path';
 
 const execAsync = promisify(exec);
 
@@ -403,4 +404,269 @@ export function setupCleanup(cleanupFn: () => Promise<void>): void {
   // Register synchronous handler for explicit process.exit() calls
   // This serves as a reminder that cleanup should happen before exit
   process.on('exit', handleExitSync);
+}
+
+/**
+ * Prepare package.json for Verdaccio by replacing workspace:* dependencies
+ * with actual published versions and creating .npmrc
+ * 
+ * This function:
+ * 1. Fetches published versions from Verdaccio for all @agenteract/* dependencies
+ * 2. Replaces workspace:* with exact versions (needed for npm prerelease matching)
+ * 3. Creates .npmrc with Verdaccio registry and auth token
+ * 
+ * @param packageDir - Directory containing package.json to update
+ * @param verdaccioUrl - Verdaccio URL (default: http://localhost:4873)
+ * @returns Object with authToken and count of replaced dependencies
+ */
+export async function preparePackageForVerdaccio(
+  packageDir: string,
+  verdaccioUrl: string = 'http://localhost:4873'
+): Promise<{ authToken: string; replacedCount: number }> {
+  const pkgJsonPath = join(packageDir, 'package.json');
+  const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+
+  // Get auth token from global .npmrc
+  const homeNpmrcPath = join(homedir(), '.npmrc');
+  let authToken = '';
+  if (existsSync(homeNpmrcPath)) {
+    const homeNpmrc = readFileSync(homeNpmrcPath, 'utf8');
+    const tokenMatch = homeNpmrc.match(/\/\/localhost:4873\/:_authToken=(.+)/);
+    if (tokenMatch) {
+      authToken = tokenMatch[1];
+    }
+  }
+
+  // Replace workspace:* dependencies with actual published versions from Verdaccio
+  // npm doesn't match prerelease versions (e.g., 0.1.2-e2e.0) with ranges like * or >=0.0.0
+  // We need to fetch the actual published versions
+  info('Fetching published versions from Verdaccio...');
+  const publishedVersions: Record<string, string> = {};
+  
+  // Collect all @agenteract/* dependencies
+  const agenteractDeps = new Set<string>();
+  ['dependencies', 'devDependencies'].forEach(depType => {
+    if (pkgJson[depType]) {
+      Object.keys(pkgJson[depType]).forEach(key => {
+        if (key.startsWith('@agenteract/') && pkgJson[depType][key] === 'workspace:*') {
+          agenteractDeps.add(key);
+        }
+      });
+    }
+  });
+  
+  // Fetch version for each package from Verdaccio
+  for (const pkgName of agenteractDeps) {
+    try {
+      const response = await fetch(`${verdaccioUrl}/${pkgName}`, {
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const versions = Object.keys(data.versions || {});
+        // Use the latest version (last in array after sort)
+        if (versions.length > 0) {
+          versions.sort();
+          publishedVersions[pkgName] = versions[versions.length - 1];
+          info(`   ${pkgName}: ${publishedVersions[pkgName]}`);
+        }
+      }
+    } catch (err) {
+      error(`Failed to fetch version for ${pkgName}: ${err}`);
+    }
+  }
+
+  info('Replacing workspace:* dependencies...');
+
+  let replacedCount = 0;
+  ['dependencies', 'devDependencies'].forEach(depType => {
+    if (pkgJson[depType]) {
+      Object.keys(pkgJson[depType]).forEach(key => {
+        if (pkgJson[depType][key] === 'workspace:*') {
+          const version = publishedVersions[key];
+          if (version) {
+            pkgJson[depType][key] = version;
+            replacedCount++;
+          } else {
+            throw new Error(`No published version found for ${key}`);
+          }
+        }
+      });
+    }
+  });
+
+  // Write the file with explicit encoding
+  const newContent = JSON.stringify(pkgJson, null, 2) + '\n';
+  writeFileSync(pkgJsonPath, newContent, 'utf8');
+
+  // Verify the file was written correctly
+  await sleep(200); // Small delay to ensure file system sync on Windows
+  const verifyContent = readFileSync(pkgJsonPath, 'utf8');
+  if (verifyContent.includes('workspace:')) {
+    throw new Error('Failed to replace workspace dependencies');
+  }
+  success(`Workspace dependencies replaced (${replacedCount} replacements)`);
+
+  // Create .npmrc to ensure all packages are fetched from Verdaccio
+  info('Creating .npmrc for Verdaccio...');
+  const npmrcPath = join(packageDir, '.npmrc');
+  const npmrcContent = `registry=${verdaccioUrl}\n${authToken ? `//localhost:4873/:_authToken=${authToken}\n` : ''}`;
+  writeFileSync(npmrcPath, npmrcContent);
+  success('.npmrc created');
+
+  return { authToken, replacedCount };
+}
+
+/**
+ * Install CLI packages from Verdaccio in a config directory
+ * Creates the directory, initializes npm, creates .npmrc, and installs packages
+ * 
+ * @param configDir - Directory to create and install packages in
+ * @param packages - Array of package names to install (e.g., ['@agenteract/cli', '@agenteract/agents'])
+ * @param verdaccioUrl - Verdaccio URL (default: http://localhost:4873)
+ */
+export async function installCLIPackages(
+  configDir: string,
+  packages: string[],
+  verdaccioUrl: string = 'http://localhost:4873'
+): Promise<void> {
+  // Create directory
+  await runCommand(`mkdir -p ${configDir}`);
+  
+  // Initialize npm
+  await runCommand(`cd ${configDir} && npm init -y`);
+  
+  // Get auth token from global .npmrc
+  const homeNpmrcPath = join(homedir(), '.npmrc');
+  let authToken = '';
+  if (existsSync(homeNpmrcPath)) {
+    const homeNpmrc = readFileSync(homeNpmrcPath, 'utf8');
+    const tokenMatch = homeNpmrc.match(/\/\/localhost:4873\/:_authToken=(.+)/);
+    if (tokenMatch) {
+      authToken = tokenMatch[1];
+    }
+  }
+  
+  // Create .npmrc with registry and auth
+  const npmrcPath = join(configDir, '.npmrc');
+  const npmrcContent = `registry=${verdaccioUrl}\n${authToken ? `//localhost:4873/:_authToken=${authToken}\n` : ''}`;
+  writeFileSync(npmrcPath, npmrcContent);
+  
+  // Fetch published versions for the packages
+  const packageVersions: string[] = [];
+  for (const pkgName of packages) {
+    try {
+      const response = await fetch(`${verdaccioUrl}/${pkgName}`, {
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const versions = Object.keys(data.versions || {});
+        if (versions.length > 0) {
+          versions.sort();
+          const latestVersion = versions[versions.length - 1];
+          packageVersions.push(`${pkgName}@${latestVersion}`);
+        } else {
+          throw new Error(`No versions found for ${pkgName}`);
+        }
+      } else {
+        throw new Error(`Failed to fetch ${pkgName}: ${response.statusText}`);
+      }
+    } catch (err) {
+      throw new Error(`Failed to fetch version for ${pkgName}: ${err}`);
+    }
+  }
+  
+  // Install packages with explicit versions
+  const installCmd = `cd ${configDir} && npm install ${packageVersions.join(' ')} --registry ${verdaccioUrl}`;
+  await runCommand(installCmd);
+}
+
+/**
+ * Check if we're running in CI environment
+ */
+export function isCI(): boolean {
+  return !!(
+    process.env.CI ||
+    process.env.CONTINUOUS_INTEGRATION ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.TRAVIS ||
+    process.env.CIRCLECI ||
+    process.env.GITLAB_CI
+  );
+}
+
+/**
+ * Get the cache directory for node_modules
+ */
+export function getNodeModulesCacheDir(): string {
+  return join(homedir(), '.cache', 'agenteract', 'node_modules');
+}
+
+/**
+ * Restore node_modules from cache if available
+ * @param targetDir - Directory where node_modules should be restored
+ * @param cacheKey - Cache key (e.g., 'agenteract-e2e-vite-app')
+ * @returns true if cache was restored, false otherwise
+ */
+export async function restoreNodeModulesCache(
+  targetDir: string,
+  cacheKey: string
+): Promise<boolean> {
+  // Skip caching in CI
+  if (isCI()) {
+    return false;
+  }
+
+  const cacheDir = getNodeModulesCacheDir();
+  const cachedNodeModules = join(cacheDir, cacheKey, 'node_modules');
+  const targetNodeModules = join(targetDir, 'node_modules');
+
+  if (!existsSync(cachedNodeModules)) {
+    return false;
+  }
+
+  try {
+    info(`Restoring node_modules from cache: ${cacheKey}`);
+    await runCommand(`mkdir -p ${targetDir}`);
+    await runCommand(`cp -Rp ${cachedNodeModules} ${targetNodeModules}`);
+    success('node_modules restored from cache');
+    return true;
+  } catch (err) {
+    error(`Failed to restore node_modules from cache: ${err}`);
+    return false;
+  }
+}
+
+/**
+ * Save node_modules to cache
+ * @param sourceDir - Directory containing node_modules to cache
+ * @param cacheKey - Cache key (e.g., 'agenteract-e2e-vite-app')
+ */
+export async function saveNodeModulesCache(
+  sourceDir: string,
+  cacheKey: string
+): Promise<void> {
+  // Skip caching in CI
+  if (isCI()) {
+    return;
+  }
+
+  const sourceNodeModules = join(sourceDir, 'node_modules');
+  if (!existsSync(sourceNodeModules)) {
+    return;
+  }
+
+  const cacheDir = getNodeModulesCacheDir();
+  const cachedNodeModules = join(cacheDir, cacheKey, 'node_modules');
+
+  try {
+    info(`Saving node_modules to cache: ${cacheKey}`);
+    await runCommand(`mkdir -p ${join(cacheDir, cacheKey)}`);
+    await runCommand(`rm -rf ${cachedNodeModules}`);
+    await runCommand(`cp -Rp ${sourceNodeModules} ${cachedNodeModules}`);
+    success('node_modules saved to cache');
+  } catch (err) {
+    error(`Failed to save node_modules to cache: ${err}`);
+  }
 }

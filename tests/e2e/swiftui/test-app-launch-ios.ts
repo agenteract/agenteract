@@ -26,6 +26,9 @@ import {
   sleep,
   setupCleanup,
   killProcess,
+  installCLIPackages,
+  restoreNodeModulesCache,
+  saveNodeModulesCache,
 } from '../common/helpers.js';
 
 let agentServer: ChildProcess | null = null;
@@ -40,6 +43,11 @@ async function cleanup() {
   cleanupExecuted = true;
 
   info('Cleaning up...');
+
+  // Save node_modules to cache before cleanup (even if test failed)
+  if (testConfigDir) {
+    await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-swift');
+  }
 
   // First, try to quit Flutter gracefully via agenteract CLI
   if (testConfigDir && agentServer && agentServer.pid) {
@@ -213,9 +221,15 @@ async function main() {
     info('Installing CLI packages from Verdaccio...');
     testConfigDir = `/tmp/agenteract-e2e-test-swift-${Date.now()}`;
     await runCommand(`rm -rf ${testConfigDir}`);
-    await runCommand(`mkdir -p ${testConfigDir}`);
-    await runCommand(`cd ${testConfigDir} && npm init -y`);
-    await runCommand(`cd ${testConfigDir} && npm install @agenteract/cli @agenteract/agents @agenteract/server --registry http://localhost:4873`);
+    
+    // Try to restore node_modules from cache
+    await restoreNodeModulesCache(testConfigDir, 'agenteract-e2e-test-swift');
+    
+    await installCLIPackages(testConfigDir, [
+      '@agenteract/cli',
+      '@agenteract/agents',
+      '@agenteract/server'
+    ]);
     success('CLI packages installed from Verdaccio');
 
     // 10. Create agenteract config pointing to the /tmp app

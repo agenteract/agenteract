@@ -72,19 +72,22 @@ async function main(): Promise<void> {
   if (existsSync(PID_FILE)) {
     const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim());
     if (isProcessRunning(pid)) {
-      console.log(`⚠️  Verdaccio is already running (PID: ${pid})`);
-      console.log('   Stop it first with: pnpm verdaccio:stop');
-      process.exit(1);
+      console.log(`✓ Verdaccio is already running (PID: ${pid})`);
+      console.log(`   URL: http://localhost:${VERDACCIO_PORT}`);
+      process.exit(0);  // Success, nothing to do
     } else {
       console.log('   Removing stale PID file...');
       rmSync(PID_FILE, { force: true });
     }
   }
 
-  // Clean up existing storage
-  if (existsSync(STORAGE_PATH)) {
+  // Clean up existing storage only if --clean flag or CI
+  const shouldClean = process.argv.includes('--clean') || process.env.CI;
+  if (shouldClean && existsSync(STORAGE_PATH)) {
     console.log(`   Removing existing ${STORAGE_PATH}`);
     rmSync(STORAGE_PATH, { recursive: true, force: true });
+  } else if (existsSync(STORAGE_PATH)) {
+    console.log(`   Using existing storage at ${STORAGE_PATH}`);
   }
 
   // Create directories
