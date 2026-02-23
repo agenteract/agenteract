@@ -22,7 +22,6 @@ export {
   startApp,
   stopApp,
   restartApp,
-  isExpoGo,
   
   // Device utilities
   bootDevice,
@@ -57,6 +56,7 @@ export {
   
   // Types
   type AppLifecycleOptions,
+  type StopAppOptions,
   type DeviceState,
   type DeviceBootOptions,
   type PortForwardingOptions,

@@ -12,8 +12,14 @@ export type ProjectType =
 
 /**
  * Detect the platform type from a project directory
+ *
+ * @param projectPath - Absolute path to the project root
+ * @param targetPlatform - Optional hint for KMP projects that support multiple targets.
+ *   When a KMP project contains both Android and desktop/JVM targets, this disambiguates
+ *   which variant should be returned ('android' → 'kmp-android', 'desktop' → 'kmp-desktop').
+ *   Ignored for non-KMP projects.
  */
-export async function detectPlatform(projectPath: string): Promise<ProjectType> {
+export async function detectPlatform(projectPath: string, targetPlatform?: 'ios' | 'android' | 'desktop'): Promise<ProjectType> {
   // Check for Flutter
   if (existsSync(path.join(projectPath, 'pubspec.yaml'))) {
     return 'flutter';
@@ -86,11 +92,25 @@ export async function detectPlatform(projectPath: string): Promise<ProjectType> 
       
       // Check if it's a Kotlin Multiplatform project
       if (content.includes('kotlin("multiplatform")') || content.includes('kotlin-multiplatform')) {
-        // Determine if it's Android or Desktop based on targets
-        if (content.includes('android()') || content.includes('android {')) {
+        const hasAndroid = content.includes('android()') || content.includes('android {') || content.includes('androidTarget');
+        const hasDesktop = content.includes('jvm()') || content.includes('desktop()') || content.includes('jvm("desktop")');
+
+        // If a targetPlatform hint is provided, use it to disambiguate multi-target projects
+        if (targetPlatform === 'android' && hasAndroid) {
           return 'kmp-android';
-        } else if (content.includes('jvm()') || content.includes('desktop()')) {
+        }
+        if (targetPlatform === 'desktop' && hasDesktop) {
           return 'kmp-desktop';
+        }
+
+        // No hint (or hint doesn't match available targets) — fall back to file-based detection.
+        // Prefer desktop when both targets exist, because a project with only Android
+        // should still be detected correctly by the android check below.
+        if (hasDesktop) {
+          return 'kmp-desktop';
+        }
+        if (hasAndroid) {
+          return 'kmp-android';
         }
         // Default to desktop for KMP
         return 'kmp-desktop';

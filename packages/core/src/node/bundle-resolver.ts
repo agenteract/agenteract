@@ -3,7 +3,6 @@ import { existsSync } from 'fs';
 import * as path from 'path';
 import { ProjectType } from './platform-detector.js';
 import type { ProjectConfig } from '../config-types.js';
-import { isExpoGo } from './lifecycle-utils.js';
 
 export interface BundleInfo {
   ios?: string;                // iOS bundle ID (e.g., 'com.example.app')
@@ -19,7 +18,8 @@ export async function resolveBundleInfo(
   projectPath: string,
   projectType: ProjectType,
   lifecycleConfig?: ProjectConfig['lifecycle'],
-  scheme?: string
+  scheme?: string,
+  options?: { prebuild?: boolean }
 ): Promise<BundleInfo> {
   const bundleInfo: BundleInfo = {};
   
@@ -47,7 +47,7 @@ export async function resolveBundleInfo(
     case 'flutter':
       return resolveFlutterBundleInfo(projectPath, bundleInfo);
     case 'expo':
-      return resolveExpoBundleInfo(projectPath, bundleInfo);
+      return resolveExpoBundleInfo(projectPath, bundleInfo, options);
     case 'kmp-android':
       return resolveKMPBundleInfo(projectPath, bundleInfo);
     case 'xcode':
@@ -134,11 +134,13 @@ async function resolveFlutterBundleInfo(projectPath: string, bundleInfo: BundleI
 /**
  * Resolve Expo bundle info from app.json
  */
-async function resolveExpoBundleInfo(projectPath: string, bundleInfo: BundleInfo): Promise<BundleInfo> {
+async function resolveExpoBundleInfo(projectPath: string, bundleInfo: BundleInfo, options?: { prebuild?: boolean }): Promise<BundleInfo> {
   const result = { ...bundleInfo };
 
+  const prebuild = options?.prebuild || false;
+
   // If using Expo Go (no ios/android dirs), set Expo Go bundle IDs
-  if (isExpoGo(projectPath)) {
+  if (!prebuild) {
     result.ios = 'host.exp.Exponent';
     result.android = 'host.exp.exponent';
   }

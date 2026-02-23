@@ -166,7 +166,17 @@ private suspend fun handleCommand(
     sendResponse: suspend (AgentResponse) -> Unit
 ) {
     AgentLogger.log("Received command: ${command.action} id=${command.id}")
-    
+
+    // Looks up a registered node by testID. If not found, sends the standard error response
+    // and returns null; otherwise returns the node so the caller can invoke the handler.
+    suspend fun requireNode(testID: String): AgentNode? {
+        val node = AgentRegistry.getNode(testID)
+        if (node == null) {
+            sendResponse(AgentResponse(id = command.id, status = "error", error = "No element found with testID \"$testID\""))
+        }
+        return node
+    }
+
     when (command.action) {
         "getViewHierarchy" -> {
             val hierarchy = AgentRegistry.getHierarchy()
@@ -191,8 +201,8 @@ private suspend fun handleCommand(
                 return
             }
             
-            val node = AgentRegistry.getNode(testID)
-            if (node?.onTap != null) {
+            val node = requireNode(testID) ?: return
+            if (node.onTap != null) {
                 try {
                     node.onTap.invoke()
                     sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -200,7 +210,7 @@ private suspend fun handleCommand(
                      sendResponse(AgentResponse(id = command.id, status = "error", error = "Tap failed: $e"))
                 }
             } else {
-                sendResponse(AgentResponse(id = command.id, status = "error", error = "No tap handler or node found for $testID"))
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Element \"$testID\" has no tap handler"))
             }
         }
         "input" -> {
@@ -211,8 +221,8 @@ private suspend fun handleCommand(
                  return
             }
             
-            val node = AgentRegistry.getNode(testID)
-            if (node?.onChangeText != null) {
+            val node = requireNode(testID) ?: return
+            if (node.onChangeText != null) {
                 try {
                     node.onChangeText.invoke(value)
                     sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -220,7 +230,7 @@ private suspend fun handleCommand(
                      sendResponse(AgentResponse(id = command.id, status = "error", error = "Input failed: $e"))
                 }
             } else {
-                sendResponse(AgentResponse(id = command.id, status = "error", error = "No input handler found for $testID"))
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Element \"$testID\" has no input handler"))
             }
         }
         "scroll" -> {
@@ -233,8 +243,8 @@ private suspend fun handleCommand(
                  return
              }
              
-             val node = AgentRegistry.getNode(testID)
-             if (node?.onScroll != null) {
+             val node = requireNode(testID) ?: return
+             if (node.onScroll != null) {
                  try {
                      node.onScroll.invoke(direction, amount)
                      sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -242,7 +252,7 @@ private suspend fun handleCommand(
                       sendResponse(AgentResponse(id = command.id, status = "error", error = "Scroll failed: $e"))
                  }
              } else {
-                 sendResponse(AgentResponse(id = command.id, status = "error", error = "No scroll handler found for $testID"))
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "Element \"$testID\" has no scroll handler"))
              }
         }
         "swipe" -> {
@@ -255,8 +265,8 @@ private suspend fun handleCommand(
                  return
              }
              
-             val node = AgentRegistry.getNode(testID)
-             if (node?.onSwipe != null) {
+             val node = requireNode(testID) ?: return
+             if (node.onSwipe != null) {
                  try {
                      node.onSwipe.invoke(direction, velocity)
                      sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -264,7 +274,7 @@ private suspend fun handleCommand(
                       sendResponse(AgentResponse(id = command.id, status = "error", error = "Swipe failed: $e"))
                  }
              } else {
-                 sendResponse(AgentResponse(id = command.id, status = "error", error = "No swipe handler found for $testID"))
+                 sendResponse(AgentResponse(id = command.id, status = "error", error = "Element \"$testID\" has no swipe handler"))
              }
         }
         "longPress" -> {
@@ -274,8 +284,8 @@ private suspend fun handleCommand(
                 return
             }
             
-            val node = AgentRegistry.getNode(testID)
-            if (node?.onLongPress != null) {
+            val node = requireNode(testID) ?: return
+            if (node.onLongPress != null) {
                 try {
                     node.onLongPress.invoke()
                     sendResponse(AgentResponse(id = command.id, status = "ok"))
@@ -283,7 +293,7 @@ private suspend fun handleCommand(
                      sendResponse(AgentResponse(id = command.id, status = "error", error = "Long press failed: $e"))
                 }
             } else {
-                sendResponse(AgentResponse(id = command.id, status = "error", error = "No long press handler found for $testID"))
+                sendResponse(AgentResponse(id = command.id, status = "error", error = "Element \"$testID\" has no long press handler"))
             }
         }
         "agentLink" -> {

@@ -391,6 +391,17 @@ export default defineConfig({
     await client.waitForLog('react-app', 'reset_state', 5000);
     success('AgentLink verified in logs');
 
+    // 15. Test error response for scroll on non-existent element
+    info('Testing scroll on non-existent element returns descriptive error...');
+    try {
+      await client.scroll('react-app', 'nonexistent-element-xyz', 'right', 100);
+      throw new Error('Expected scroll on non-existent element to throw, but it succeeded');
+    } catch (scrollErr: any) {
+      if (scrollErr.message === 'Expected scroll on non-existent element to throw, but it succeeded') throw scrollErr;
+      assertContains(scrollErr.message, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+      success('Error response for non-existent element verified');
+    }
+
     success('✅ All tests passed!');
 
   } catch (err) {

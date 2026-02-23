@@ -782,6 +782,8 @@ npx @agenteract/agents start-app <project> [options]
 - `--device <id>` - Target specific device/simulator ID
 - `--platform <type>` - Override platform detection (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
 - `--headless` - Launch browser in headless mode (web apps only)
+- `--prebuild` - Use an Expo prebuild (native build) instead of Expo Go (Expo projects only)
+- `--launch-only` - Skip build and install steps; launch the already-installed app directly
 
 **Examples:**
 ```bash
@@ -796,6 +798,12 @@ npx @agenteract/agents start-app flutter-app --platform flutter --device emulato
 
 # Launch web app in headless mode
 npx @agenteract/agents start-app vite-app --headless
+
+# Launch Expo prebuild (native build) instead of Expo Go
+npx @agenteract/agents start-app expo-app --prebuild --device "iPhone 15 Pro"
+
+# Launch without rebuilding or reinstalling (app must already be installed)
+npx @agenteract/agents start-app expo-app --launch-only --device "iPhone 15 Pro"
 ```
 
 ### **Stop an App**
@@ -809,6 +817,7 @@ npx @agenteract/agents stop-app <project> [options]
 **Options:**
 - `--device <id>` - Target specific device ID
 - `--force` - Force stop (Android: `force-stop` instead of `stop`, Desktop: SIGKILL instead of SIGTERM)
+- `--prebuild` - Target an Expo prebuild app instead of Expo Go (Expo projects only)
 
 **Examples:**
 ```bash
@@ -817,6 +826,9 @@ npx @agenteract/agents stop-app expo-app
 
 # Force stop on specific device
 npx @agenteract/agents stop-app expo-app --device emulator-5554 --force
+
+# Stop Expo prebuild app
+npx @agenteract/agents stop-app expo-app --prebuild
 ```
 
 ### **Build an App**

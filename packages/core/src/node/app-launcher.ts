@@ -396,30 +396,41 @@ async function buildSwiftApp(projectPath: string, options: BuildOptions): Promis
   
   console.log(`Building Swift app (${config})`);
   
-  // Find .xcodeproj or .xcworkspace
-  const { readdir } = await import('fs/promises');
-  const files = await readdir(projectPath);
+  // Find .xcworkspace (takes precedence) or .xcodeproj, searching recursively
+  const { glob } = await import('glob');
+  const path = await import('path');
+
+  const workspaces = await glob('**/*.xcworkspace', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**', '**/*.xcodeproj/**']
+  });
+
+  const projects = await glob('**/*.xcodeproj', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**']
+  });
   
-  const workspace = files.find(f => f.endsWith('.xcworkspace'));
-  const project = files.find(f => f.endsWith('.xcodeproj'));
-  
-  if (!workspace && !project) {
+  if (workspaces.length === 0 && projects.length === 0) {
     throw new Error('No Xcode project or workspace found');
   }
+
+  const workspaceOrProject = workspaces[0] || projects[0];
+  const isWorkspace = workspaceOrProject.endsWith('.xcworkspace');
+  const fileName = path.basename(workspaceOrProject);
+  const baseName = fileName.replace(isWorkspace ? '.xcworkspace' : '.xcodeproj', '');
+  const workingDir = path.dirname(workspaceOrProject);
   
   const args = [
-    '-scheme', 'Agenteract', // Adjust scheme name as needed
+    isWorkspace ? '-workspace' : '-project',
+    fileName,
+    '-scheme', baseName,
     '-configuration', config,
     'build',
   ];
   
-  if (workspace) {
-    args.unshift('-workspace', workspace);
-  } else if (project) {
-    args.unshift('-project', project);
-  }
-  
-  await execFileAsync('xcodebuild', args, { cwd: projectPath });
+  await execFileAsync('xcodebuild', args, { cwd: workingDir });
 }
 
 /**

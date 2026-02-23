@@ -189,11 +189,13 @@ async function main() {
     const absoluteSwiftPackagePath = `${process.cwd()}/packages/swift`;
     info(`Using Swift package at: ${absoluteSwiftPackagePath}`);
 
-    // Replace the relative path with absolute path
-    const updatedProjectPbxproj = originalProjectPbxproj.replace(
-      /..\/..\/..\/packages\/swift/g,
-      `"${absoluteSwiftPackagePath}"`
-    );
+    // Replace the relative path with absolute path.
+    // Two separate replacements are needed:
+    //   1. Quoted occurrences in key/comment strings, e.g. XCLocalSwiftPackageReference "../../../packages/swift"
+    //   2. Unquoted relativePath value, e.g. relativePath = ../../../packages/swift;
+    const updatedProjectPbxproj = originalProjectPbxproj
+      .replace(/"\.\.\/\.\.\/\.\.\/packages\/swift"/g, `"${absoluteSwiftPackagePath}"`)
+      .replace(/relativePath = \.\.\/\.\.\/\.\.\/packages\/swift;/g, `relativePath = ${absoluteSwiftPackagePath};`);
 
     // Verify the replacement worked
     if (!updatedProjectPbxproj.includes(absoluteSwiftPackagePath)) {
@@ -351,7 +353,7 @@ async function main() {
 
     while (connectionAttempts < maxAttempts) {
       connectionAttempts++;
-      await sleep(5000);
+      await sleep(1000);
 
       try {
         info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Swift-App is connected...`);
@@ -448,15 +450,15 @@ async function main() {
       success('SwiftUI app stopped via lifecycle utility');
       await sleep(2000);
 
-      // Restart the app using lifecycle utility
+      // Restart the app using lifecycle utility (launchOnly: skip rebuild/reinstall)
       info('Restarting SwiftUI app...');
       await startApp({
         projectPath: exampleAppDir,
         device: testDevice,
-        projectConfig: project
+        projectConfig: project,
+        launchOnly: true,
       });
       success('Sent start command to SwiftUI app');
-      await sleep(5000); // Give it time to launch
 
       info('Waiting for app to reconnect after restart...');
       let reconnected = false;
@@ -500,6 +502,21 @@ async function main() {
       assertContains(tapResult, 'Counter incremented to 1', 'Counter increment was logged');
       success('Button tap verified in logs');
     }
+
+    // Test error response for scroll on non-existent element
+    info('Testing scroll on non-existent element returns descriptive error...');
+    const errorScrollResult = await runAgentCommand(
+      `cwd:${testConfigDir}`,
+      'scroll',
+      'swift-app',
+      'nonexistent-element-xyz',
+      'right',
+      '100'
+    );
+    assertContains(errorScrollResult, '"status":"error"', 'Scroll on non-existent element returns error status');
+    assertContains(errorScrollResult, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+    success('Error response for non-existent element verified');
+
 
     // 16. Test input interaction
     info('Testing input interaction on text-input...');

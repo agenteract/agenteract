@@ -380,14 +380,14 @@ async function main() {
                 success('Android app stopped via lifecycle utility');
                 await sleep(2000);
 
-                // Restart the app using lifecycle utility
+                // Restart the app using lifecycle utility (launchOnly: skip rebuild/reinstall)
                 info('Restarting Android app...');
                 await startApp({
                     projectPath: exampleAppDir,
-                    device: testDevice
+                    device: testDevice,
+                    launchOnly: true,
                 });
                 success('Sent start command to Android app');
-                await sleep(5000); // Give it time to launch
 
                 info('Waiting for app to reconnect after restart...');
                 let reconnected = false;
@@ -551,6 +551,13 @@ async function main() {
         await verifyInLogs('AgentLink handled by app');
         await verifyInLogs('All values reset');
         success('AgentLink verified in logs');
+
+        // 16.5. Test error response for scroll on non-existent element
+        info('Testing scroll on non-existent element returns descriptive error...');
+        const errorScrollRawOutput = await runAgentCommand(`cwd:${testConfigDir}`, 'scroll', 'kmp-app', 'nonexistent-element-xyz', 'right', '100');
+        assertContains(errorScrollRawOutput, '"status":"error"', 'Scroll on non-existent element returns error status');
+        assertContains(errorScrollRawOutput, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+        success('Error response for non-existent element verified');
 
         // Terminate app before finishing test to prevent interference with future runs
         info('Terminating app to clean up for future test runs...');

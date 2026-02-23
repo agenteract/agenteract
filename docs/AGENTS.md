@@ -583,6 +583,8 @@ pnpm agenteract-agents start-app <project> [options]
 - `--device <id>`: Target specific device/simulator ID
 - `--platform <type>`: Override platform detection (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
 - `--headless`: Launch browser in headless mode (web apps only)
+- `--prebuild`: Use an Expo prebuild (native build) instead of Expo Go (Expo projects only)
+- `--launch-only`: Skip build and install steps; launch the already-installed app directly
 
 **Examples:**
 ```bash
@@ -597,6 +599,12 @@ pnpm agenteract-agents start-app flutter-app --platform flutter --device emulato
 
 # Launch web app in headless mode
 pnpm agenteract-agents start-app vite-app --headless
+
+# Launch Expo prebuild (native build) instead of Expo Go
+pnpm agenteract-agents start-app expo-app --prebuild --device "iPhone 15 Pro"
+
+# Launch without rebuilding or reinstalling (app must already be installed)
+pnpm agenteract-agents start-app expo-app --launch-only --device "iPhone 15 Pro"
 ```
 
 **When to use:**
@@ -618,6 +626,7 @@ pnpm agenteract-agents stop-app <project> [options]
 **Options:**
 - `--device <id>`: Target specific device ID
 - `--force`: Force stop (Android: `force-stop`, Desktop: SIGKILL)
+- `--prebuild`: Target an Expo prebuild app instead of Expo Go (Expo projects only)
 
 **Examples:**
 ```bash
@@ -626,6 +635,9 @@ pnpm agenteract-agents stop-app expo-app
 
 # Force stop on specific device
 pnpm agenteract-agents stop-app expo-app --device emulator-5554 --force
+
+# Stop Expo prebuild app
+pnpm agenteract-agents stop-app expo-app --prebuild
 ```
 
 **When to use:**
@@ -1987,10 +1999,10 @@ await buildApp({
 - **Expo Go**: NOOP (uses OTA updates)
 
 **Build Output:**
-By default, build output is suppressed (`silent: true`). Set `silent: false` to stream build output for debugging.
+By default, build output is shown (`silent: false`). Set `silent: true` to suppress output.
 
 **Expo Note:**
-For Expo apps, prefer using `expo run:ios` or `expo run:android` which handles prebuild + build + install + launch in one command.
+For Expo apps, pass `argv: { prebuild: true }` to `startApp()` which handles prebuild + build + install + launch in one call.
 
 ---
 
@@ -1998,34 +2010,49 @@ For Expo apps, prefer using `expo run:ios` or `expo run:android` which handles p
 
 ### `startApp(options)`
 
-Start/launch an app on a device.
+Start/launch an app on a device. This unified implementation first attempts a PTY-based restart (if the central agent server is running), then falls back to direct platform launch commands.
 
 **Parameters:**
 - `projectPath`: Project root path
-- `device`: Device object or device ID string
+- `device`: Device object, device ID string, or `'desktop'`
 - `bundleId`: Optional bundle ID override
 - `mainActivity`: Optional Android main activity
-- `projectName`: Optional project name (for Expo Go)
-- `cwd`: Optional working directory (for Expo Go)
+- `projectName`: Optional project name (used for PTY-based restart via the agent server)
+- `projectConfig`: Optional project config object from `agenteract.config.js`
+- `skipPtyRestart`: Optional — set `true` to skip PTY restart and go straight to direct platform launch
+- `argv.prebuild`: Optional — set `true` to use Expo prebuild mode instead of Expo Go
 
-**Returns:** `Promise<void>`
+**Returns:** `Promise<StartAppResult>`
+
+**Launch Strategy:**
+1. **PTY restart (preferred)**: If `projectName` is provided and the central agent server is running on port 8766, makes an HTTP POST to `/start-app`. This preserves hot reload and is the correct approach for Expo Go, Flutter, and web apps with a dev server.
+2. **Config discovery**: If no `projectName`, discovers `agenteract.config.js` from `projectPath` and checks whether the project has a `devServer` configured that benefits from PTY restart.
+3. **Direct platform launch (fallback)**: If the agent server is not running or the project doesn't benefit from PTY restart, uses platform commands directly (`xcrun simctl launch`, `adb shell am start`, etc.).
 
 **Example:**
 ```typescript
 import { startApp } from '@agenteract/core';
 
-// Start prebuilt app
+// Minimal usage — auto-detects everything, tries PTY restart first
 await startApp({
-  projectPath: '/path/to/app',
-  device: myDevice
+  projectPath: '/path/to/flutter-app',
+  device: iosDevice
 });
 
-// Start Expo Go app
+// With project name — fast path to PTY restart
 await startApp({
   projectPath: '/path/to/expo-app',
-  device: myDevice,
+  device: iosDevice,
   projectName: 'expo-app',
-  cwd: '/path/to/workspace'
+  projectConfig: project
+});
+
+// Expo prebuild mode (bypass PTY, direct platform launch)
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: iosDevice,
+  projectName: 'expo-app',
+  argv: { prebuild: true }
 });
 
 // Start Android app with custom activity
@@ -2036,26 +2063,27 @@ await startApp({
 });
 ```
 
-**Auto-Boot Feature:**
-`startApp()` automatically boots shutdown devices before launching. This ensures apps can launch successfully without manual intervention.
-
 **Platform Behavior:**
-- **iOS**: Uses `xcrun simctl launch`, auto-boots if shutdown
-- **Android**: Uses `adb shell am start`, auto-boots if offline
-- **Expo Go**: Sends CLI command to open project
-- **Desktop**: Opens URL in default browser
+- **Expo Go** (default): PTY keystroke (`i`/`a`) sent via agent server
+- **Expo Prebuild** (`argv.prebuild: true`): Runs `expo prebuild`, builds, installs, and launches natively
+- **Flutter**: PTY-based device selection via agent server
+- **iOS Native**: `xcrun simctl launch`
+- **Android**: `adb shell am start`
+- **Desktop/Web**: Opens browser via Puppeteer (Vite) or starts KMP desktop process
 
 ---
 
 ### `stopApp(options)`
 
-Stop/terminate a running app.
+Stop/terminate a running app. The `device` parameter is optional — if omitted, the device is resolved from the default device stored in `.agenteract-runtime.json` for the given project, falling back to `'desktop'`.
 
-**Parameters:**
+**Parameters (`StopAppOptions`):**
 - `projectPath`: Project root path
-- `device`: Device object or device ID string
+- `device`: Optional — Device object, device ID string, or `'desktop'`; auto-resolved if not provided
 - `bundleId`: Optional bundle ID override
-- `force`: Force stop on Android (default: false)
+- `force`: Force stop on Android / SIGKILL on desktop (default: `true`)
+- `projectName`: Optional project name (used for default device lookup)
+- `projectConfig`: Optional project config object from `agenteract.config.js`
 
 **Returns:** `Promise<void>`
 
@@ -2063,7 +2091,13 @@ Stop/terminate a running app.
 ```typescript
 import { stopApp } from '@agenteract/core';
 
-// Graceful stop
+// Graceful stop (device auto-resolved from default)
+await stopApp({
+  projectPath: '/path/to/app',
+  projectName: 'expo-app'
+});
+
+// Stop with explicit device
 await stopApp({
   projectPath: '/path/to/app',
   device: myDevice
@@ -2078,9 +2112,11 @@ await stopApp({
 ```
 
 **Platform Behavior:**
-- **iOS**: Uses `xcrun simctl terminate`
-- **Android**: Uses `adb shell am force-stop` (if force) or kills process
-- **Expo Go**: Not supported (cannot stop Expo Go itself)
+- **iOS**: `xcrun simctl terminate`
+- **Android**: `adb shell am force-stop` (force) or `adb shell am stop`
+- **Web (Vite)**: Closes the Puppeteer browser instance via the agent server's `/stop-browser` endpoint
+- **Desktop (KMP)**: SIGTERM (or SIGKILL if `force: true`)
+- **Expo Go**: Stop is a NOOP (Expo Go cannot be stopped programmatically; use `agentLink` instead)
 
 ---
 
@@ -2189,40 +2225,39 @@ await stopApp({
 ### Expo Go Mode
 
 ```typescript
-// Expo Go apps don't need build/install steps
+// Expo Go: projectName triggers PTY-based restart (sends 'i'/'a' keystroke to metro)
 await startApp({
   projectPath: '/path/to/expo-app',
   device: myDevice,
   projectName: 'expo-app',
-  cwd: '/path/to/workspace'
 });
 
-// Metro serves JavaScript over the air
-// No build/install needed
+// Metro serves JavaScript over the air — no build/install needed
 ```
 
 ### Expo Prebuild Mode
 
+Use the `--prebuild` flag with the CLI, or pass `argv: { prebuild: true }` programmatically. This bypasses the PTY/Expo Go path and runs `expo prebuild`, then builds and installs the native app.
+
 ```bash
-# For Expo prebuilt apps, use expo run:ios/android
-# This handles prebuild + build + install + launch
-
-# Clean prebuild
-rm -rf ios android
-
-# Run (auto prebuild + build + install + launch)
-expo run:ios --device <device-name>
-
-# Or for Android
-expo run:android --device <device-id>
+# CLI: launch using prebuild mode
+pnpm agenteract-agents start-app expo-app --prebuild --device "iPhone 15 Pro"
 ```
 
-**Important:** Prebuilt Expo apps still need Metro bundler running! Start Metro first:
+```typescript
+// Programmatic: prebuild mode
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: myDevice,
+  projectName: 'expo-app',
+  argv: { prebuild: true }
+});
+```
+
+**Important:** Prebuilt Expo apps still need Metro bundler running. Start Metro first:
 ```bash
 npx expo start --localhost
 ```
-
-Then launch the app via `expo run:ios` or using lifecycle utilities.
 
 ---
 
@@ -2276,12 +2311,12 @@ await startApp({ projectPath, device });
 
 ### Build Output
 
-**Use silent mode by default:**
+**Use silent mode to reduce noise when not debugging:**
 ```typescript
-// ✅ Silent - less noise
+// ✅ Suppress output during automated tests
 await buildApp({ projectPath, device, silent: true });
 
-// Only show output when debugging build issues
+// Show output when debugging build issues
 await buildApp({ projectPath, device, silent: false });
 ```
 
@@ -2309,6 +2344,7 @@ All lifecycle utilities are fully typed with TypeScript:
 ```typescript
 import type {
   AppLifecycleOptions,
+  StopAppOptions,
   DeviceState,
   DeviceBootOptions,
   InstallOptions,
@@ -2330,23 +2366,24 @@ await installApp(options);
 
 ## Utility Functions
 
-### `isExpoGo(projectPath)`
+### `detectPlatform(projectPath, targetPlatform?)`
 
-Detect if an Expo project uses Expo Go or is prebuilt.
+Detect the framework type from a project directory.
 
 ```typescript
-import { isExpoGo } from '@agenteract/core';
+import { detectPlatform } from '@agenteract/core';
 
-const usesExpoGo = isExpoGo('/path/to/expo-app');
-
-if (usesExpoGo) {
-  console.log('Using Expo Go - no build needed');
-} else {
-  console.log('Prebuilt Expo - needs build step');
-}
+const platform = await detectPlatform('/path/to/app');
+// Returns: 'expo' | 'vite' | 'flutter' | 'xcode' | 'kmp-android' | 'kmp-desktop'
 ```
 
-Returns `true` if no `ios/` or `android/` directories exist.
+The optional `targetPlatform` parameter (`'ios' | 'android' | 'desktop'`) is used as a hint for Kotlin Multiplatform projects that support multiple targets. When both Android and desktop targets are present, passing `targetPlatform` ensures the correct variant is returned.
+
+```typescript
+// KMP project with both android and desktop targets
+const type = await detectPlatform('/path/to/kmp', 'android'); // → 'kmp-android'
+const type2 = await detectPlatform('/path/to/kmp', 'desktop'); // → 'kmp-desktop'
+```
 
 ### `findGradle(projectPath)`
 
@@ -2378,10 +2415,9 @@ Checks for `./gradlew` first, then falls back to global `gradle`.
 - Activity names: Use `.MainActivity` format for relative activities
 
 ### Expo
-- **Expo Go**: No build/install needed, uses OTA updates
-- **Prebuilt**: Same as React Native but needs Metro running
-- Use `expo run:ios` / `expo run:android` for comprehensive workflow
-- Clean `ios/android` folders before `expo run` for fresh prebuild
+- **Expo Go** (default): No build/install needed, Metro serves JS OTA. PTY keystroke (`i`/`a`) sent via agent server
+- **Prebuild** (`--prebuild` / `argv.prebuild: true`): Runs `expo prebuild`, then builds and installs natively
+- Metro bundler must be running for prebuild apps (`npx expo start --localhost`)
 
 ### Flutter
 - Requires Flutter SDK

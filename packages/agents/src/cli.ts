@@ -23,12 +23,11 @@ import {
   resolveBundleInfo,
   getDefaultDeviceInfo,
   listDevices,
-  stopAppInternal,
-  isExpoGo,
   performSetup,
-  launchApp,
   buildApp,
   setDefaultDevice,
+  startApp,
+  stopApp,
 } from '@agenteract/core/node';
 
 // Cache for loaded config
@@ -904,10 +903,21 @@ yargs(hideBin(process.argv))
           type: 'boolean',
           description: 'Run in headless mode (for web apps)',
           default: true,
+        })
+        .option('prebuild', {
+          type: 'boolean',
+          description: 'Use prebuild intead of Expo Go',
+          default: false
+        })
+        .option('launch-only', {
+          type: 'boolean',
+          description: 'Launch the app without building or installing (skip build/install steps)',
+          default: false,
         });
     },
     async (argv) => {
       try {
+        // Load config to get project path
         const config = await getConfig();
         const project = config.projects.find(p => p.name === argv.project);
         
@@ -917,9 +927,6 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const projectType = await detectPlatform(projectPath);
-        
-        console.log(`Detected project type: ${projectType}`);
         
         // Resolve device
         let device = null;
@@ -934,13 +941,16 @@ yargs(hideBin(process.argv))
             console.error(`Device "${argv.device}" not found`);
             process.exit(1);
           }
-        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
-          // Get default device for mobile/iOS apps
-          device = await getDefaultDeviceInfo(argv.project);
-          if (!device) {
-            console.error(`No default device set for project "${argv.project}"`);
-            console.error('Set a default device with: agenteract-agents set-current-device <project> <deviceId>');
-            process.exit(1);
+        } else {
+          // Get default device (required for mobile apps)
+          const projectType = await detectPlatform(projectPath);
+          if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
+            device = await getDefaultDeviceInfo(argv.project);
+            if (!device) {
+              console.error(`No default device set for project "${argv.project}"`);
+              console.error('Set a default device with: agenteract-agents set-current-device <project> <deviceId>');
+              process.exit(1);
+            }
           }
         }
         
@@ -950,61 +960,26 @@ yargs(hideBin(process.argv))
           process.exit(1);
         }
         
-        // Resolve bundle info
-        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
-        
         console.log(`Launching ${argv.project}...`);
         if (device) {
           console.log(`  Device: ${device.name} (${device.id})`);
         }
         
-        const launchTimeout = project.lifecycle?.launchTimeout || 60000;
+        // Call unified startApp() from core
+        // It will automatically:
+        // - Check for dev server (PTY) and use HTTP restart if available
+        // - Fall back to direct platform launch if needed
+        // - Handle all project types (Expo, Flutter, Swift, etc.)
+        await startApp({
+          projectPath,
+          device: device || 'desktop',
+          projectName: argv.project,
+          projectConfig: project,
+          prebuild: argv.prebuild as boolean,
+          launchOnly: argv['launch-only'] as boolean,
+        });
         
-        // Determine if this is a web app
-        const isWebApp = projectType === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
-        
-        // For projects with devServer (Flutter, web apps), use the central server's launch endpoint
-        if (project.devServer) {
-          try {
-            const agentServerUrl = getAgentServerUrl(config);
-            const requestBody: any = { projectName: argv.project };
-            
-            // Only include device info for non-web apps
-            if (!isWebApp && device) {
-              requestBody.deviceId = device.id;
-              requestBody.platform = device.type;
-              requestBody.deviceName = device.name;
-            }
-            
-            const response = await axios.post(`${agentServerUrl}/start-app`, requestBody);
-            
-            console.log('✓ App launched successfully');
-            if (response.data.ptyWasRestarted) {
-              console.log('  (Dev server was restarted)');
-            }
-          } catch (error: any) {
-            if (error.response) {
-              throw new Error(error.response.data?.error || error.response.data?.details || 'Launch failed');
-            } else if (error.code === 'ECONNREFUSED') {
-              throw new Error('Cannot connect to Agenteract server. Is `pnpm agenteract` running?');
-            } else {
-              throw error;
-            }
-          }
-        } else {
-          // For legacy configs without devServer, use direct launch
-          const result = await launchApp(projectType, device, bundleInfo, projectPath, launchTimeout);
-          console.log('✓ App launched successfully');
-          
-          // Note: For web apps, the browser will remain open. User must stop manually.
-          if (result.browser) {
-            console.log('  Browser is running (use stop-app command to close)');
-          }
-          if (result.process) {
-            console.log('  Process is running (use stop-app command to terminate)');
-          }
-        }
-        
+        console.log('✓ App launched successfully');
       } catch (error) {
         console.error('✗ Failed to launch app:', error instanceof Error ? error.message : String(error));
         process.exit(1);
@@ -1031,11 +1006,15 @@ yargs(hideBin(process.argv))
           type: 'boolean',
           description: 'Force stop/kill the app',
           default: false,
+        })
+        .option('prebuild', {
+          type: 'boolean',
+          description: 'Use prebuild intead of Expo Go',
+          default: false
         });
     },
     async (argv) => {
       try {
-        debugger;
         const config = await getConfig();
         const project = config.projects.find(p => p.name === argv.project);
         
@@ -1045,58 +1024,32 @@ yargs(hideBin(process.argv))
         }
         
         const projectPath = path.resolve(process.cwd(), project.path);
-        const projectType = await detectPlatform(projectPath);
-        
-        // Resolve device
-        let device = null;
+
+        // Resolve device (same logic as start-app so the type is correct)
+        let device: Awaited<ReturnType<typeof listDevices>>[number] | undefined;
         if (argv.device) {
           const allDevices = [
             ...(await listDevices('ios').catch(() => [])),
             ...(await listDevices('android').catch(() => [])),
           ];
-          device = allDevices.find(d => d.id === argv.device) || null;
-        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
-          device = await getDefaultDeviceInfo(argv.project);
-        }
-        
-        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
-        
-        // Handle Expo Go special case: override bundle ID
-        const expoGoPlatform = device?.type === 'ios' || device?.type === 'android' ? device.type : undefined;
-        // @ts-ignore - isExpoGo signature updated in core but types might lag
-        if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
-          if (device?.type === 'ios') {
-            bundleInfo.ios = 'host.exp.Exponent';
-          } else if (device?.type === 'android') {
-            bundleInfo.android = 'host.exp.exponent';
+          device = allDevices.find(d => d.id === argv.device);
+          if (!device) {
+            console.error(`Device "${argv.device}" not found`);
+            process.exit(1);
           }
         }
         
         console.log(`Stopping ${argv.project}...`);
         
-        // Determine if this is a web app
-        const isWebApp = projectType === 'vite' || project.devServer?.command?.includes('npm run dev') || project.devServer?.command?.includes('vite');
+        await stopApp({
+          projectPath,
+          device,
+          projectName: argv.project,
+          projectConfig: project,
+          force: argv.force,
+        });
         
-        // For web apps with devServer, use the central server's stop endpoint to close browser
-        if (isWebApp && project.devServer) {
-          try {
-            const agentServerUrl = getAgentServerUrl(config);
-            await axios.post(`${agentServerUrl}/stop`, {
-              projectName: argv.project
-            });
-            console.log('✓ Browser closed successfully');
-          } catch (error: any) {
-            if (error.code === 'ECONNREFUSED') {
-              console.log('✓ Agenteract server not running (browser may already be closed)');
-            } else {
-              throw error;
-            }
-          }
-        } else {
-          // For mobile apps or legacy configs, use direct stop
-          await stopAppInternal(projectType, device, bundleInfo, {}, argv.force);
-          console.log('✓ App stopped successfully');
-        }
+        console.log('✓ App stopped successfully');
       } catch (error) {
         console.error('✗ Failed to stop app:', error instanceof Error ? error.message : String(error));
         process.exit(1);

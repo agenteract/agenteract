@@ -46,8 +46,6 @@ import {
   bootDevice, 
   getDeviceState,
   clearAppData,
-  buildApp,
-  installApp,
   uninstallApp,
   listIOSDevices,
   listAndroidDevices,
@@ -427,48 +425,34 @@ async function main() {
       info(`Dev logs not available yet (server still starting): ${err}`);
     }
 
-    // 8. PREBUILD MODE: Now build, install and launch using expo run
-    // Since Metro is already running, expo run will use our Metro instance
+    // 8. PREBUILD MODE: Build and launch using startApp() with prebuild flag
+    // Since Metro is already running, the app will connect to our Metro instance
+    // startApp() will handle prebuild, build, install, and launch via direct platform launch
     if (PREBUILD_MODE) {
-      info(`Testing Phase 4 lifecycle: Using expo run:${PLATFORM} to build + install + launch`);
+      info(`Testing Phase 4 lifecycle: Building and launching prebuilt app via startApp()`);
       info('This may take 3-5 minutes for the first build...');
       
-      try {
-        // Clean any existing native folders to ensure fresh prebuild with new dependencies
-        info('Cleaning existing native folders for fresh prebuild...');
-        await runCommand(`cd ${exampleAppDir} && rm -rf ios android`);
+      try {        
+        // Use the direct startApp() export with prebuild = true which will:
+        // 1. Skip PTY-based restart (prebuild apps launch directly)
+        // 2. Run expo prebuild to generate native folders
+        // 3. Build the app via xcodebuild/gradle
+        // 4. Install and launch on the device
+        info('Launching app using startApp() with prebuild flag...');
+        const launchResult = await startApp({
+          projectPath: exampleAppDir!,
+          device: testDevice,
+          projectName: 'expo-app',
+          prebuild: true,
+        });
         
-        // Use expo run which will:
-        // 1. Run expo prebuild (if needed) - will generate fresh native projects with AsyncStorage
-        // 2. Build with xcodebuild (iOS) or gradle (Android)
-        // 3. Install to device
-        // 4. Launch the app
-        // 5. Connect to our already-running Metro server
-        let expoRunCommand: string;
-        if (PLATFORM === 'ios') {
-          expoRunCommand = `npx expo run:ios --device ${testDevice.id}`;
-        } else {
-          // For Android, if device is already booted, omit --device flag (expo will use it automatically)
-          // If not booted, use AVD name to launch it
-          if (testDevice.state === 'booted') {
-            expoRunCommand = `npx expo run:android`;
-            info(`Using booted Android device: ${testDevice.id}`);
-          } else {
-            const deviceIdentifier = testDevice.avdName || testDevice.id;
-            expoRunCommand = `npx expo run:android --device ${deviceIdentifier}`;
-            info(`Launching Android device: ${deviceIdentifier}`);
-          }
+        if (launchResult.process) {
+          info(`Prebuild app launch process started (PID: ${launchResult.process.pid})`);
         }
-          
-        const buildOutput = await runCommand(
-          `cd ${exampleAppDir} && ${expoRunCommand}`
-        );
-        info(`expo run:${PLATFORM} output:`);
-        console.log(buildOutput);
-        success(`✓ expo run:${PLATFORM} completed - app should be running`);
+        success(`✓ App launched via startApp() with prebuild flag`);
         
       } catch (err) {
-        error(`expo run:${PLATFORM} failed: ${err}`);
+        error(`PREBUILD startApp() failed: ${err}`);
         throw err;
       }
     } else {
@@ -659,7 +643,8 @@ async function main() {
       if (PREBUILD_MODE) {
         await stopApp({
           projectPath: exampleAppDir,
-          device: testDevice
+          device: testDevice,
+          prebuild: true,
         });
         success('Prebuilt app stopped via lifecycle utility');
       } else {
@@ -676,10 +661,13 @@ async function main() {
 
       info('Restarting app using platform-agnostic lifecycle utility...');
       if (PREBUILD_MODE) {
-        // For prebuilt apps, just launch directly
+        // For prebuilt apps, use launchOnly to skip rebuild/reinstall and just launch
         await startApp({
           projectPath: exampleAppDir,
-          device: testDevice
+          device: testDevice,
+          projectName: 'expo-app',
+          launchOnly: true,
+          prebuild: true,
         });
         success('Sent start command to prebuilt app');
       } else {
@@ -687,11 +675,11 @@ async function main() {
         await startApp({
           projectPath: exampleAppDir,
           device: testDevice,
-          projectName: 'expo-app'
+          projectName: 'expo-app',
+          launchOnly: true,
         });
         success('Sent start command to Expo app');
       }
-      await sleep(10000); // Give it time to launch
 
       info('Waiting for app to reconnect after restart...');
       let reconnected = false;
@@ -820,6 +808,17 @@ async function main() {
     await client!.waitForLog('expo-app', 'Agent link received', 5000);
     await client!.waitForLog('expo-app', 'reset_state', 5000);
     success('AgentLink verified in logs');
+
+    // 22.5. Test error response for scroll on non-existent element
+    info('Testing scroll on non-existent element returns descriptive error...');
+    try {
+      await client!.scroll('expo-app', 'nonexistent-element-xyz', 'right', 100);
+      throw new Error('Expected scroll on non-existent element to throw, but it succeeded');
+    } catch (scrollErr: any) {
+      if (scrollErr.message === 'Expected scroll on non-existent element to throw, but it succeeded') throw scrollErr;
+      assertContains(scrollErr.message, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+      success('Error response for non-existent element verified');
+    }
 
     // 23. Terminate app to prevent interference with future test runs
     info('Terminating app to clean up for future test runs...');

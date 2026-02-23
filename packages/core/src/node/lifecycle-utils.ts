@@ -1,6 +1,7 @@
 import { execFile, spawn, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, readFileSync } from 'fs';
+import { readdir } from 'fs/promises';
 import { join } from 'path';
 import type { Device } from './device-manager.js';
 import { detectPlatform } from './platform-detector.js';
@@ -51,6 +52,26 @@ export interface AppLifecycleOptions {
    * Provides access to scheme, lifecycle config, and other project settings
    */
   projectConfig?: ProjectConfig;
+  
+  /**
+   * Skip PTY-based restart attempt (internal use only)
+   * Set to true when called from /start-app endpoint to prevent infinite loop
+   */
+  skipPtyRestart?: boolean;
+
+  /**
+   * Launch the app on device without building or installing.
+   * - For Expo with prebuild=true: reads bundle ID from app.json and launches directly via xcrun/adb
+   * - For Expo Go (prebuild != true): sends 'i' or 'a' keystroke to Expo CLI (already running dev server)
+   * - For other project types: skips build/install and launches directly
+   */
+  launchOnly?: boolean;
+
+  /**
+   * Use an Expo prebuild (native build) instead of Expo Go.
+   * Only relevant for Expo projects.
+   */
+  prebuild?: boolean;
 }
 
 /**
@@ -97,6 +118,8 @@ export interface InstallOptions extends AppLifecycleOptions {
   configuration?: 'debug' | 'release';
   /** Path to APK file for Android (if not building from source) */
   apkPath?: string;
+  /** Silent mode - suppress install output (default: false) */
+  silent?: boolean;
 }
 
 /**
@@ -107,29 +130,8 @@ export interface BuildOptions extends AppLifecycleOptions {
   configuration?: 'debug' | 'release' | string;
   /** Target platform (ios or android) */
   platform?: 'ios' | 'android';
-  /** Silent mode - suppress build output (default: true) */
+  /** Silent mode - suppress build output (default: false) */
   silent?: boolean;
-}
-
-/**
- * Determine if an Expo project is using Expo Go (no native directories)
- * 
- * @param projectPath - Path to the Expo project
- * @param platform - Target platform (ios or android)
- * @returns true if the project is using Expo Go, false if prebuilt
- */
-export function isExpoGo(projectPath: string, platform?: 'ios' | 'android'): boolean {
-  // If a specific platform is requested, check only that platform
-  if (platform === 'ios') {
-    return !existsSync(join(projectPath, 'ios'));
-  }
-  
-  if (platform === 'android') {
-    return !existsSync(join(projectPath, 'android'));
-  }
-
-  // If ios/ or android/ directories exist, it's prebuilt (legacy behavior)
-  return !existsSync(join(projectPath, 'ios')) && !existsSync(join(projectPath, 'android'));
 }
 
 /**
@@ -431,11 +433,12 @@ export async function clearAppData(options: AppLifecycleOptions): Promise<void> 
   }
   
   // Detect project type
-  const projectType = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath, platform);
   
   // Expo Go apps cannot have data cleared
-  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  const prebuild = options.prebuild === true
+
+  if (projectType === 'expo' && !prebuild) {
     console.log('ℹ️  Cannot clear data for Expo Go apps (NOOP)');
     return;
   }
@@ -601,19 +604,35 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
 /**
  * Start/launch an app - platform and framework agnostic
  * 
- * Automatically detects app type (Expo Go, prebuilt native, etc.) and uses appropriate launch method.
- * For Expo Go apps, sends CLI command to reopen the app. For prebuilt apps, uses native launch commands.
+ * UNIFIED IMPLEMENTATION that handles both PTY-based restart and direct platform launch:
+ * 
+ * 1. **Checks for dev server (PTY)**: Discovers agenteract.config.js from projectPath,
+ *    looks up the project by path matching, and checks if it has a devServer configured
+ * 
+ * 2. **PTY restart (preferred)**: If dev server exists and central agent server is running,
+ *    makes HTTP POST to `/start-app` endpoint which restarts the PTY and uses websocket-based launch.
+ *    This preserves hot reload, keeps the dev server running, and is the proper approach for
+ *    Flutter, Expo (with dev server), and other projects with PTY servers.
+ * 
+ * 3. **Direct platform launch (fallback)**: If no dev server configured, central server not running,
+ *    or HTTP request fails, falls back to direct platform commands (xcrun simctl launch, adb shell am start).
+ *    This is appropriate for native apps without dev servers and as a robust fallback.
+ * 
+ * Automatically detects:
+ * - Platform from device.type ('ios' or 'android')
+ * - App type from projectPath (Expo Go vs prebuilt, Flutter, Swift, etc.)
+ * - Bundle ID from project files (unless overridden)
  * 
  * @param options - Lifecycle options
  * @example
  * ```typescript
  * // Minimal usage - auto-detects everything
  * await startApp({
- *   projectPath: '/path/to/expo-app',
+ *   projectPath: '/path/to/flutter-app',
  *   device: iosSimulator
  * });
  * 
- * // Expo Go with project name (for CLI commands)
+ * // With project name for PTY restart
  * await startApp({
  *   projectPath: '/path/to/expo-app',
  *   device: iosSimulator,
@@ -622,7 +641,7 @@ export async function setupPortForwarding(options: PortForwardingOptions): Promi
  * 
  * // With bundle ID override
  * await startApp({
- *   projectPath: '/path/to/expo-app',
+ *   projectPath: '/path/to/app',
  *   device: { type: 'android', id: 'emulator-5554', name: 'Pixel 5' },
  *   bundleId: 'com.mycompany.myapp',
  *   mainActivity: '.MainActivity'
@@ -639,16 +658,219 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
   
   const platform = deviceObj.type;
   
-  // Auto-boot device if it's shutdown (skip for desktop)
-  if (platform !== 'desktop') {
-    const deviceState = await getDeviceState(deviceObj);
-    if (deviceState.state === 'shutdown') {
-      await bootDevice({ device: deviceObj, waitForBoot: false });
+  // Detect project type — pass platform as a hint so KMP multi-target projects
+  // resolve to the correct variant (kmp-desktop vs kmp-android).
+  const projectType = await detectPlatform(projectPath, platform);
+
+  const prebuild = options.prebuild === true
+  const launchOnly = options.launchOnly === true;
+
+  // ============================================================================
+  // LAUNCH-ONLY path: special cases that cannot fall through to STEP 2 as-is
+  // ============================================================================
+  // Flutter and Expo Go use a PTY-based dev server for launch (hotkeys / keystrokes)
+  // rather than direct platform commands, so they cannot simply skip build+install
+  // and re-use STEP 2. Handle them explicitly here:
+  //
+  //   • Expo Go + launchOnly  → send 'i'/'a' keystroke (same as without launchOnly)
+  //   • Flutter + launchOnly  → falls through to STEP 1 (PTY restart) unchanged;
+  //                              launchOnly is a no-op for Flutter.
+  //
+  // All other native types (expo-prebuild, kmp-android, xcode) fall straight through
+  // to STEP 2; buildApp and installApp are guarded by !launchOnly there.
+  if (launchOnly && projectType === 'expo' && !prebuild) {
+    // Expo Go — send 'i' or 'a' keystroke to the running Expo CLI dev server
+    if (!projectName) {
+      throw new Error(`projectName is required for Expo Go launch-only. Pass projectName option to startApp().`);
     }
+    const keystroke = platform === 'ios' ? 'i' : 'a';
+    const proc = await sendExpoCLICommand(projectName, keystroke, projectPath);
+    return { process: proc };
   }
+
+  // don't use pty restart approach for expo prebuild
+  const skipPtyRestart = options.skipPtyRestart === true; // && !(projectType === 'expo' && prebuild)
   
-  // Detect project type
-  const projectType = await detectPlatform(projectPath);
+  // ============================================================================
+  // STEP 1: PTY-based restart (preferred for projects with dev servers)
+  // ============================================================================
+  if (!skipPtyRestart && !prebuild) {
+  // STEP 1: Try PTY-based restart (preferred for projects with dev servers)
+  // ============================================================================
+  // Discover config and check if this project has a dev server (PTY) configured
+  // If yes, make HTTP POST to /start-app endpoint for websocket-based launch
+  try {
+    const { findConfigRoot, loadConfig, getAgentServerUrl, normalizeProjectConfig } = await import('./config.js');
+    const pathModule = await import('path');
+
+    // Fast path: if projectName is provided, the server process already owns the PTY
+    // and has all config loaded — skip config discovery and POST directly to the server.
+    if (projectName && !skipPtyRestart) {
+      console.log(`📡 projectName provided ('${projectName}'), attempting direct PTY-based restart...`);
+      const axios = await import('axios').then(m => m.default);
+      const defaultServerUrl = 'http://localhost:8766';
+      try {
+        const requestBody: any = { projectName };
+        if (platform !== 'desktop') {
+          requestBody.deviceId = deviceObj.id;
+          requestBody.platform = platform;
+          requestBody.deviceName = deviceObj.name;
+        }
+        const response = await axios.post(`${defaultServerUrl}/start-app`, requestBody, { timeout: 10000 });
+        console.log('✅ PTY-based restart successful');
+        if (response.data.ptyWasRestarted) {
+          console.log('   Dev server was restarted');
+        }
+        return {};
+      } catch (httpError: any) {
+        if (httpError.code === 'ECONNREFUSED') {
+          console.log('ℹ️  Central agent server not running, falling back to direct platform launch');
+        } else if (httpError.response) {
+          console.warn(`⚠️  PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
+          console.warn('   Falling back to direct platform launch');
+        } else {
+          console.warn(`⚠️  PTY restart request failed: ${httpError.message}`);
+          console.warn('   Falling back to direct platform launch');
+        }
+        // Fall through to config-discovery path below
+      }
+    }
+    
+    // Try to find config starting from projectPath
+    const configRoot = await findConfigRoot(projectPath);
+    
+    if (configRoot) {
+      const config = await loadConfig(configRoot);
+      
+      // Find project by matching path (normalize to resolve relative paths)
+      const absoluteProjectPath = pathModule.resolve(projectPath);
+      let matchedProject = config.projects.find(p => {
+        const absoluteConfigPath = p.path.startsWith('/') 
+          ? p.path 
+          : pathModule.resolve(configRoot, p.path);
+        return absoluteConfigPath === absoluteProjectPath;
+      });
+      
+      // If not found by path, try matching by projectName if provided
+      if (!matchedProject && projectName) {
+        matchedProject = config.projects.find(p => p.name === projectName);
+      }
+      
+      if (matchedProject) {
+        // Normalize to handle old 'type' format -> new 'devServer' format
+        const normalized = normalizeProjectConfig(matchedProject, configRoot);
+        
+        // Check if this project has a dev server (PTY) AND benefits from PTY restart
+        // PTY restart is useful for:
+        // - Expo Go (needs 'i' or 'a' keystroke to launch)
+        // - Flutter (needs device selection)
+        // - Web apps (browser launch via Puppeteer)
+        // PTY restart is NOT useful for:
+        // - Expo prebuild (app is already installed, just launch it)
+        // - Native apps (Swift, Kotlin) without dev server
+        if (normalized.devServer) {
+          // Determine if PTY restart is beneficial for this project type
+          const isWebApp = projectType === 'vite' || 
+                          normalized.devServer.command?.includes('npm run dev') || 
+                          normalized.devServer.command?.includes('vite');
+          // For Expo: use PTY restart (Expo Go) unless --prebuild flag was passed
+          // The --prebuild flag means the native app is already installed; skip PTY restart and launch directly
+          const isExpoGoMode = projectType === 'expo' && !prebuild;
+          const isFlutter = projectType === 'flutter';
+          
+          const shouldUsePtyRestart = isWebApp || isExpoGoMode || isFlutter;
+          
+          if (shouldUsePtyRestart) {
+            console.log(`📡 Project has dev server configured, attempting PTY-based restart...`);
+            
+            // Try to make HTTP POST to central agent server's /start-app endpoint
+            const agentServerUrl = getAgentServerUrl(config);
+            const axios = await import('axios').then(m => m.default);
+            
+            try {
+              const requestBody: any = { projectName: normalized.name };
+              
+              // Only include device info for non-web apps
+              if (!isWebApp && platform !== 'desktop') {
+                requestBody.deviceId = deviceObj.id;
+                requestBody.platform = platform;
+                requestBody.deviceName = deviceObj.name;
+              }
+              
+              const response = await axios.post(`${agentServerUrl}/start-app`, requestBody, {
+                timeout: 10000
+              });
+              
+              console.log('✅ PTY-based restart successful');
+              if (response.data.ptyWasRestarted) {
+                console.log('   Dev server was restarted');
+              }
+              
+              // Return early - PTY restart handled everything
+              return {};
+            } catch (httpError: any) {
+              if (httpError.code === 'ECONNREFUSED') {
+                console.log('ℹ️  Central agent server not running, falling back to direct platform launch');
+              } else if (httpError.response) {
+                console.warn(`⚠️  PTY restart failed: ${httpError.response.data?.error || httpError.message}`);
+                console.warn('   Falling back to direct platform launch');
+              } else {
+                console.warn(`⚠️  PTY restart request failed: ${httpError.message}`);
+                console.warn('   Falling back to direct platform launch');
+              }
+              // Fall through to direct platform launch below
+            }
+          } else {
+            console.log(`ℹ️  Project has dev server but doesn't benefit from PTY restart (${projectType}${projectType === 'expo' ? ' prebuild' : ''}), using direct platform launch`);
+          }
+        }
+      }
+    }
+  } catch (configError: any) {
+    // Config discovery failed - not a fatal error, just means we can't use PTY restart
+    console.log(`ℹ️  Could not discover config (${configError.message}), using direct platform launch`);
+  }
+  } // End of if (!skipPtyRestart)
+  
+  // ============================================================================
+  // STEP 2: Direct platform launch (fallback or for native apps without dev servers)
+  // ============================================================================
+  console.log('🚀 Using direct platform launch...');
+  
+  // Determine if Expo Go vs Expo Prebuild
+  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
+  
+  let isExpoPrebuilt = projectType === 'expo' && prebuild === true;
+  let isExpoGoApp = projectType === 'expo' && !isExpoPrebuilt
+
+  if (!isExpoGoApp && !launchOnly) {
+    // Run expo prebuild to generate native folders.
+    // For desktop KMP, don't pass a platform override — let buildApp derive it from the device.
+    await buildApp({
+      projectPath,
+      device: deviceObj,
+      platform: expoGoPlatform,
+      silent: false,
+      prebuild
+    });
+  }
+
+  if (projectType === 'expo') {
+    // buildApp runs the app as well — only return early when we actually built
+    if (!launchOnly) {
+      return {};
+    }
+    // launchOnly: fall through to bundle-resolve + platform launch below
+  }
+
+  // Install the app (skipped when launchOnly — app is already installed)
+  if (!launchOnly) {
+    await installApp({
+      projectPath,
+      device: deviceObj,
+      prebuild
+    });
+  }
   
   // Handle KMP projects - they can be multi-target (both android and desktop)
   // Use device type to determine which target to launch
@@ -656,13 +878,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
     if (platform === 'desktop') {
       return await startKMPApp(projectPath);
     } else if (platform === 'android') {
-      // For KMP Android, install the app first, then use standard Android launch
-      const gradle = await findGradle(projectPath);
-      console.log(`Installing KMP Android app via gradle task: installDebug`);
-      await execFileAsync(gradle, ['installDebug'], {
-        cwd: projectPath,
-      });
-      
+      // installApp() above already ran ./gradlew installDebug — skip the redundant call here.
       // Continue to standard Android launch flow below using resolveBundleInfo
       // (don't return here - fall through to use bundleInfo resolution)
     }
@@ -671,17 +887,6 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
   // For KMP desktop that already returned above, we won't reach here
   // For KMP Android, we continue to resolve bundle info and launch normally
   const effectiveProjectType = projectType === 'kmp-android' ? 'kmp-android' : projectType;
-  
-  // Handle Swift/Xcode projects - build and install to simulator
-  if (effectiveProjectType === 'xcode' && platform === 'ios') {
-    console.log('Building and installing Swift/Xcode app to iOS simulator...');
-    await buildAndInstallXcodeApp(projectPath, deviceObj);
-    // Continue to standard iOS launch flow below using resolveBundleInfo
-  }
-  
-  // Check if Expo Go
-  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  const isExpoGoApp = effectiveProjectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
   
   // Resolve bundle IDs if not provided
   let bundleId = bundleIdOverride;
@@ -696,7 +901,8 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
         projectPath, 
         effectiveProjectType, 
         projectConfig?.lifecycle,
-        projectConfig?.scheme
+        projectConfig?.scheme,
+        { prebuild }
       );
       bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
       mainActivity = bundleInfo.androidMainActivity || mainActivity;
@@ -712,7 +918,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
     // Expo Go - use Expo CLI keystroke to launch the app
     // This requires the Expo dev server to be running
     if (!projectName) {
-      throw new Error('projectName is required for Expo Go apps. Pass projectName option to startApp().');
+      throw new Error(`projectName is required for Expo Go apps. Pass projectName option to startApp(). (Project type: ${effectiveProjectType}, isExpoGo check: ios=${!existsSync(join(projectPath, 'ios'))}, android=${!existsSync(join(projectPath, 'android'))})`);
     }
     
     const keystroke = platform === 'ios' ? 'i' : 'a';
@@ -731,6 +937,15 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
 }
 
 /**
+ * Options for stopping an app.
+ * Extends AppLifecycleOptions but makes `device` optional — if omitted,
+ * stopApp will resolve the default device from the project config.
+ */
+export interface StopAppOptions extends Omit<AppLifecycleOptions, 'device'> {
+  device?: Device | string;
+}
+
+/**
  * Stop/terminate an app - platform and framework agnostic
  * 
  * @param options - Lifecycle options
@@ -743,18 +958,69 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
  * });
  * ```
  */
-export async function stopApp(options: AppLifecycleOptions): Promise<void> {
-  const { projectPath, device, bundleId: bundleIdOverride, force = true, projectConfig, projectName } = options;
-  
+export async function stopApp(options: StopAppOptions): Promise<void> {
+  const { projectPath, bundleId: bundleIdOverride, force = true, projectConfig, projectName } = options;
+
+  // ============================================================================
+  // STEP 1: Resolve device
+  // ============================================================================
+  let device = options.device;
+
+  // If no device provided, try to resolve from default device config
+  if (!device) {
+    if (projectName) {
+      const { getDefaultDeviceInfo } = await import('./device-manager.js');
+      const defaultDevice = await getDefaultDeviceInfo(projectName);
+      if (defaultDevice) {
+        device = defaultDevice;
+      }
+    }
+  }
+
+  // If still no device, fall back to 'desktop' (web apps, KMP desktop, etc.)
+  if (!device) {
+    device = 'desktop';
+  }
+
   // Get device info
   const deviceObj = typeof device === 'string'
-    ? { id: device, type: 'ios' as const, name: device, state: 'unknown' as const }
+    ? { id: device, type: (device === 'desktop' ? 'desktop' : 'ios') as Device['type'], name: device, state: 'unknown' as const }
     : device;
-  
+
   const platform = deviceObj.type;
-  
-  // Detect project type and resolve bundle ID
-  const projectType = await detectPlatform(projectPath);
+
+  // ============================================================================
+  // STEP 2: Detect project type
+  // ============================================================================
+  const projectType = await detectPlatform(projectPath, platform);
+
+  // ============================================================================
+  // STEP 3: Handle web apps — POST to agent server /stop endpoint to close browser
+  // ============================================================================
+  const isWebApp = projectType === 'vite' ||
+    projectConfig?.devServer?.command?.includes('npm run dev') ||
+    projectConfig?.devServer?.command?.includes('vite');
+
+  if (isWebApp && projectConfig?.devServer) {
+    try {
+      const { findConfigRoot, loadConfig, getAgentServerUrl } = await import('./config.js');
+      const configRoot = await findConfigRoot(projectPath);
+      if (configRoot) {
+        const config = await loadConfig(configRoot);
+        const agentServerUrl = getAgentServerUrl(config);
+        const axios = await import('axios').then(m => m.default);
+        await axios.post(`${agentServerUrl}/stop-browser`, { projectName }, { timeout: 5000 });
+        console.log('Browser closed successfully');
+      }
+    } catch (error: any) {
+      if (error.code === 'ECONNREFUSED' || error.response?.status === 404) {
+        console.log('Agenteract server not running (browser may already be closed)');
+      } else {
+        throw error;
+      }
+    }
+    return;
+  }
   
   // Check if Flutter app - if so, try to quit gracefully via 'q' command first
   if (projectType === 'flutter' && projectName && projectConfig) {
@@ -800,9 +1066,9 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
     }
   }
   
-  // Check if Expo Go
-  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  const isExpoGoApp = projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
+  // Check if Expo Go: only expo projects without prebuild flag use Expo Go bundle ID
+  const prebuild = options.prebuild === true;
+  const isExpoGoApp = projectType === 'expo' && !prebuild;
   
   let bundleId = bundleIdOverride;
   if (!bundleId) {
@@ -814,7 +1080,8 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
         projectPath, 
         projectType, 
         projectConfig?.lifecycle,
-        projectConfig?.scheme
+        projectConfig?.scheme,
+        { prebuild }
       );
       bundleId = platform === 'ios' ? bundleInfo.ios : bundleInfo.android;
       
@@ -823,7 +1090,7 @@ export async function stopApp(options: AppLifecycleOptions): Promise<void> {
       }
     }
   }
-  
+
   // Stop using platform commands
   if (platform === 'ios') {
     await stopIOSApp(deviceObj, bundleId);
@@ -895,18 +1162,6 @@ export async function stopIOSApp(device: Device | string, bundleId: string): Pro
 export async function startIOSApp(device: Device | string, bundleId: string): Promise<void> {
   const deviceId = typeof device === 'string' ? device : device.id;
   
-  // Auto-boot device if shutdown (only if device is not 'booted' identifier)
-  if (deviceId !== 'booted') {
-    const deviceObj = typeof device === 'string' 
-      ? { id: device, type: 'ios' as const, name: device, state: 'unknown' as const }
-      : device;
-    
-    const deviceState = await getDeviceState(deviceObj);
-    if (deviceState.state === 'shutdown') {
-      await bootDevice({ device: deviceObj, waitForBoot: false });
-    }
-  }
-  
   try {
     await execFileAsync('xcrun', ['simctl', 'launch', deviceId, bundleId], {
       timeout: 30000,
@@ -969,16 +1224,6 @@ export async function startAndroidApp(
   mainActivity?: string
 ): Promise<void> {
   const deviceId = typeof device === 'string' ? device : device.id;
-  
-  // Auto-boot device if shutdown
-  const deviceObj = typeof device === 'string' 
-    ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
-    : device;
-  
-  const deviceState = await getDeviceState(deviceObj);
-  if (deviceState.state === 'shutdown') {
-    await bootDevice({ device: deviceObj, waitForBoot: false });
-  }
   
   try {
     if (mainActivity) {
@@ -1120,21 +1365,27 @@ export async function startKMPDesktopApp(projectPath: string): Promise<StartAppR
  * ```
  */
 export async function installApp(options: InstallOptions): Promise<void> {
-  const { projectPath, device, apkPath, configuration = 'debug' } = options;
-  
+  const { projectPath, device, apkPath, configuration = 'debug', silent = false } = options;
+
   // Get device info
   const deviceObj = typeof device === 'string'
     ? { id: device, type: 'android' as const, name: device, state: 'unknown' as const }
     : device;
-  
+
   const platform = deviceObj.type;
   
-  // Detect project type first
-  const projectType = await detectPlatform(projectPath);
+  // Desktop has no install step
+  if (platform === 'desktop') {
+    console.log('ℹ️  Not applicable for desktop platform (NOOP)');
+    return;
+  }
+
+  // Detect project type — pass platform hint for KMP multi-target projects.
+  const projectType = await detectPlatform(projectPath, platform);
   
   // Check if Expo Go
-  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  const prebuild = options.prebuild === true;
+  if (projectType === 'expo' && !prebuild) {
     console.log('ℹ️  Cannot install Expo Go apps via this method (NOOP)');
     return;
   }
@@ -1149,7 +1400,6 @@ export async function installApp(options: InstallOptions): Promise<void> {
         configuration === 'release' ? 'Release-iphonesimulator' : 'Debug-iphonesimulator');
       
       // Find the .app bundle
-      const { readdir } = await import('fs/promises');
       const files = await readdir(buildPath);
       const appBundle = files.find(f => f.endsWith('.app'));
       
@@ -1162,6 +1412,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
       
       await execFileAsync('xcrun', ['simctl', 'install', deviceObj.id, appPath], {
         timeout: 60000,
+        ...(silent ? {} : { stdio: 'inherit' }),
       });
       console.log('✓ Prebuilt Expo app installed successfully');
     } else {
@@ -1177,6 +1428,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
     console.log(`📦 Installing APK: ${apkPath}`);
     await execFileAsync('adb', ['-s', deviceObj.id, 'install', '-r', apkPath], {
       timeout: 60000,
+      ...(silent ? {} : { stdio: 'inherit' }),
     });
     console.log('✓ APK installed successfully');
   } else {
@@ -1192,6 +1444,7 @@ export async function installApp(options: InstallOptions): Promise<void> {
     await execFileAsync(gradle, [task], {
       cwd: androidPath,
       timeout: 120000,
+      ...(silent ? {} : { stdio: 'inherit' }),
     });
     console.log(`✓ App installed successfully via ${task}`);
   }
@@ -1225,13 +1478,12 @@ export async function uninstallApp(options: AppLifecycleOptions): Promise<void> 
   const platform = deviceObj.type;
   
   // Detect project type
-  const projectType = await detectPlatform(projectPath);
+  const projectType = await detectPlatform(projectPath, platform);
   
   // Check if Expo Go
-  const expoGoPlatform = (platform === 'ios' || platform === 'android') ? platform : undefined;
-  const isExpoGoApp = projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform);
+  const prebuild = options.prebuild === true;
   
-  if (isExpoGoApp) {
+  if (projectType === 'expo' && !prebuild) {
     console.log('ℹ️  Cannot uninstall Expo Go apps via this method (NOOP)');
     return;
   }
@@ -1317,7 +1569,7 @@ export async function reinstallApp(options: InstallOptions): Promise<void> {
  * Build an app - platform and framework agnostic
  * 
  * Automatically detects project type and builds appropriately.
- * Supports silent mode to suppress build output (default: true).
+ * Supports silent mode to suppress build output (default: false).
  * 
  * - **Flutter**: Uses `flutter build` or gradle
  * - **Prebuilt Expo**: Uses xcodebuild or gradle
@@ -1346,7 +1598,7 @@ export async function reinstallApp(options: InstallOptions): Promise<void> {
  * ```
  */
 export async function buildApp(options: BuildOptions): Promise<void> {
-  const { projectPath, device, configuration = 'debug', platform: platformOverride, silent = true } = options;
+  const { projectPath, device, configuration = 'debug', platform: platformOverride, silent = false } = options;
   
   // Get device info to determine platform
   const deviceObj = typeof device === 'string'
@@ -1355,18 +1607,18 @@ export async function buildApp(options: BuildOptions): Promise<void> {
   
   const targetPlatform = platformOverride || deviceObj.type;
   
-  // Detect project type
-  const projectType = await detectPlatform(projectPath);
+  // Detect project type — pass targetPlatform so KMP multi-target projects resolve correctly.
+  const projectType = await detectPlatform(projectPath, targetPlatform);
   
   // Check if Expo Go
-  const expoGoPlatform = (targetPlatform === 'ios' || targetPlatform === 'android') ? targetPlatform : undefined;
-  if (projectType === 'expo' && isExpoGo(projectPath, expoGoPlatform)) {
+  const prebuild = options.prebuild === true;
+  if (projectType === 'expo' && !prebuild) {
     console.log('ℹ️  Expo Go apps use OTA updates, no build required (NOOP)');
     return;
   }
   
   // Build based on project type
-  const buildMessage = `🔨 Building ${projectType} ${targetPlatform} app (${configuration})...`;
+  const buildMessage = `🔨 Building ${targetPlatform} app (${configuration})...`;
   if (!silent) {
     console.log(buildMessage);
   }
@@ -1379,7 +1631,7 @@ export async function buildApp(options: BuildOptions): Promise<void> {
       
       case 'expo':
         // Prebuilt Expo
-        await buildPrebuiltExpoApp(projectPath, targetPlatform, configuration, silent);
+        await runPrebuildExpoApp(projectPath, targetPlatform, configuration, silent);
         break;
       
       case 'kmp-android':
@@ -1450,6 +1702,40 @@ async function buildFlutterApp(
 }
 
 /**
+ * Calls npm expo run:<platform>
+ * @param projectPath 
+ * @param platform 
+ * @param configuration 
+ * @param silent 
+ */
+async function runPrebuildExpoApp(
+  projectPath: string,
+  platform: 'ios' | 'android' | 'desktop',
+  configuration: string,
+  silent: boolean): Promise<void> {
+    if (platform !== 'ios' && platform !== 'android') {
+      throw Error('expo prebuild only supports ios and android');
+    }
+
+    if (configuration === 'release') {
+      throw Error('release builds require external configuration.')
+    }
+
+    const args = ['expo', `run:${platform}`, '--no-bundler']
+
+    console.log(`🔨 Building and installing Expo ${platform} app (this may take a few minutes)...`);
+    console.log(`   Note: Metro bundler will not be started — it should already be running via 'npx @agenteract/cli dev'`);
+    const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+    if (silent) {
+      execOptions.stdio = 'ignore';
+    } else {
+      execOptions.stdio = 'inherit';
+    }
+
+    await execFileAsync('npx', args, execOptions);
+  }
+
+/**
  * Build prebuilt Expo app
  */
 async function buildPrebuiltExpoApp(
@@ -1474,7 +1760,6 @@ async function buildPrebuiltExpoApp(
   } else if (platform === 'ios') {
     // For Expo iOS, we need to use xcodebuild
     const iosPath = join(projectPath, 'ios');
-    const { readdir } = await import('fs/promises');
     const files = await readdir(iosPath);
     
     const workspace = files.find(f => f.endsWith('.xcworkspace'));
@@ -1560,36 +1845,49 @@ async function buildSwiftApp(
   configuration: string,
   silent: boolean
 ): Promise<void> {
-  const { readdir } = await import('fs/promises');
-  const files = await readdir(projectPath);
-  
-  const workspace = files.find(f => f.endsWith('.xcworkspace'));
-  const project = files.find(f => f.endsWith('.xcodeproj'));
-  
-  if (!workspace && !project) {
+  const { glob } = await import('glob');
+  const path = await import('path');
+
+  // Search recursively for .xcworkspace (takes precedence), excluding project.xcworkspace inside .xcodeproj dirs
+  const workspaces = await glob('**/*.xcworkspace', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**', '**/*.xcodeproj/**']
+  });
+
+  // Search recursively for .xcodeproj
+  const projects = await glob('**/*.xcodeproj', {
+    cwd: projectPath,
+    absolute: true,
+    ignore: ['**/node_modules/**', '**/build/**', '**/DerivedData/**', '**/.build/**']
+  });
+
+  if (workspaces.length === 0 && projects.length === 0) {
     throw new Error('No Xcode project or workspace found');
   }
-  
+
+  const workspaceOrProject = workspaces[0] || projects[0];
+  const isWorkspace = workspaceOrProject.endsWith('.xcworkspace');
+  const fileName = path.basename(workspaceOrProject);
+  const baseName = fileName.replace(isWorkspace ? '.xcworkspace' : '.xcodeproj', '');
+  const workingDir = path.dirname(workspaceOrProject);
+
   const args = [
-    '-scheme', workspace ? workspace.replace('.xcworkspace', '') : project!.replace('.xcodeproj', ''),
+    isWorkspace ? '-workspace' : '-project',
+    fileName,
+    '-scheme', baseName,
     '-configuration', configuration === 'release' ? 'Release' : 'Debug',
     '-sdk', 'iphonesimulator',
     'build',
   ];
-  
-  if (workspace) {
-    args.unshift('-workspace', workspace);
-  } else if (project) {
-    args.unshift('-project', project);
-  }
-  
-  const execOptions: any = { cwd: projectPath, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
+
+  const execOptions: any = { cwd: workingDir, timeout: 300000, maxBuffer: 50 * 1024 * 1024 };
   if (silent) {
     execOptions.stdio = 'ignore';
   } else {
     execOptions.stdio = 'inherit';
   }
-  
+
   await execFileAsync('xcodebuild', args, execOptions);
 }
 

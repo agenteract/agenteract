@@ -10,7 +10,6 @@ export {
   startApp,
   stopApp,
   restartApp,
-  isExpoGo,
   
   // Low-level platform commands (for advanced use)
   stopIOSApp,

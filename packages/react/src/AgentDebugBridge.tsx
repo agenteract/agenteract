@@ -112,37 +112,40 @@ async function loadConfig(): Promise<AgenteractConfig | null> {
 
 // --- Simulation Functions ---
 // ... (Simulation functions remain the same)
-export function simulateTap(id: string) {
-  const node = getNode(id);
-  if (node?.onPress) {
-    node.onPress();
-    return true;
-  }
-  console.warn(`simulateTap: No node or onPress handler found for testID "${id}"`);
-  return false;
-}
-
-export function simulateInput(id: string, value: string) {
-  const node = getNode(id);
-  if (node?.onChangeText) {
-    node.onChangeText(value);
-    return true;
-  }
-  console.warn(`simulateInput: No node or onChangeText handler found for testID "${id}"`);
-  return false;
-}
-
-export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | 'right', amount: number) {
+// Returns true on success, or an error string on failure
+export function simulateTap(id: string): true | string {
   const node = getNode(id);
   if (!node) {
-    console.log('Node not found with ID:', id);
-    return false;
+    return `No element found with testID "${id}"`;
+  }
+  if (!node.onPress) {
+    return `Element "${id}" has no onPress handler`;
+  }
+  node.onPress();
+  return true;
+}
+
+export function simulateInput(id: string, value: string): true | string {
+  const node = getNode(id);
+  if (!node) {
+    return `No element found with testID "${id}"`;
+  }
+  if (!node.onChangeText) {
+    return `Element "${id}" has no onChangeText handler`;
+  }
+  node.onChangeText(value);
+  return true;
+}
+
+export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | 'right', amount: number): true | string {
+  const node = getNode(id);
+  if (!node) {
+    return `No element found with testID "${id}"`;
   }
 
   const element = node.ref?.current;
   if (!element) {
-    console.log('Node has no ref with ID:', id);
-    return false;
+    return `Element "${id}" has no ref attached`;
   }
 
   const platform = getPlatform();
@@ -161,14 +164,12 @@ export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | '
       });
       return true;
     } else {
-      console.log('Element does not support scrollBy with ID:', id);
-      return false;
+      return `Element "${id}" does not support scrollBy`;
     }
   } else {
     // For React Native, we need to track position and use scrollTo with calculated absolute position
     if (typeof element.scrollTo !== 'function') {
-      console.log('Element does not support scrollTo with ID:', id);
-      return false;
+      return `Element "${id}" does not support scrollTo`;
     }
 
     // Initialize scroll position if not tracked
@@ -195,32 +196,26 @@ export function simulateScroll(id: string, direction: 'up' | 'down' | 'left' | '
   }
 }
 
-export function simulateLongPress(id: string) {
+export function simulateLongPress(id: string): true | string {
   const node = getNode(id);
   if (!node) {
-    console.log('Node not found with ID:', id);
-    return false;
+    return `No element found with testID "${id}"`;
   }
-  if (!node?.onLongPress) {
-    console.log('Node has no onLongPress prop with ID:', id);
-    return false;
+  if (!node.onLongPress) {
+    return `Element "${id}" has no onLongPress handler`;
   }
-  if (node && node?.onLongPress) {
-    node?.onLongPress();
-    return true;
-  }
-  return false;
+  node.onLongPress();
+  return true;
 }
 
 export function simulateSwipe(
   id: string,
   direction: 'up' | 'down' | 'left' | 'right',
   velocity: 'slow' | 'medium' | 'fast' = 'medium'
-) {
+): true | string {
   const node = getNode(id);
   if (!node) {
-    console.log('Node not found with ID:', id);
-    return false;
+    return `No element found with testID "${id}"`;
   }
 
   // First check if there's an explicit onSwipe handler registered
@@ -232,8 +227,7 @@ export function simulateSwipe(
   // Otherwise fall back to dispatching events
   const element = node.ref?.current;
   if (!element) {
-    console.log('Node has no ref with ID:', id);
-    return false;
+    return `Element "${id}" has no ref attached`;
   }
 
   const platform = getPlatform();
@@ -246,8 +240,7 @@ export function simulateSwipe(
     // For web, we'll dispatch touch events to simulate a swipe gesture
     const rect = element.getBoundingClientRect?.();
     if (!rect) {
-      console.log('Cannot get element bounds for swipe with ID:', id);
-      return false;
+      return `Cannot get element bounds for swipe on "${id}"`;
     }
 
     const startX = rect.left + rect.width / 2;
@@ -342,8 +335,7 @@ export function simulateSwipe(
       return true;
     }
 
-    console.log('No swipe handler or scrollable element found with ID:', id);
-    return false;
+    return `Element "${id}" has no swipe handler and does not support scrollTo`;
   }
 }
 
@@ -357,29 +349,29 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket, onAgentLink?
     return;
   }
 
-  let success = false;
+  let result: true | string = 'Unknown error';
   switch (cmd.action) {
     case "tap":
-      success = simulateTap(cmd.testID);
+      result = simulateTap(cmd.testID);
       break;
     case "input":
-      success = simulateInput(cmd.testID, cmd.value);
+      result = simulateInput(cmd.testID, cmd.value);
       break;
     case "scroll":
-      success = simulateScroll(cmd.testID, cmd.direction, cmd.amount);
+      result = simulateScroll(cmd.testID, cmd.direction, cmd.amount);
       break;
     case "longPress":
-      success = simulateLongPress(cmd.testID);
+      result = simulateLongPress(cmd.testID);
       break;
     case "swipe":
-      success = simulateSwipe(cmd.testID, cmd.direction, cmd.velocity);
+      result = simulateSwipe(cmd.testID, cmd.direction, cmd.velocity);
       break;
     case "agentLink":
       if (cmd.payload) {
         if (onAgentLink) {
           try {
             const handled = await onAgentLink(cmd.payload);
-            success = handled;
+            result = handled ? true : 'agentLink handler returned false';
             if (handled) {
               console.log('[Agenteract] agentLink handled by app');
             } else {
@@ -404,8 +396,12 @@ const handleCommand = async (cmd: ServerCommand, socket: WebSocket, onAgentLink?
       socket.send(JSON.stringify({ status: "error", error: `Unknown action ${cmd.action}`, id: cmd.id }));
       return;
   }
-  
-  socket.send(JSON.stringify({ status: success ? "ok" : "error", action: cmd.action, id: cmd.id }));
+
+  if (result === true) {
+    socket.send(JSON.stringify({ status: "ok", action: cmd.action, id: cmd.id }));
+  } else {
+    socket.send(JSON.stringify({ status: "error", error: result, action: cmd.action, id: cmd.id }));
+  }
 };
 
 // --- AgentDebugBridge Component ---

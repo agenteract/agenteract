@@ -427,7 +427,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onTap!();
       _sendSuccess(id);
     } else {
-      _sendError('No tap handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -442,7 +442,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onChangeText!(value);
       _sendSuccess(id);
     } else {
-      _sendError('No input handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -462,7 +462,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onScroll!(direction, amount ?? 100);
       _sendSuccess(id);
     } else {
-      _sendError('No scroll handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -477,7 +477,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onLongPress!();
       _sendSuccess(id);
     } else {
-      _sendError('No long press handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -497,7 +497,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onSwipe!(direction, velocity ?? 'medium');
       _sendSuccess(id);
     } else {
-      _sendError('No swipe handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 

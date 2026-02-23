@@ -649,6 +649,7 @@ async function main() {
       await startApp({
         projectPath: exampleAppDir,
         device: testDevice,
+        projectName: 'flutter-example',
       });
       success('Sent start command to Flutter app via lifecycle utility');
 
@@ -786,7 +787,18 @@ async function main() {
     assertContains(JSON.stringify(appLogs), 'Card swiped', 'App config working in hybrid mode (logging from dev server and app)');
     success('App config working in hybrid mode (logging from dev server and app)');
 
-    // 26.5. Terminate app before finishing test to prevent interference with future runs
+    // 26.5. Test error response for scroll on non-existent element
+    info('Testing scroll on non-existent element returns descriptive error...');
+    try {
+      await client!.scroll('flutter-example', 'nonexistent-element-xyz', 'right', 100);
+      throw new Error('Expected scroll on non-existent element to throw, but it succeeded');
+    } catch (scrollErr: any) {
+      if (scrollErr.message === 'Expected scroll on non-existent element to throw, but it succeeded') throw scrollErr;
+      assertContains(scrollErr.message, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+      success('Error response for non-existent element verified');
+    }
+
+    // 26.6. Terminate app before finishing test to prevent interference with future runs
     info('Terminating Flutter app to clean up for future test runs...');
     try {
       await stopApp({
