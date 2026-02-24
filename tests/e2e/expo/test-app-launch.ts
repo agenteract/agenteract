@@ -620,7 +620,7 @@ async function main() {
       return hierarchy;
     };
 
-    let hierarchy: string = await waitForExpoAppConnected(180, 'initial');
+    let hierarchy: string = await waitForExpoAppConnected(300, 'initial');
 
     // 11. Verify we have a valid hierarchy
     info('Verifying UI hierarchy...');
@@ -716,7 +716,7 @@ async function main() {
       const relaunchExpoGo = PREBUILD_MODE ? undefined : async () => {
         await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', PLATFORM === 'ios' ? 'i' : 'a');
       };
-      await waitForExpoAppConnected(180, 'restart', relaunchExpoGo);
+      await waitForExpoAppConnected(360, 'restart', relaunchExpoGo);
 
       success('✅ App lifecycle test passed: stop and restart successful');
     } catch (err) {

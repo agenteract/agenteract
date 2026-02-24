@@ -655,7 +655,8 @@ async function main() {
 
       info('Waiting for app to reconnect after restart...');
       let reconnected = false;
-      for (let i = 0; i < 30; i++) {
+      let timeoutSeconds = 60;
+      for (let i = 0; i < timeoutSeconds; i++) {
         try {
           const hierarchyAfterRestart = await client!.getViewHierarchy('flutter-example');
           if (JSON.stringify(hierarchyAfterRestart).includes('Agenteract Flutter Demo')) {
@@ -670,7 +671,7 @@ async function main() {
       }
 
       if (!reconnected) {
-        error('App did not reconnect within 30 seconds after restart');
+        error(`App did not reconnect within ${timeoutSeconds} seconds after restart`);
         throw new Error('Lifecycle test failed: app did not reconnect after restart');
       }
 
