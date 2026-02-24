@@ -694,6 +694,14 @@ async function main() {
         });
         success('Expo Go stopped via lifecycle utility');
 
+        // Debug: confirm simulator is still booted after terminating Expo Go
+        try {
+          const simState = await runCommand('xcrun simctl list devices | grep -E "Booted|Shutdown" | head -20');
+          info(`Simulator state after stopApp:\n${simState}`);
+        } catch (simErr) {
+          info(`Could not query simulator state: ${simErr}`);
+        }
+
         try {
           const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
           error('Recent Expo dev logs:');
@@ -703,6 +711,16 @@ async function main() {
         }
       }
       await sleep(2000);
+
+      // Debug: log booted simulator state before restart so we can verify the
+      // already-booted simulator is still visible to xcrun simctl (and thus to
+      // Expo CLI's device-picker) at the point we send 'i'.
+      try {
+        const simState = await runCommand('xcrun simctl list devices | grep -E "Booted|Shutdown" | head -20');
+        info(`Simulator state before restart:\n${simState}`);
+      } catch (simErr) {
+        info(`Could not query simulator state: ${simErr}`);
+      }
 
       info('Restarting app using platform-agnostic lifecycle utility...');
       if (PREBUILD_MODE) {
@@ -716,7 +734,7 @@ async function main() {
         });
         success('Sent start command to prebuilt app');
       } else {
-        // Use the platform-agnostic start function which auto-detects Expo Go
+        // Expo Go: send 'i'/'a' keystroke to the running Expo CLI dev server
         await startApp({
           projectPath: exampleAppDir,
           device: testDevice,
@@ -729,8 +747,15 @@ async function main() {
       info('Waiting for app to reconnect after restart...');
       // Re-use the same connection-wait logic as the initial launch.
       // If Expo Go isn't running on every 5th ps-check, re-send the 'i'/'a' launch
-      // keystroke so we can detect and recover from cases where the command was lost.
+      // keystroke so we can recover from cases where the command was lost.
       const relaunchExpoGo = PREBUILD_MODE ? undefined : async () => {
+        // Debug: log simulator state each time we re-send to track any changes
+        try {
+          const simState = await runCommand('xcrun simctl list devices | grep -E "Booted|Shutdown" | head -20');
+          info(`Simulator state at relaunch attempt:\n${simState}`);
+        } catch (simErr) {
+          info(`Could not query simulator state: ${simErr}`);
+        }
         await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', PLATFORM === 'ios' ? 'i' : 'a');
       };
       await waitForExpoAppConnected(360, 'restart', relaunchExpoGo);
