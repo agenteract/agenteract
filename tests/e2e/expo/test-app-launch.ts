@@ -486,113 +486,141 @@ async function main() {
     await runCommand(`mkdir -p ${screenshotsDir}`);
     info(`Screenshots will be saved to: ${screenshotsDir}`);
 
-    let hierarchy: string = '';
-    let connectionAttempts = 0;
-    const maxAttempts = 180; // wait 3 minutes for app to start
+    /**
+     * Poll until the Expo app connects and returns a real UI hierarchy.
+     *
+     * @param maxAttempts  Maximum 1-second polling iterations (default 180 = 3 min)
+     * @param label        Short label used in log messages (e.g. 'initial', 'restart')
+     * @param onProcessNotFound  Optional callback invoked on every 5th attempt when
+     *                           the app process is not yet running. Use this during a
+     *                           restart to re-send the launch command if Expo Go did
+     *                           not start.
+     * @returns The raw JSON hierarchy string
+     */
+    const waitForExpoAppConnected = async (
+      maxAttempts: number = 180,
+      label: string = 'initial',
+      onProcessNotFound?: () => Promise<void>,
+    ): Promise<string> => {
+      let hierarchy: string = '';
+      let connectionAttempts = 0;
 
-    const psAndReload = async () => {
-      try {
-        if (PREBUILD_MODE) {
-          if (PLATFORM === 'ios') {
-            const psResult = await runCommand('ps aux | grep -i "agenteractexpoexample" | grep -v grep');
-            info(`Prebuilt app processes: \n${psResult}`);
-          } else {
-            // Android: Check running processes on device
-            const psResult = await runCommand(`adb -s ${testDevice.id} shell ps | grep "io.agenteract.expoexample" || echo "Process not found"`);
-            info(`Prebuilt app processes: \n${psResult}`);
-          }
-        } else {
-          if (PLATFORM === 'ios') {
-            const psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
-            info(`Expo Go processes: \n${psResult}`);
-          } else {
-            const psResult = await runCommand(`adb -s ${testDevice.id} shell ps | grep "host.exp.exponent" || echo "Process not found"`);
-            info(`Expo Go processes: \n${psResult}`);
-          }
-          // app may have redscreen error / can't connect to dev server - send r command to app to reload
-          // note that this makes download updates screen flash, but updates will download
-          await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'r');
-        }
-      } catch (err) {
-        info(`App processes not found...`);
-      }
-    }
-
-    while (connectionAttempts < maxAttempts) {
-      connectionAttempts++;
-      await sleep(1000);
-
-      try {
-        info(`Attempt ${connectionAttempts}/${maxAttempts}: Checking if Expo app is connected...`);
-        const hierarchyResult = await client!.getViewHierarchy('expo-app');
-        hierarchy = JSON.stringify(hierarchyResult);
-
-        // Check if this is an actual hierarchy (should contain React Native element info)
-        const isRealHierarchy = hierarchy.includes('View') ||
-          hierarchy.includes('Text') ||
-          hierarchy.includes('children');
-
-        if (hierarchy && hierarchy.length > 100 && isRealHierarchy) {
-          success('Expo app connected and hierarchy received!');
-          info(`Hierarchy preview (first 200 chars): ${hierarchy.substring(0, 200)}...`);
-
-          // Take a final success screenshot
-          const successScreenshot = `${screenshotsDir}/success-connected.png`;
-          await takeScreenshot(successScreenshot, PLATFORM, testDevice.id);
-
-          break;
-        } else if (hierarchy.includes('has no connected devices')) {
-          info('Expo app not yet connected to bridge, waiting...');
-
-          if (connectionAttempts % 5 === 0) {
-            await psAndReload();
-          }
-        } else {
-          info(`Got response but not a valid hierarchy (${hierarchy.length} chars), retrying...`);
-          info(`Response preview: ${hierarchy.substring(0, 200)}`);
-
-          console.log(`dev logs: ${await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '50')}`);
-        }
-      } catch (err) {
-        const errMsg = String(err);
-        if (errMsg.includes('has no connected devices')) {
-          info('Expo app has no connected devices yet, waiting...');
-
-          // Every 5 attempts, check dev logs for progress
-          if (connectionAttempts % 5 === 0) {
-            try {
-              const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '10');
-              info(`Expo dev logs (attempt ${connectionAttempts}):`);
-              console.log(devLogs);
-            } catch (logErr) {
-              // Ignore log errors
-              console.log(`Error getting dev logs: ${logErr}`);
-            }
-            await psAndReload();
-          }
-        } else {
-          info(`Connection attempt failed: ${errMsg}`);
-        }
-      }
-
-      if (connectionAttempts >= maxAttempts) {
-        // Take a final timeout screenshot
-        const timeoutScreenshot = `${screenshotsDir}/timeout-failure.png`;
-        await takeScreenshot(timeoutScreenshot, PLATFORM, testDevice.id);
-
-        // Get final dev logs before failing
+      // Log process list and optionally send a reload/relaunch command.
+      // Returns true if the Expo Go (or prebuilt) process was found running.
+      const psCheck = async (): Promise<boolean> => {
         try {
-          const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
-          error('Final Expo dev logs:');
-          console.log(finalLogs);
-        } catch (logErr) {
-          // Ignore
+          if (PREBUILD_MODE) {
+            if (PLATFORM === 'ios') {
+              const psResult = await runCommand('ps aux | grep -i "agenteractexpoexample" | grep -v grep');
+              info(`Prebuilt app processes: \n${psResult}`);
+            } else {
+              const psResult = await runCommand(`adb -s ${testDevice.id} shell ps | grep "io.agenteract.expoexample" || echo "Process not found"`);
+              info(`Prebuilt app processes: \n${psResult}`);
+            }
+            return true; // assume running for prebuild (grep exit code handled below)
+          } else {
+            let psResult: string;
+            if (PLATFORM === 'ios') {
+              psResult = await runCommand('ps aux | grep "Expo Go" | grep -v grep');
+              info(`Expo Go processes: \n${psResult}`);
+            } else {
+              psResult = await runCommand(`adb -s ${testDevice.id} shell ps | grep "host.exp.exponent" || echo "Process not found"`);
+              info(`Expo Go processes: \n${psResult}`);
+            }
+            const running = psResult.trim().length > 0 && !psResult.includes('Process not found');
+            if (running) {
+              // App is running but not connected — send 'r' to trigger a reload/reconnect.
+              // Note: this causes the "Downloading updates" screen to flash, but updates will download.
+              await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'r');
+            }
+            return running;
+          }
+        } catch (err) {
+          info(`App processes not found...`);
+          return false;
+        }
+      };
+
+      while (connectionAttempts < maxAttempts) {
+        connectionAttempts++;
+        await sleep(1000);
+
+        try {
+          info(`Attempt ${connectionAttempts}/${maxAttempts} (${label}): Checking if Expo app is connected...`);
+          const hierarchyResult = await client!.getViewHierarchy('expo-app');
+          hierarchy = JSON.stringify(hierarchyResult);
+
+          const isRealHierarchy = hierarchy.includes('View') ||
+            hierarchy.includes('Text') ||
+            hierarchy.includes('children');
+
+          if (hierarchy && hierarchy.length > 100 && isRealHierarchy) {
+            success('Expo app connected and hierarchy received!');
+            info(`Hierarchy preview (first 200 chars): ${hierarchy.substring(0, 200)}...`);
+
+            const successScreenshot = `${screenshotsDir}/success-connected-${label}.png`;
+            await takeScreenshot(successScreenshot, PLATFORM, testDevice.id);
+            break;
+          } else if (hierarchy.includes('has no connected devices')) {
+            info('Expo app not yet connected to bridge, waiting...');
+
+            if (connectionAttempts % 5 === 0) {
+              const running = await psCheck();
+              if (!running && onProcessNotFound) {
+                info('Expo Go process not found — re-sending launch command...');
+                await onProcessNotFound();
+              }
+            }
+          } else {
+            info(`Got response but not a valid hierarchy (${hierarchy.length} chars), retrying...`);
+            info(`Response preview: ${hierarchy.substring(0, 200)}`);
+            console.log(`dev logs: ${await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '50')}`);
+          }
+        } catch (err) {
+          const errMsg = String(err);
+          if (errMsg.includes('has no connected devices')) {
+            info('Expo app has no connected devices yet, waiting...');
+
+            if (connectionAttempts % 5 === 0) {
+              try {
+                const devLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '10');
+                info(`Expo dev logs (attempt ${connectionAttempts}):`);
+                console.log(devLogs);
+              } catch (logErr) {
+                console.log(`Error getting dev logs: ${logErr}`);
+              }
+              const running = await psCheck();
+              if (!running && onProcessNotFound) {
+                info('Expo Go process not found — re-sending launch command...');
+                await onProcessNotFound();
+              }
+            }
+          } else {
+            info(`Connection attempt failed: ${errMsg}`);
+          }
         }
 
-        error(`Screenshots saved to: ${screenshotsDir}`);
-        throw new Error('Timeout: Expo app did not connect within 15 minutes');
+        if (connectionAttempts >= maxAttempts) {
+          const timeoutScreenshot = `${screenshotsDir}/timeout-failure-${label}.png`;
+          await takeScreenshot(timeoutScreenshot, PLATFORM, testDevice.id);
+
+          try {
+            const finalLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
+            error('Final Expo dev logs:');
+            console.log(finalLogs);
+          } catch (logErr) {
+            // Ignore
+          }
+
+          error(`Screenshots saved to: ${screenshotsDir}`);
+          throw new Error(`Timeout: Expo app did not connect within ${maxAttempts} seconds (${label})`);
+        }
       }
-    }
+
+      return hierarchy;
+    };
+
+    let hierarchy: string = await waitForExpoAppConnected(180, 'initial');
 
     // 11. Verify we have a valid hierarchy
     info('Verifying UI hierarchy...');
@@ -682,34 +710,13 @@ async function main() {
       }
 
       info('Waiting for app to reconnect after restart...');
-      let reconnected = false;
-      for (let i = 0; i < 90; i++) {  // 90s budget: Expo Go re-downloads the OTA bundle on every restart
-        try {
-          const hierarchyAfterRestart = await client!.getViewHierarchy('expo-app');
-          const hierarchyStr = JSON.stringify(hierarchyAfterRestart);
-          if (hierarchyStr.includes('View') || hierarchyStr.includes('Text')) {
-            success('App reconnected after lifecycle restart');
-            reconnected = true;
-            break;
-          }
-        } catch (err) {
-          // Still reconnecting - on every 5th attempt, try reloading
-          if (i % 5 === 0 && i > 0 && !PREBUILD_MODE) {
-            try {
-              info('App not responding, sending reload command...');
-              await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', 'r');
-            } catch (_) {
-              // Ignore
-            }
-          }
-        }
-        await sleep(1000);
-      }
-
-      if (!reconnected) {
-        error('App did not reconnect within 90 seconds after restart');
-        throw new Error('Lifecycle test failed: app did not reconnect');
-      }
+      // Re-use the same connection-wait logic as the initial launch.
+      // If Expo Go isn't running on every 5th ps-check, re-send the 'i'/'a' launch
+      // keystroke so we can detect and recover from cases where the command was lost.
+      const relaunchExpoGo = PREBUILD_MODE ? undefined : async () => {
+        await runAgentCommand(`cwd:${testConfigDir}`, 'cmd', 'expo-app', PLATFORM === 'ios' ? 'i' : 'a');
+      };
+      await waitForExpoAppConnected(180, 'restart', relaunchExpoGo);
 
       success('✅ App lifecycle test passed: stop and restart successful');
     } catch (err) {

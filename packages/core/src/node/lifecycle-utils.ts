@@ -823,6 +823,10 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
       }
     }
   } catch (configError: any) {
+    // Re-throw PTY restart errors — these are not config discovery failures and should not fall through
+    if (configError.message?.startsWith('PTY restart')) {
+      throw configError;
+    }
     // Config discovery failed - not a fatal error, just means we can't use PTY restart
     console.log(`ℹ️  Could not discover config (${configError.message}), using direct platform launch`);
   }
