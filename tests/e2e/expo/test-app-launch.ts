@@ -564,6 +564,15 @@ async function main() {
           } else if (hierarchy.includes('has no connected devices')) {
             info('Expo app not yet connected to bridge, waiting...');
 
+
+            try {
+              const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
+              error(`Recent Expo dev logs (${label}):`);
+              console.log(logs);
+            } catch (logErr) {
+              // Ignore
+            }
+
             if (connectionAttempts % 5 === 0) {
               const running = await psCheck();
               if (!running && onProcessNotFound) {
@@ -684,6 +693,14 @@ async function main() {
           bundleId: expoGoBundleId
         });
         success('Expo Go stopped via lifecycle utility');
+
+        try {
+          const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'dev-logs', 'expo-app', '--since', '100');
+          error('Recent Expo dev logs:');
+          console.log(logs);
+        } catch (logErr) {
+          // Ignore
+        }
       }
       await sleep(2000);
 
