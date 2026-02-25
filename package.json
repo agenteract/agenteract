@@ -39,6 +39,7 @@
     "prerelease:list:json": "tsx scripts/list-prerelease-versions.ts --json",
     "prerelease:list:package-json": "tsx scripts/list-prerelease-versions.ts --package-json",
     "version:check": "tsx scripts/check-package-versions.ts",
+    "version:pending": "tsx scripts/pending-versions.ts",
     "version:patch": "tsx scripts/version.ts patch",
     "version:minor": "tsx scripts/version.ts minor",
     "version:major": "tsx scripts/version.ts major",
