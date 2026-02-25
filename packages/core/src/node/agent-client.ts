@@ -1,4 +1,15 @@
 import { WebSocket } from 'ws';
+import {
+  HierarchyNode,
+  NodeMatch,
+  getAllTexts,
+  getAllTestIDs,
+  findByText,
+  findByName,
+  findByTestID,
+  getPathToTestID,
+  dumpTree,
+} from '../filtering.js';
 
 export interface AgentCommand {
   action: string;
@@ -62,7 +73,7 @@ export class AgentClient {
 
   disconnect() {
     if (this.ws) {
-        this.ws.close();
+        this.ws.terminate();
         this.ws = null;
     }
   }
@@ -120,12 +131,14 @@ export class AgentClient {
           return;
       }
       
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
           reject(new Error(`Command ${action} timed out after ${timeoutMs}ms`));
         }
       }, timeoutMs);
+      // Don't let this timer prevent the process from exiting naturally
+      timer.unref();
     });
   }
 
@@ -153,6 +166,87 @@ export class AgentClient {
 
   async getViewHierarchy(project: string): Promise<any> {
     return this.sendCommand(project, 'getViewHierarchy');
+  }
+
+  // --- Hierarchy Filtering ---
+
+  /**
+   * Fetch the view hierarchy and return a `HierarchyNode` root, or null if unavailable.
+   */
+  async getHierarchyRoot(project: string): Promise<HierarchyNode | null> {
+    const response = await this.getViewHierarchy(project);
+    return (response?.hierarchy as HierarchyNode) ?? null;
+  }
+
+  /**
+   * Return all non-empty text values visible in the current view hierarchy.
+   * Excludes noise strings like "[object Object]" and pure numbers by default.
+   */
+  async getTexts(
+    project: string,
+    options: { includeNumbers?: boolean; includeObjectStrings?: boolean } = {},
+  ): Promise<string[]> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return [];
+    return getAllTexts(root, options);
+  }
+
+  /**
+   * Return all testIDs present in the current view hierarchy (deduped, sorted).
+   */
+  async getTestIDs(project: string): Promise<string[]> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return [];
+    return getAllTestIDs(root);
+  }
+
+  /**
+   * Find all nodes whose `text` property matches `pattern` in the current view hierarchy.
+   */
+  async findNodesByText(project: string, pattern: string | RegExp): Promise<NodeMatch[]> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return [];
+    return findByText(pattern, root);
+  }
+
+  /**
+   * Find all nodes whose component `name` matches `pattern` in the current view hierarchy.
+   */
+  async findNodesByName(project: string, pattern: string | RegExp): Promise<NodeMatch[]> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return [];
+    return findByName(pattern, root);
+  }
+
+  /**
+   * Find the first node with the given `testID` in the current view hierarchy.
+   * Returns a `NodeMatch` (node + breadcrumb path + depth) or null if not found.
+   */
+  async findNodeByTestID(project: string, testID: string): Promise<NodeMatch | null> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return null;
+    return findByTestID(testID, root);
+  }
+
+  /**
+   * Return the breadcrumb path from the root to the node with the given `testID`,
+   * e.g. "App > HomeScreen > FlatList > Pressable".
+   * Returns null if not found.
+   */
+  async getPathToTestID(project: string, testID: string): Promise<string | null> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return null;
+    return getPathToTestID(testID, root);
+  }
+
+  /**
+   * Pretty-print the current view hierarchy as an indented tree string,
+   * showing component name, testID, and text at each level.
+   */
+  async dumpTree(project: string): Promise<string> {
+    const root = await this.getHierarchyRoot(project);
+    if (!root) return '(no hierarchy)';
+    return dumpTree(root);
   }
 
   async agentLink(project: string, url: string): Promise<any> {
