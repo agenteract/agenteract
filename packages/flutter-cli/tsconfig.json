@@ -4,6 +4,7 @@
   "include": ["src"],
   "compilerOptions": {
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true,
     "composite": true,
     "tsBuildInfoFile": ".tsbuildinfo"

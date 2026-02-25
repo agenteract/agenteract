@@ -23,16 +23,20 @@ export default {
       name: 'expo-app',
       // The path to the app's root directory, relative to this config file.
       path: './examples/expo-example',
-      // The type of project. Can be 'expo', 'vite', or 'auto'.
-      type: 'expo',
-      // The port for this app's dev server PTY bridge.
-      ptyPort: 8790,
+      // The dev server configuration.
+      devServer: {
+        command: 'npx expo start --ios --localhost',
+        port: 8790
+      },
+      scheme: 'exp'
     },
     {
       name: 'react-app',
       path: './examples/react-example',
-      type: 'vite',
-      ptyPort: 8791,
+      devServer: {
+        command: 'npm run dev',
+        port: 8791
+      }
     },
     {
       name: 'swift-app',
@@ -47,8 +51,10 @@ export default {
     {
       name: 'flutter-app',
       path: './examples/flutter_example',
-      type: 'flutter',
-      ptyPort: 8792,
+      devServer: {
+        command: 'flutter run',
+        port: 8792
+      }
     }
   ],
 };

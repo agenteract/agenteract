@@ -287,6 +287,24 @@ export async function runDevCommand(args: { config: string }) {
             continue;
           }
 
+          // Handle PTY restart requests from the agent-server
+          if (cmdInfo.name === 'agent-server' && line.startsWith('RESTART_PTY::')) {
+            try {
+              const restartData = JSON.parse(line.substring(13));
+              const targetTerminal = terminals.find(t => t.name === restartData.project);
+              if (targetTerminal && targetTerminal.canRestart) {
+                // Only restart if not already running
+                if (!targetTerminal.ptyProcess || targetTerminal.hasExited) {
+                  restartTerminal(targetTerminal);
+                }
+              }
+            } catch (e) {
+              // Failed to parse, ignore
+            }
+            // Skip to next line after handling restart request
+            continue;
+          }
+
           // todo(mribbons): use proper ansi code parsing for background tabs
           // For buffering: skip lines that are likely spinner/progress bar updates
           // These contain ANSI escape codes for cursor movement or carriage returns

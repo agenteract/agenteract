@@ -17,6 +17,19 @@ import {
   type AgenteractConfig
 } from './config.js';
 
+        
+import {
+  detectPlatform,
+  resolveBundleInfo,
+  getDefaultDeviceInfo,
+  listDevices,
+  performSetup,
+  buildApp,
+  setDefaultDevice,
+  startApp,
+  stopApp,
+} from '@agenteract/core/node';
+
 // Cache for loaded config
 let cachedConfig: AgenteractConfig | null = null;
 
@@ -800,11 +813,364 @@ yargs(hideBin(process.argv))
     },
     async (argv) => {
       try {
-        const { setDefaultDevice } = await import('@agenteract/core/node');
         await setDefaultDevice(argv.project, argv.deviceId);
         console.log(`✓ Set "${argv.deviceId}" as default device for project "${argv.project}"`);
       } catch (error: any) {
         console.error(`✗ Failed to set default device: ${error.message}`);
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'agent-link <project> <url>',
+    'Send an agentLink URL to the app (for app state control, navigation, etc.)',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('url', {
+          describe: 'The agentLink URL (e.g., agenteract://reset_state or agenteract://navigate?screen=settings)',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('wait', {
+          alias: 'w',
+          type: 'number',
+          description: 'Milliseconds to wait before fetching logs',
+        })
+        .option('log-count', {
+          alias: 'l',
+          type: 'number',
+          description: 'Number of log entries to fetch',
+          default: 10,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device identifier (optional, uses default if not specified)',
+        });
+    },
+    async (argv) => {
+      try {
+        const { agentServerUrl } = await getServerUrls();
+        const requestBody: any = {
+          project: argv.project,
+          action: 'agentLink',
+          payload: argv.url,
+        };
+        if (argv.device) {
+          requestBody.device = argv.device;
+        }
+        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        console.log(JSON.stringify(response.data));
+
+        // Wait and fetch logs
+        const logs = await waitAndFetchLogs(agentServerUrl, argv.project, argv.wait, argv.logCount);
+        if (logs) {
+          console.log('\n--- Console Logs ---');
+          console.log(logs);
+        }
+      } catch (error) {
+        handleRequestError(error);
+      }
+    }
+  )
+  .command(
+    'start-app <project>',
+    'Launch an app on a device or simulator',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Platform filter (for multi-platform projects)',
+        })
+        .option('headless', {
+          type: 'boolean',
+          description: 'Run in headless mode (for web apps)',
+          default: true,
+        })
+        .option('prebuild', {
+          type: 'boolean',
+          description: 'Use prebuild intead of Expo Go',
+          default: false
+        })
+        .option('launch-only', {
+          type: 'boolean',
+          description: 'Launch the app without building or installing (skip build/install steps)',
+          default: false,
+        });
+    },
+    async (argv) => {
+      try {
+        // Load config to get project path
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        
+        // Resolve device
+        let device = null;
+        if (argv.device) {
+          // Use specified device
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device) || null;
+          if (!device) {
+            console.error(`Device "${argv.device}" not found`);
+            process.exit(1);
+          }
+        } else {
+          // Get default device (required for mobile apps)
+          const projectType = await detectPlatform(projectPath);
+          if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
+            device = await getDefaultDeviceInfo(argv.project);
+            if (!device) {
+              console.error(`No default device set for project "${argv.project}"`);
+              console.error('Set a default device with: agenteract-agents set-current-device <project> <deviceId>');
+              process.exit(1);
+            }
+          }
+        }
+        
+        // Filter by platform if specified
+        if (argv.platform && device && device.type !== argv.platform) {
+          console.error(`Device "${device.name}" is ${device.type}, but platform filter is ${argv.platform}`);
+          process.exit(1);
+        }
+        
+        console.log(`Launching ${argv.project}...`);
+        if (device) {
+          console.log(`  Device: ${device.name} (${device.id})`);
+        }
+        
+        // Call unified startApp() from core
+        // It will automatically:
+        // - Check for dev server (PTY) and use HTTP restart if available
+        // - Fall back to direct platform launch if needed
+        // - Handle all project types (Expo, Flutter, Swift, etc.)
+        await startApp({
+          projectPath,
+          device: device || 'desktop',
+          projectName: argv.project,
+          projectConfig: project,
+          prebuild: argv.prebuild as boolean,
+          launchOnly: argv['launch-only'] as boolean,
+        });
+        
+        console.log('✓ App launched successfully');
+      } catch (error) {
+        console.error('✗ Failed to launch app:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'stop-app <project>',
+    'Stop a running app',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('force', {
+          alias: 'f',
+          type: 'boolean',
+          description: 'Force stop/kill the app',
+          default: false,
+        })
+        .option('prebuild', {
+          type: 'boolean',
+          description: 'Use prebuild intead of Expo Go',
+          default: false
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+
+        // Resolve device (same logic as start-app so the type is correct)
+        let device: Awaited<ReturnType<typeof listDevices>>[number] | undefined;
+        if (argv.device) {
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device);
+          if (!device) {
+            console.error(`Device "${argv.device}" not found`);
+            process.exit(1);
+          }
+        }
+        
+        console.log(`Stopping ${argv.project}...`);
+        
+        await stopApp({
+          projectPath,
+          device,
+          projectName: argv.project,
+          projectConfig: project,
+          force: argv.force,
+        });
+        
+        console.log('✓ App stopped successfully');
+      } catch (error) {
+        console.error('✗ Failed to stop app:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'build <project>',
+    'Build an app',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Target platform (for multi-platform projects)',
+        })
+        .option('config', {
+          alias: 'c',
+          type: 'string',
+          description: 'Build configuration (debug, release, or custom)',
+          default: 'debug',
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const projectType = await detectPlatform(projectPath);
+        
+        console.log(`Building ${argv.project} (${projectType})...`);
+        
+        await buildApp(projectPath, projectType, {
+          configuration: argv.config,
+          platform: argv.platform as 'ios' | 'android' | undefined,
+        });
+        
+        console.log('✓ Build completed successfully');
+      } catch (error) {
+        console.error('✗ Build failed:', error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    }
+  )
+  .command(
+    'setup <project> <action>',
+    'Perform app setup operations (install, reinstall, clearData)',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('action', {
+          describe: 'Setup action',
+          type: 'string',
+          choices: ['install', 'reinstall', 'clearData'],
+          demandOption: true,
+        })
+        .option('device', {
+          alias: 'd',
+          type: 'string',
+          description: 'Device ID (uses default device if not specified)',
+        })
+        .option('platform', {
+          alias: 'p',
+          type: 'string',
+          choices: ['ios', 'android'],
+          description: 'Platform filter',
+        });
+    },
+    async (argv) => {
+      try {
+        const config = await getConfig();
+        const project = config.projects.find(p => p.name === argv.project);
+        
+        if (!project) {
+          console.error(`Project "${argv.project}" not found in config`);
+          process.exit(1);
+        }
+        
+        const projectPath = path.resolve(process.cwd(), project.path);
+        const projectType = await detectPlatform(projectPath);
+        
+        // Resolve device
+        let device = null;
+        if (argv.device) {
+          const allDevices = [
+            ...(await listDevices('ios').catch(() => [])),
+            ...(await listDevices('android').catch(() => [])),
+          ];
+          device = allDevices.find(d => d.id === argv.device) || null;
+        } else if (projectType !== 'vite' && projectType !== 'kmp-desktop') {
+          device = await getDefaultDeviceInfo(argv.project);
+        }
+        
+        const bundleInfo = await resolveBundleInfo(projectPath, projectType, project.lifecycle, project.scheme);
+        
+        console.log(`Performing ${argv.action} for ${argv.project}...`);
+        
+        await performSetup(projectPath, projectType, device, bundleInfo, {
+          action: argv.action as 'install' | 'reinstall' | 'clearData',
+          platform: argv.platform as 'ios' | 'android' | undefined,
+        });
+        
+        console.log(`✓ ${argv.action} completed successfully`);
+      } catch (error) {
+        console.error(`✗ ${argv.action} failed:`, error instanceof Error ? error.message : String(error));
         process.exit(1);
       }
     }

@@ -6,8 +6,38 @@ void main() {
   runApp(const MyApp());
 }
 
+// Global notifier for reset events
+final _resetNotifier = ValueNotifier<int>(0);
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  // Handle agent links from Agenteract
+  Future<bool> _handleAgentLink(String url) async {
+    debugPrint('[MyApp] Agent link received: $url');
+    try {
+      final uri = Uri.parse(url);
+      debugPrint(
+          '[MyApp] Parsed URI: scheme=${uri.scheme}, host=${uri.host}, path=${uri.path}');
+
+      // Handle agentLink routes by hostname
+      // For example: agenteract://reset_state
+      if (uri.host == 'reset_state') {
+        debugPrint('[MyApp] Resetting app state via agent link');
+        debugPrint('App state cleared');
+        // Signal MyHomePage to reset (we'll use a ValueNotifier for this)
+        _resetNotifier.value = DateTime.now().millisecondsSinceEpoch;
+        return true;
+      }
+
+      debugPrint('[MyApp] Agent link not handled by app');
+      // Let AgentDebugBridge handle other links (like config)
+      return false;
+    } catch (e) {
+      debugPrint('[MyApp] Error handling agent link: $e');
+      return false;
+    }
+  }
 
   // This widget is the root of your application.
   @override
@@ -32,6 +62,7 @@ class MyApp extends StatelessWidget {
     if (kDebugMode) {
       return AgentDebugBridge(
         projectName: 'flutter-example',
+        onAgentLink: _handleAgentLink,
         child: app,
       );
     }
@@ -72,10 +103,18 @@ class _MyHomePageState extends State<MyHomePage> {
     // Track scroll position for agent commands
     _horizontalScrollController.trackForAgent('horizontal-scroll');
     _verticalScrollController.trackForAgent('main-list');
+
+    // Listen for reset events from agent links
+    _resetNotifier.addListener(_onReset);
+  }
+
+  void _onReset() {
+    _resetAll();
   }
 
   @override
   void dispose() {
+    _resetNotifier.removeListener(_onReset);
     _textController.dispose();
     _horizontalScrollController.dispose();
     _verticalScrollController.dispose();

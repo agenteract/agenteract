@@ -119,6 +119,9 @@ jobs:
         run: |
           echo "=== Collecting diagnostic information ==="
           
+          # Always create diagnostics directory first
+          mkdir -p flutter-diagnostics
+          
           # Use saved directory path or find it
           if [ -z "$FLUTTER_APP_DIR" ]; then
             FLUTTER_APP_DIR=$(find /tmp -maxdepth 2 -type d -name "agenteract-e2e-flutter-app-*" 2>/dev/null | head -1)
@@ -126,9 +129,6 @@ jobs:
           
           if [ -n "$FLUTTER_APP_DIR" ]; then
             echo "Found Flutter app directory: $FLUTTER_APP_DIR"
-            
-            # Create diagnostics directory
-            mkdir -p flutter-diagnostics
             
             # Save directory structure
             echo "=== iOS directory structure ===" > flutter-diagnostics/ios-structure.txt
@@ -199,27 +199,6 @@ jobs:
             flutter-diagnostics/
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Upload Flutter app directory for local diagnosis
-        if: failure() && steps.flutter-dir.outputs.directory != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-flutter-app-directory
-          path: ${{ steps.flutter-dir.outputs.directory }}
-          retention-days: 7
-          if-no-files-found: ignore
-          compression-level: 6
-
-      - name: Upload Flutter app directory (fallback glob)
-        if: failure() && steps.flutter-dir.outputs.directory == ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-flutter-app-directory-fallback
-          path: |
-            /tmp/agenteract-e2e-flutter-app-*/
-          retention-days: 7
-          if-no-files-found: ignore
-          compression-level: 6
 
       - name: Cleanup
         if: always()

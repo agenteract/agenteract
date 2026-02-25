@@ -7,8 +7,10 @@ import { v4 as uuidv4 } from 'uuid';
 import express from 'express';
 import url from 'url';
 import { spawn, ChildProcess } from 'child_process';
+import axios from 'axios';
 
-import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary } from '@agenteract/core/node';
+import { generateAuthToken, saveRuntimeConfig, loadRuntimeConfig, DeviceInfoSummary, startApp, stopApp, detectPlatform, loadConfig } from '@agenteract/core/node';
+import type { Browser } from 'puppeteer';
 
 const isLogServer = process.argv.includes('--log-only');
 
@@ -78,7 +80,9 @@ if (isLogServer) {
     const app = express();
     app.use(express.json());
 
-    const pendingRequests = new Map<string, http.ServerResponse>();
+    type PendingRequest = { type: 'http'; res: http.ServerResponse } | { type: 'ws'; socket: WebSocket };
+    const pendingRequests = new Map<string, PendingRequest>();
+    const subscribedAgents = new Map<string, Set<WebSocket>>();
 
     // Mask token for logging - show only last 4 chars
     function maskToken(token: string): string {
@@ -142,8 +146,13 @@ if (isLogServer) {
 
         // If no device specified, try to use default
         if (!targetDeviceId) {
-            const config = await loadRuntimeConfig();
-            targetDeviceId = config?.defaultDevices?.[projectName];
+            // Check in-memory map first (no disk I/O, no race condition)
+            targetDeviceId = defaultDevices.get(projectName);
+            if (!targetDeviceId) {
+                // Fall back to disk (e.g. server restarted but app still connected)
+                const config = await loadRuntimeConfig();
+                targetDeviceId = config?.defaultDevices?.[projectName];
+            }
         }
 
         // Build connection key and check if device is actually connected
@@ -203,6 +212,10 @@ if (isLogServer) {
     const WS_PORT = 8765;
     // Use a Map to store connections and device info, keyed by project:device
     const projectConnections = new Map<string, ProjectConnection>();
+
+    // In-memory default device per project — updated immediately on new connection,
+    // so resolveDeviceConnection never races against the async disk write
+    const defaultDevices = new Map<string, string>();
 
     // Track pending device info for connections that haven't sent deviceInfo yet
     const pendingDeviceInfo = new Map<string, WebSocket>();
@@ -277,10 +290,14 @@ if (isLogServer) {
             }
 
             // Always save to ensure the file exists and is up to date
+            // Preserve existing defaultDevices and knownDevices so a server restart
+            // doesn't forget which device was the default for each project
             await saveRuntimeConfig({
                 host: '0.0.0.0',
                 port: WS_PORT,
-                token: AUTH_TOKEN
+                token: AUTH_TOKEN,
+                defaultDevices: existingConfig?.defaultDevices,
+                knownDevices: existingConfig?.knownDevices,
             });
 
         } catch (e) {
@@ -297,6 +314,70 @@ if (isLogServer) {
 
         wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
             const parsedUrl = url.parse(req.url || '', true);
+            const role = parsedUrl.query.role as string;
+
+            if (role === 'agent') {
+                console.log(`[Agent] Connected from ${req.socket.remoteAddress}`);
+
+                ws.on('message', async (message: Buffer) => {
+                    try {
+                        const data = JSON.parse(message.toString());
+
+                        if (data.action === 'subscribeLogs') {
+                            const projectToSubscribe = data.project;
+                            if (projectToSubscribe) {
+                                if (!subscribedAgents.has(projectToSubscribe)) {
+                                    subscribedAgents.set(projectToSubscribe, new Set());
+                                }
+                                subscribedAgents.get(projectToSubscribe)!.add(ws);
+                                console.log(`[Agent] Subscribed to logs for ${projectToSubscribe}`);
+                                ws.send(JSON.stringify({ id: data.id, status: 'subscribed', project: projectToSubscribe }));
+                            }
+                        } else if (data.project) {
+                             // Forward command to app
+                             const projectTarget = data.project;
+                             const requestedDevice = data.device;
+                             
+                             // Resolve device connection
+                             const result = await resolveDeviceConnection(projectTarget, requestedDevice);
+                             if ('error' in result) {
+                                 ws.send(JSON.stringify({
+                                     id: data.id,
+                                     error: result.error,
+                                     status: result.status
+                                 }));
+                                 return;
+                             }
+
+                             const { connection } = result;
+                             
+                             // Ensure ID exists
+                             if (!data.id) data.id = uuidv4();
+                             
+                             // Forward the whole message (excluding project/device if needed, but app might ignore extra fields)
+                             connection.socket.send(JSON.stringify(data));
+                             
+                             // Track pending request to forward response back to agent
+                             pendingRequests.set(data.id, { type: 'ws', socket: ws });
+                        }
+                    } catch (e) {
+                        console.error('[Agent] Error handling message:', e);
+                    }
+                });
+
+                ws.on('close', () => {
+                    console.log(`[Agent] Disconnected`);
+                    // Remove from all subscriptions
+                    for (const [project, agents] of subscribedAgents.entries()) {
+                        if (agents.has(ws)) {
+                            agents.delete(ws);
+                        }
+                    }
+                });
+
+                return;
+            }
+
             const projectName = parsedUrl.pathname?.substring(1);
             const clientToken = parsedUrl.query.token as string;
             const clientDeviceId = parsedUrl.query.deviceId as string;
@@ -331,13 +412,10 @@ if (isLogServer) {
 
             if (isLocalhost && !clientToken) {
                 log(`Project "${projectName}" connected from localhost (no token required).`);
-                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket from localhost`);
             } else if (isLocalhost && clientToken === AUTH_TOKEN) {
                 log(`Project "${projectName}" connected from localhost with valid token.`);
-                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket from localhost with token`);
             } else {
                 log(`Project "${projectName}" connected with valid token.`);
-                console.log(`[DEBUG] Project "${projectName}" connected via WebSocket with authentication`);
             }
 
             console.log(`  Remote address: ${remoteAddress}`);
@@ -369,6 +447,9 @@ if (isLogServer) {
                 deviceInfo: existingConnection?.deviceInfo
             });
 
+            // Update in-memory default immediately (synchronous — no disk race)
+            defaultDevices.set(projectName, deviceId);
+
             console.log(`[Device] Registered: ${connectionKey}`);
 
             // Send device ID to client so it can store it
@@ -381,7 +462,8 @@ if (isLogServer) {
                 ws.send(JSON.stringify(welcomeMessage));
             }
 
-            // Set as default device for this project (will be updated if device info arrives)
+            // Set as default device for this project (always update — a new connection
+            // means the app just (re)launched, so this is always the freshest device)
             (async () => {
                 try {
                     const config = await loadRuntimeConfig();
@@ -389,12 +471,9 @@ if (isLogServer) {
                         if (!config.defaultDevices) {
                             config.defaultDevices = {};
                         }
-                        // Only set if no default exists yet (don't override user's choice)
-                        if (!config.defaultDevices[projectName]) {
-                            config.defaultDevices[projectName] = deviceId;
-                            await saveRuntimeConfig(config);
-                            console.log(`[Device] Set "${deviceId}" as default for project "${projectName}"`);
-                        }
+                        config.defaultDevices[projectName] = deviceId;
+                        await saveRuntimeConfig(config);
+                        console.log(`[Device] Set "${deviceId}" as default for project "${projectName}"`);
                     }
                 } catch (e) {
                     console.error('[Device] Failed to set default device:', e);
@@ -405,7 +484,6 @@ if (isLogServer) {
             pendingDeviceInfo.set(projectName, ws);
 
             ws.on('message', (message: Buffer) => {
-                console.log(`[DEBUG] Received raw message from "${projectName}": ${message.toString()}`);
                 log(`Received message from "${projectName}": ${message.toString()}`);
                 try {
                     const response = JSON.parse(message.toString());
@@ -452,6 +530,21 @@ if (isLogServer) {
 
                     // Check if this is a streaming log message
                     if (response.status === 'log' && response.logs) {
+                        // Forward to subscribed agents
+                        if (subscribedAgents.has(projectName)) {
+                            const agents = subscribedAgents.get(projectName)!;
+                            const agentMessage = JSON.stringify({
+                                type: 'log',
+                                project: projectName,
+                                logs: response.logs
+                            });
+                            for (const agent of agents) {
+                                if (agent.readyState === WebSocket.OPEN) {
+                                    agent.send(agentMessage);
+                                }
+                            }
+                        }
+
                         // Print streaming logs to stdout (shows in dev command)
                         response.logs.forEach((logEntry: any) => {
                             const logPayload = {
@@ -465,13 +558,21 @@ if (isLogServer) {
 
                     // Handle command responses
                     if (response.id && pendingRequests.has(response.id)) {
-                        console.log(`[DEBUG] Received response from ${projectName}, id: ${response.id}, status: ${response.status}`);
-                        const res = pendingRequests.get(response.id)!;
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify(response));
+                        const pending = pendingRequests.get(response.id)!;
+                        
+                        if (pending.type === 'http') {
+                            pending.res.writeHead(200, { 'Content-Type': 'application/json' });
+                            pending.res.end(JSON.stringify(response));
+                        } else if (pending.type === 'ws') {
+                            if (pending.socket.readyState === WebSocket.OPEN) {
+                                pending.socket.send(JSON.stringify({
+                                    type: 'response',
+                                    payload: response
+                                }));
+                            }
+                        }
+                        
                         pendingRequests.delete(response.id);
-                    } else if (response.id) {
-                        console.log(`[DEBUG] Received response with unknown id: ${response.id} from ${projectName}`);
                     }
                 } catch (e) {
                     log(`Error parsing message from app: ${e}`);
@@ -487,6 +588,7 @@ if (isLogServer) {
                 }
 
                 // Remove from socket tracking
+                const closingDeviceId = socketToDeviceId.get(ws);
                 socketToDeviceId.delete(ws);
 
                 // Find and remove from projectConnections
@@ -496,6 +598,12 @@ if (isLogServer) {
                         console.log(`[Device] Disconnected: ${key}`);
                         break;
                     }
+                }
+
+                // Clear in-memory default if it points to the disconnected device
+                if (closingDeviceId && defaultDevices.get(projectName) === closingDeviceId) {
+                    defaultDevices.delete(projectName);
+                    console.log(`[Device] Cleared in-memory default for "${projectName}" (device "${closingDeviceId}" disconnected)`);
                 }
             });
 
@@ -522,6 +630,9 @@ if (isLogServer) {
 
         // --- HTTP Server (for the Agent) ---
         const HTTP_PORT = args.port;
+        
+        // Track browser instances for web apps (key: projectName)
+        const browserInstances: Map<string, Browser> = new Map();
 
         // Update runtime config with HTTP port
         try {
@@ -563,7 +674,7 @@ if (isLogServer) {
             command.id = id;
             connection.socket.send(JSON.stringify(command));
 
-            pendingRequests.set(id, res);
+            pendingRequests.set(id, { type: 'http', res });
 
             setTimeout(() => {
                 if (pendingRequests.has(id)) {
@@ -598,15 +709,13 @@ if (isLogServer) {
             // Use simctl as fallback if the app doesn't respond
             const id = uuidv4();
             const command = { action: 'getConsoleLogs', id };
-            console.log(`[DEBUG] Requesting logs from ${connectionKey} via WebSocket, id: ${id}`);
             connection.socket.send(JSON.stringify(command));
 
-            pendingRequests.set(id, res);
+            pendingRequests.set(id, { type: 'http', res });
 
             setTimeout(async () => {
                 if (pendingRequests.has(id)) {
                     // Timeout waiting for app response, try simctl as fallback for simulators
-                    console.log(`[DEBUG] Timeout waiting for logs from ${connectionKey}, id: ${id}`);
                     pendingRequests.delete(id);
 
                     if (connection.deviceInfo?.isSimulator && connection.deviceInfo.deviceId) {
@@ -668,6 +777,213 @@ if (isLogServer) {
                 defaultDevice: defaultDeviceId,
                 totalConnected: devices.length
             });
+        });
+
+        app.post('/start-app', async (req, res) => {
+            const { projectName, deviceId, platform: requestedPlatform, prebuild } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({ error: 'projectName is required' });
+            }
+            
+            log(`Received launch request for project "${projectName}"${deviceId ? `, device "${deviceId}"` : ''}`);
+            
+            try {
+                // Load config to get project details
+                const config = await loadConfig(args.cwd);
+                const project = config.projects.find((p: any) => p.name === projectName);
+                
+                if (!project) {
+                    return res.status(404).json({ error: `Project "${projectName}" not found in config` });
+                }
+                
+                const projectPath = path.resolve(args.cwd, project.path || '.');
+                const projectType = await detectPlatform(projectPath);
+                
+                // Determine if this is a web app
+                const isWebApp = projectType === 'vite' || 
+                                project.devServer?.command?.includes('npm run dev') || 
+                                project.devServer?.command?.includes('vite');
+                
+                // Expo Go: send 'i' or 'a' keystroke directly to the PTY dev server
+                const isExpoGo = projectType === 'expo' && !prebuild;
+                if (isExpoGo) {
+                    if (!deviceId && !requestedPlatform) {
+                        return res.status(400).json({ error: 'deviceId or platform is required for Expo Go' });
+                    }
+                    if (!project.devServer?.port) {
+                        return res.status(400).json({ error: 'devServer.port is required in config for Expo Go' });
+                    }
+                    
+                    const platform = requestedPlatform || (deviceId ? 'ios' : undefined);
+                    const keystroke = platform === 'android' ? 'a' : 'i';
+                    const ptyUrl = `http://localhost:${project.devServer.port}`;
+                    
+                    log(`Sending '${keystroke}' to Expo PTY at ${ptyUrl}/cmd`);
+                    await axios.post(`${ptyUrl}/cmd`, { cmd: keystroke }, { timeout: 5000 });
+                    
+                    log(`Expo Go app "${projectName}" launched on ${platform}`);
+                    return res.json({ status: 'success', message: `Expo Go app "${projectName}" launched` });
+                }
+                
+                if (!isWebApp && !deviceId) {
+                    return res.status(400).json({ error: 'deviceId is required for mobile apps' });
+                }
+
+                // For Flutter (and any project with a devServer PTY), restart via the dev.ts multiplexer.
+                // The server process is a child of dev.ts; writing RESTART_PTY:: to stdout signals
+                // the multiplexer to respawn the PTY terminal for this project.
+                const isFlutter = projectType === 'flutter';
+                const hasPtyDevServer = !!(project.devServer?.port || project.ptyPort);
+
+                if ((isFlutter || hasPtyDevServer) && !isWebApp) {
+                    const normalizedProject = await import('@agenteract/core/node').then(m => m.normalizeProjectConfig(project, args.cwd));
+                    const ptyPort = normalizedProject.devServer?.port || normalizedProject.ptyPort;
+
+                    log(`Signalling dev.ts multiplexer to restart PTY for "${projectName}"...`);
+                    process.stdout.write('RESTART_PTY::' + JSON.stringify({ project: projectName }) + '\n');
+
+                    // For Flutter: wait for the device-selection prompt then send the device number
+                    if (isFlutter && ptyPort && deviceId) {
+                        // Poll PTY logs until device list appears, then send the selection
+                        const ptyUrl = `http://localhost:${ptyPort}`;
+                        const maxWaitMs = 60000;
+                        const pollIntervalMs = 1000;
+                        const start = Date.now();
+                        let selected = false;
+
+                        while (Date.now() - start < maxWaitMs) {
+                            await new Promise(r => setTimeout(r, pollIntervalMs));
+                            try {
+                                const logsRes = await axios.get(`${ptyUrl}/logs?since=50`, { timeout: 3000 });
+                                const lines: string[] = logsRes.data.lines || [];
+                                const allText = lines.join('\n');
+
+                                // Flutter shows numbered device list then prompts "Please choose one"
+                                if (allText.includes('Please choose one') || allText.includes('Please choose')) {
+                                    // Find which number corresponds to our deviceId
+                                    let deviceNumber: string | null = null;
+                                    for (const line of lines) {
+                                        const match = line.match(/^\[(\d+)\].*\(([^)]+)\)/);
+                                        if (match && match[2] === deviceId) {
+                                            deviceNumber = match[1];
+                                            break;
+                                        }
+                                    }
+
+                                    if (deviceNumber) {
+                                        log(`Flutter device selection: sending "${deviceNumber}" for device "${deviceId}"`);
+                                        await axios.post(`${ptyUrl}/cmd`, { cmd: deviceNumber }, { timeout: 3000 });
+                                    } else {
+                                        // Fallback: send '2' (typically the first iOS simulator)
+                                        log(`Could not match deviceId "${deviceId}" in Flutter device list, sending "2" as fallback`);
+                                        await axios.post(`${ptyUrl}/cmd`, { cmd: '2' }, { timeout: 3000 });
+                                    }
+                                    selected = true;
+                                    break;
+                                }
+                            } catch {
+                                // PTY not ready yet, keep polling
+                            }
+                        }
+
+                        if (!selected) {
+                            log(`Warning: Flutter device selection timed out after ${maxWaitMs}ms`);
+                        }
+                    }
+
+                    log(`PTY restart signalled for "${projectName}"`);
+                    return res.json({ status: 'success', message: `PTY restart signalled for "${projectName}"`, ptyWasRestarted: true });
+                }
+
+                // For web apps and native prebuild: call startApp directly
+                log(`Calling startApp() for "${projectName}"...`);
+                
+                const result = await startApp({
+                    projectPath,
+                    device: deviceId || 'desktop',
+                    projectName,
+                    projectConfig: project,
+                    skipPtyRestart: true, // We are the PTY restart handler — don't loop back
+                    prebuild: !!prebuild,
+                });
+                
+                // For web apps, store browser instance for later cleanup
+                if (isWebApp && result.browser) {
+                    browserInstances.set(projectName, result.browser);
+                }
+                
+                log(`App "${projectName}" started successfully`);
+                res.json({ status: 'success', message: `App "${projectName}" launched successfully` });
+                
+            } catch (error: any) {
+                log(`Launch error: ${error.message}`);
+                res.status(500).json({ error: 'Failed to launch app', details: error.message });
+            }
+        });
+        
+        app.post('/stop', async (req, res) => {
+            const { projectName, deviceId, force } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({ error: 'projectName is required' });
+            }
+            
+            log(`Received stop request for project "${projectName}"`);
+            
+            try {
+                // Load config to get project details
+                const config = await loadConfig(args.cwd);
+                const project = config.projects.find((p: any) => p.name === projectName);
+                
+                if (!project) {
+                    return res.status(404).json({ error: `Project "${projectName}" not found in config` });
+                }
+                
+                const projectPath = path.resolve(args.cwd, project.path || '.');
+                
+                await stopApp({
+                    projectPath,
+                    device: deviceId,
+                    projectName,
+                    projectConfig: project,
+                    force: force ?? true,
+                });
+                
+                log(`App "${projectName}" stopped successfully`);
+                res.json({ status: 'success', message: `App "${projectName}" stopped successfully` });
+                
+            } catch (error: any) {
+                log(`Stop error: ${error.message}`);
+                res.status(500).json({ error: 'Failed to stop app', details: error.message });
+            }
+        });
+
+        // Internal endpoint called by core's stopApp for web apps — closes the Puppeteer browser
+        app.post('/stop-browser', async (req, res) => {
+            const { projectName } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({ error: 'projectName is required' });
+            }
+            
+            log(`Received browser stop request for project "${projectName}"`);
+            
+            try {
+                const browser = browserInstances.get(projectName);
+                
+                if (browser) {
+                    log(`Closing browser for "${projectName}"`);
+                    await browser.close();
+                    browserInstances.delete(projectName);
+                    res.json({ status: 'success', message: `Browser closed for "${projectName}"` });
+                } else {
+                    res.json({ status: 'success', message: `No browser instance found for "${projectName}"` });
+                }
+            } catch (error: any) {
+                log(`Browser stop error: ${error.message}`);
+                res.status(500).json({ error: 'Failed to close browser', details: error.message });
+            }
         });
 
         app.listen(HTTP_PORT, '0.0.0.0', () => {

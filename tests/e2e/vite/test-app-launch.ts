@@ -2,11 +2,19 @@
 /**
  * E2E Test: Vite App Launch
  *
+ * NOTE: This test uses AgentClient for testing interactions (WebSocket-based approach).
+ * This provides faster, more reliable testing compared to CLI commands.
+ * 
+ * For CLI-based examples, see:
+ * - tests/e2e/swiftui/test-app-launch-ios.ts
+ * - tests/e2e/kotlin/test-app-launch.ts
+ * 
  * Tests that the Vite example app:
  * 1. Builds successfully
  * 2. Starts dev server
  * 3. AgentDebugBridge connects
  * 4. UI hierarchy can be fetched
+ * 5. All interactions work via AgentClient (tap, input, agentLink)
  */
 
 import { ChildProcess, exec as execCallback } from 'child_process';
@@ -14,6 +22,7 @@ import { promisify } from 'util';
 import puppeteer, { Browser } from 'puppeteer';
 import { readFileSync, existsSync, cpSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { AgentClient } from '@agenteract/core/node';
 
 const exec = promisify(execCallback);
 import {
@@ -41,6 +50,7 @@ let agentServer: ChildProcess | null = null;
 let browser: Browser | null = null;
 let testConfigDir: string | null = null;
 let exampleAppDir: string | null = null;
+let client: AgentClient | null = null;
 
 async function cleanup() {
   info('Cleaning up...');
@@ -51,6 +61,15 @@ async function cleanup() {
   }
   if (testConfigDir) {
     await saveNodeModulesCache(testConfigDir, 'agenteract-e2e-test-vite');
+  }
+
+  if (client) {
+    try {
+      client.disconnect();
+      info('AgentClient disconnected');
+    } catch (err) {
+      // Ignore cleanup errors
+    }
   }
 
   if (browser) {
@@ -245,6 +264,12 @@ export default defineConfig({
     // Give servers time to start
     await sleep(5000);
 
+    // Connect AgentClient
+    info('Connecting AgentClient...');
+    client = new AgentClient('ws://localhost:8765');
+    await client.connect();
+    success('AgentClient connected');
+
     // Check dev logs to see what port Vite is running on
     info('Checking Vite dev server logs...');
     try {
@@ -290,18 +315,18 @@ export default defineConfig({
       throw new Error('React app failed to render');
     }
 
-    let hierarchy: string | null = null;
+    let hierarchy: any | null = null;
 
     await waitFor(
       async () => {
         try {
-          hierarchy = await runAgentCommand(`cwd:${testConfigDir}`, 'hierarchy', 'react-app');
+          hierarchy = await client!.getViewHierarchy('react-app');
           info(`page content: ` + await page.content());
           // print page console logs
-          info(`Hierarchy: ${hierarchy}`);
+          info(`Hierarchy: ${JSON.stringify(hierarchy)}`);
 
           // Follow up with separate logs command to verify state (testing config waitLogTimeout: 0)
-          const appLogs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '10');
+          const appLogs = await client!.getLogs('react-app');
           info('App logs:');
           console.log(appLogs);
 
@@ -309,7 +334,7 @@ export default defineConfig({
           info('Vite dev logs:');
           console.log(devLogs);
 
-          return hierarchy?.includes('Agenteract Web Demo');
+          return JSON.stringify(hierarchy)?.includes('Agenteract Web Demo');
         } catch (err) {
           error(`Error getting hierarchy: ${err}`);
           return false;
@@ -327,30 +352,55 @@ export default defineConfig({
     // 9. Get hierarchy and verify UI loaded
     info('Fetching UI hierarchy...');
 
+    const hierarchyStr = JSON.stringify(hierarchy);
+
     // Basic assertions - verify app loaded correctly
-    assertContains(hierarchy, 'Agenteract Web Demo', 'UI contains app title');
-    assertContains(hierarchy, 'test-button', 'UI contains test button');
-    assertContains(hierarchy, 'username-input', 'UI contains username input');
+    assertContains(hierarchyStr, 'Agenteract Web Demo', 'UI contains app title');
+    assertContains(hierarchyStr, 'test-button', 'UI contains test button');
+    assertContains(hierarchyStr, 'username-input', 'UI contains username input');
     success('UI hierarchy fetched successfully');
 
     // 10. Test tap interaction
     info('Testing tap interaction on test-button...');
-    const tapResult = await runAgentCommand(`cwd:${testConfigDir}`, 'tap', 'react-app', 'test-button');
+    const tapResult = await client.tap('react-app', 'test-button');
     console.log(tapResult);
-    assertContains(tapResult, '"status":"ok"', 'Tap command executed successfully');
+    assertContains(JSON.stringify(tapResult), '"status":"ok"', 'Tap command executed successfully');
     success('Button tap successful');
 
     // 11. Verify tap was logged
-    await sleep(500); // Give app time to log the tap
-    const logsAfterTap = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '5');
-    assertContains(logsAfterTap, 'Simulate button pressed', 'Button press was logged');
+    info('Waiting for tap log...');
+    await client.waitForLog('react-app', 'Simulate button pressed', 5000);
     success('Button tap verified in logs');
 
     // 12. Get all logs to verify app is running
     info('Fetching app logs...');
-    const logs = await runAgentCommand(`cwd:${testConfigDir}`, 'logs', 'react-app', '--since', '15');
+    const logs = await client.getLogs('react-app');
     info('Recent logs:');
     console.log(logs);
+
+    // 13. Test agentLink command for reset_state
+    info('Testing agentLink command: reset_state...');
+    const agentLinkResult = await client.agentLink('react-app', 'agenteract://reset_state');
+    console.log(agentLinkResult);
+    assertContains(JSON.stringify(agentLinkResult), '"status":"ok"', 'AgentLink command executed successfully');
+    success('AgentLink reset_state successful');
+
+    // 14. Verify agentLink was logged
+    info('Waiting for agentLink logs...');
+    await client.waitForLog('react-app', 'Agent link received', 5000);
+    await client.waitForLog('react-app', 'reset_state', 5000);
+    success('AgentLink verified in logs');
+
+    // 15. Test error response for scroll on non-existent element
+    info('Testing scroll on non-existent element returns descriptive error...');
+    try {
+      await client.scroll('react-app', 'nonexistent-element-xyz', 'right', 100);
+      throw new Error('Expected scroll on non-existent element to throw, but it succeeded');
+    } catch (scrollErr: any) {
+      if (scrollErr.message === 'Expected scroll on non-existent element to throw, but it succeeded') throw scrollErr;
+      assertContains(scrollErr.message, 'No element found', 'Scroll on non-existent element returns descriptive error message');
+      success('Error response for non-existent element verified');
+    }
 
     success('✅ All tests passed!');
 

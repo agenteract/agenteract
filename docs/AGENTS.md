@@ -566,6 +566,264 @@ If commands don't work, instruct the user to start the CLI wrapper:
 pnpm agenteract dev
 ```
 
+## App Lifecycle Management Tools
+
+Agenteract provides commands to manage app launching, stopping, building, and setup operations programmatically across all platforms.
+
+### Tool: Launch App
+
+Launch an application on a device or simulator. The platform is auto-detected, and the app will be built if necessary.
+
+**Command:**
+```bash
+pnpm agenteract-agents start-app <project> [options]
+```
+
+**Options:**
+- `--device <id>`: Target specific device/simulator ID
+- `--platform <type>`: Override platform detection (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
+- `--headless`: Launch browser in headless mode (web apps only)
+- `--prebuild`: Use an Expo prebuild (native build) instead of Expo Go (Expo projects only)
+- `--launch-only`: Skip build and install steps; launch the already-installed app directly
+
+**Examples:**
+```bash
+# Launch with auto-detected platform and default device
+pnpm agenteract-agents start-app expo-app
+
+# Launch on specific iOS simulator
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
+
+# Launch Flutter app on Android
+pnpm agenteract-agents start-app flutter-app --platform flutter --device emulator-5554
+
+# Launch web app in headless mode
+pnpm agenteract-agents start-app vite-app --headless
+
+# Launch Expo prebuild (native build) instead of Expo Go
+pnpm agenteract-agents start-app expo-app --prebuild --device "iPhone 15 Pro"
+
+# Launch without rebuilding or reinstalling (app must already be installed)
+pnpm agenteract-agents start-app expo-app --launch-only --device "iPhone 15 Pro"
+```
+
+**When to use:**
+- Starting an app for testing or interaction
+- Launching on a specific device after device selection
+- Automating app startup in test workflows
+
+**Returns:** Launch result with device info, platform, and connection status
+
+### Tool: Stop App
+
+Stop a running application gracefully or forcefully.
+
+**Command:**
+```bash
+pnpm agenteract-agents stop-app <project> [options]
+```
+
+**Options:**
+- `--device <id>`: Target specific device ID
+- `--force`: Force stop (Android: `force-stop`, Desktop: SIGKILL)
+- `--prebuild`: Target an Expo prebuild app instead of Expo Go (Expo projects only)
+
+**Examples:**
+```bash
+# Stop app gracefully
+pnpm agenteract-agents stop-app expo-app
+
+# Force stop on specific device
+pnpm agenteract-agents stop-app expo-app --device emulator-5554 --force
+
+# Stop Expo prebuild app
+pnpm agenteract-agents stop-app expo-app --prebuild
+```
+
+**When to use:**
+- Cleaning up after tests
+- Stopping a frozen or unresponsive app
+- Preparing for a fresh app launch
+
+### Tool: Build App
+
+Build an application for a target platform and configuration.
+
+**Command:**
+```bash
+pnpm agenteract-agents build <project> [options]
+```
+
+**Options:**
+- `--platform <type>`: Target platform (vite, expo, flutter, xcode, kmp-android, kmp-desktop)
+- `--config <type>`: Build configuration: `debug` (default) or `release`
+
+**Examples:**
+```bash
+# Build debug version with auto-detected platform
+pnpm agenteract-agents build flutter-app
+
+# Build release version for Android
+pnpm agenteract-agents build flutter-app --platform flutter --config release
+
+# Build Swift iOS app
+pnpm agenteract-agents build swift-app --platform xcode --config debug
+```
+
+**When to use:**
+- Preparing an app for deployment
+- Building before running tests
+- Creating release builds for distribution
+
+**Platform-specific behavior:**
+- **Flutter/KMP**: Runs `./gradlew assembleDebug/Release` or `flutter build ios`
+- **Vite**: Runs `npm run build`
+- **Swift**: Runs `xcodebuild -scheme ... build`
+
+### Tool: Setup Operations
+
+Perform setup operations like install, reinstall, or clear app data.
+
+**Command:**
+```bash
+pnpm agenteract-agents setup <project> <action> [options]
+```
+
+**Actions:**
+- `install`: Install the app on device
+- `reinstall`: Uninstall and reinstall the app
+- `clearData`: Clear app data/cache (Android) or uninstall (iOS)
+
+**Options:**
+- `--device <id>`: Target specific device ID
+- `--platform <type>`: Override platform detection
+
+**Examples:**
+```bash
+# Install app on default device
+pnpm agenteract-agents setup expo-app install
+
+# Reinstall on specific device
+pnpm agenteract-agents setup flutter-app reinstall --device emulator-5554
+
+# Clear app data (Android) or uninstall (iOS)
+pnpm agenteract-agents setup expo-app clearData --platform expo
+```
+
+**When to use:**
+- Ensuring a fresh app installation before tests
+- Clearing app state between test runs
+- Installing app binaries on new devices
+
+**Platform-specific behavior:**
+- **Android install**: Runs `./gradlew installDebug`
+- **Android clearData**: Runs `adb shell pm clear <bundleId>`
+- **iOS clearData**: Uninstalls app (iOS has no direct clear data command)
+
+### Device Management
+
+**Default Device Selection:**
+Agenteract automatically manages device selection with the following priority:
+1. Explicit `--device` flag (highest priority)
+2. Default device from `.agenteract-runtime.json`
+3. Auto-detected device (booted simulator or first available)
+
+**Setting Default Device:**
+When you use the `--device` flag, that device is automatically saved as the default for future commands:
+
+```bash
+# First launch with explicit device
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
+
+# Future commands use this device by default
+pnpm agenteract-agents start-app expo-app
+pnpm agenteract-agents stop-app expo-app
+```
+
+### Lifecycle Configuration
+
+Add optional lifecycle configuration to `agenteract.config.js` to customize behavior:
+
+```javascript
+export default {
+  projects: [
+    {
+      name: 'expo-app',
+      path: './app',
+      lifecycle: {
+        bundleId: {
+          ios: 'com.example.app',
+          android: 'com.example.app'
+        },
+        mainActivity: 'com.example.app.MainActivity', // Android only
+        launchTimeout: 30000, // ms
+        requiresInstall: false
+      }
+    }
+  ]
+};
+```
+
+**Note:** All lifecycle config is optional. Bundle IDs and main activities are auto-detected from platform files (app.json, Info.plist, build.gradle, AndroidManifest.xml) if not specified.
+
+### Platform Detection
+
+Agenteract auto-detects platforms by scanning for marker files:
+
+| Platform | Marker Files |
+|----------|-------------|
+| Vite | `vite.config.ts`, `vite.config.js` |
+| Expo | `app.json` with `expo` key |
+| Flutter | `pubspec.yaml` |
+| Xcode (Swift/Objective-C) | `Package.swift`, `.xcodeproj` |
+| KMP Android | `build.gradle.kts` with Kotlin/Android |
+| KMP Desktop | `build.gradle.kts` with Compose Desktop |
+
+Override detection with the `--platform` flag when needed.
+
+### Typical Workflow Examples
+
+**Test Setup and Execution:**
+```bash
+# 1. Ensure fresh app state
+pnpm agenteract-agents setup expo-app reinstall
+
+# 2. Launch the app
+pnpm agenteract-agents start-app expo-app
+
+# 3. Run your tests (hierarchy, tap, input, etc.)
+pnpm agenteract-agents hierarchy expo-app
+pnpm agenteract-agents tap expo-app login-button
+
+# 4. Clean up
+pnpm agenteract-agents stop-app expo-app
+```
+
+**Multi-Device Testing:**
+```bash
+# Test on iOS
+pnpm agenteract-agents start-app expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents hierarchy expo-app --device "iPhone 15 Pro"
+pnpm agenteract-agents stop-app expo-app --device "iPhone 15 Pro"
+
+# Test on Android
+pnpm agenteract-agents start-app expo-app --device emulator-5554
+pnpm agenteract-agents hierarchy expo-app --device emulator-5554
+pnpm agenteract-agents stop-app expo-app --device emulator-5554
+```
+
+**Build and Deploy:**
+```bash
+# Build release version
+pnpm agenteract-agents build flutter-app --config release
+
+# Install on device
+pnpm agenteract-agents setup flutter-app install --device <device-id>
+
+# Launch and verify
+pnpm agenteract-agents start-app flutter-app --device <device-id>
+```
+
 ## Tool: Get View Hierarchy
 
 This is your primary tool for "seeing" the application's current user interface. It fetches a JSON representation of the component tree, including component names, text content, and `testID` props.
@@ -762,6 +1020,419 @@ pnpm agenteract-agents longPress expo-app list-item-1
 
 **Note:** The component must have an `onContextMenu` (web) or `onLongPress` (React Native) handler registered via `createAgentBinding`.
 
+## Tool: AgentClient (Node.js Programmatic API)
+
+For writing **integration tests** and **automation scripts** in Node.js/TypeScript, Agenteract provides the **AgentClient** API - a programmatic alternative to CLI commands.
+
+### Overview
+
+AgentClient connects directly to the Agenteract server via WebSocket and provides the same interaction primitives as CLI commands, but with better performance and developer experience.
+
+**Import:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+```
+
+**Key Differences from CLI:**
+- **Connection**: Persistent WebSocket vs spawning subprocess for each command
+- **Performance**: ~10x faster for repeated commands (no subprocess overhead)
+- **Return values**: Returns JavaScript objects, not JSON strings
+- **Async/await**: Native Promise-based API
+- **Log streaming**: Real-time log events via callback
+- **Type safety**: Full TypeScript support with autocomplete
+
+### Basic Usage
+
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+// 1. Create client instance
+const client = new AgentClient('ws://localhost:8765');
+
+// 2. Connect to server
+await client.connect();
+
+// 3. Use interaction methods
+await client.tap('expo-app', 'login-button');
+await client.input('expo-app', 'username', 'john@example.com');
+const hierarchy = await client.getViewHierarchy('expo-app');
+
+// 4. Clean up
+client.disconnect();
+```
+
+### Complete API Reference
+
+#### Interaction Primitives
+
+All the same primitives from CLI commands are available:
+
+**`tap(project: string, testID: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents tap expo-app login-button
+await client.tap('expo-app', 'login-button');
+```
+
+**`input(project: string, testID: string, value: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents input expo-app username "john@example.com"
+await client.input('expo-app', 'username', 'john@example.com');
+```
+
+**`scroll(project: string, testID: string, direction: 'up' | 'down' | 'left' | 'right', amount?: number): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents scroll expo-app main-list down 200
+await client.scroll('expo-app', 'main-list', 'down', 200);
+await client.scroll('expo-app', 'main-list', 'up'); // default amount: 100
+```
+
+**`swipe(project: string, testID: string, direction: 'up' | 'down' | 'left' | 'right', velocity?: 'slow' | 'medium' | 'fast'): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents swipe expo-app swipeable-card left fast
+await client.swipe('expo-app', 'swipeable-card', 'left', 'fast');
+await client.swipe('expo-app', 'swipeable-card', 'right'); // default velocity: 'medium'
+```
+
+**`longPress(project: string, testID: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents longPress expo-app list-item-1
+await client.longPress('expo-app', 'list-item-1');
+```
+
+**`getViewHierarchy(project: string): Promise<any>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app
+const hierarchy = await client.getViewHierarchy('expo-app');
+console.log(hierarchy.root.children);
+```
+
+**`agentLink(project: string, url: string): Promise<void>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+await client.agentLink('expo-app', 'agenteract://reset_state');
+await client.agentLink('expo-app', 'agenteract://navigate?screen=settings');
+```
+
+#### Utility Methods
+
+These utilities make test writing easier with built-in waiting and log capture:
+
+**`getLogs(project: string, count?: number): Promise<string[]>`**
+```typescript
+// Get last 10 logs (default)
+const logs = await client.getLogs('expo-app');
+
+// Get last 20 logs
+const logs = await client.getLogs('expo-app', 20);
+```
+
+**`waitForLog(project: string, pattern: string | RegExp, timeout?: number): Promise<void>`**
+```typescript
+// Wait for specific log message (default timeout: 5000ms)
+await client.waitForLog('expo-app', 'Login successful');
+
+// With custom timeout and regex pattern
+await client.waitForLog('expo-app', /User \d+ logged in/, 10000);
+
+// Throws error if pattern not found within timeout
+try {
+  await client.waitForLog('expo-app', 'Error occurred', 2000);
+} catch (err) {
+  console.log('Expected error did not occur');
+}
+```
+
+**`waitForElement(project: string, testID: string, timeout?: number): Promise<void>`**
+```typescript
+// Wait for element to appear in hierarchy (default timeout: 5000ms)
+await client.waitForElement('expo-app', 'dashboard');
+
+// With custom timeout
+await client.waitForElement('expo-app', 'loading-spinner', 10000);
+
+// Useful after navigation or async operations
+await client.tap('expo-app', 'login-button');
+await client.waitForElement('expo-app', 'user-profile'); // Wait for navigation
+```
+
+**`waitForCondition(project: string, predicate: (hierarchy: any) => boolean, timeout?: number): Promise<void>`**
+```typescript
+// Wait for custom condition on hierarchy
+await client.waitForCondition(
+  'expo-app',
+  (hierarchy) => {
+    // Custom condition: check if counter value >= 5
+    const counter = findElementByTestID(hierarchy, 'counter-text');
+    return counter && parseInt(counter.text) >= 5;
+  },
+  5000
+);
+```
+
+#### Real-Time Log Streaming
+
+AgentClient can stream logs in real-time as they occur in the app:
+
+**`onLog(callback: (log: { project: string; message: string; timestamp: number }) => void): void`**
+```typescript
+// Listen to all logs from all projects
+client.onLog((log) => {
+  console.log(`[${log.project}] ${log.message}`);
+});
+
+// Then perform actions - logs are streamed automatically
+await client.tap('expo-app', 'increment-button');
+// Logs appear immediately without polling
+```
+
+#### Connection Management
+
+**`connect(): Promise<void>`**
+```typescript
+await client.connect();
+```
+
+**`disconnect(): void`**
+```typescript
+client.disconnect();
+```
+
+**`isConnected(): boolean`**
+```typescript
+if (client.isConnected()) {
+  await client.tap('expo-app', 'button');
+}
+```
+
+### Complete Testing Example
+
+Here's a complete integration test using AgentClient with Jest:
+
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+describe('Expo App Login Flow', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient('ws://localhost:8765');
+    await client.connect();
+  });
+
+  afterAll(() => {
+    client.disconnect();
+  });
+
+  beforeEach(async () => {
+    // Reset app state before each test
+    await client.agentLink('expo-app', 'agenteract://reset_state');
+    await client.waitForElement('expo-app', 'login-screen');
+  });
+
+  test('should login successfully with valid credentials', async () => {
+    // 1. Verify initial state
+    const initialHierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(initialHierarchy, 'login-button')).toBeDefined();
+
+    // 2. Fill in login form
+    await client.input('expo-app', 'username-input', 'john@example.com');
+    await client.input('expo-app', 'password-input', 'password123');
+
+    // 3. Submit form
+    await client.tap('expo-app', 'login-button');
+
+    // 4. Wait for successful login
+    await client.waitForLog('expo-app', 'Login successful', 3000);
+    await client.waitForElement('expo-app', 'dashboard', 5000);
+
+    // 5. Verify dashboard loaded
+    const finalHierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(finalHierarchy, 'user-profile')).toBeDefined();
+  });
+
+  test('should show error with invalid credentials', async () => {
+    // Fill in invalid credentials
+    await client.input('expo-app', 'username-input', 'invalid@example.com');
+    await client.input('expo-app', 'password-input', 'wrong');
+
+    // Submit
+    await client.tap('expo-app', 'login-button');
+
+    // Wait for error message
+    await client.waitForLog('expo-app', /Login failed/, 3000);
+    await client.waitForElement('expo-app', 'error-message', 2000);
+
+    // Verify still on login screen
+    const hierarchy = await client.getViewHierarchy('expo-app');
+    expect(findElementByTestID(hierarchy, 'login-button')).toBeDefined();
+  });
+});
+
+// Helper function to find elements in hierarchy
+function findElementByTestID(hierarchy: any, testID: string): any {
+  if (!hierarchy) return null;
+  if (hierarchy.testID === testID) return hierarchy;
+  
+  if (hierarchy.children) {
+    for (const child of hierarchy.children) {
+      const found = findElementByTestID(child, testID);
+      if (found) return found;
+    }
+  }
+  
+  return null;
+}
+```
+
+### Comparison: CLI vs AgentClient
+
+| Feature | CLI Command | AgentClient |
+|---------|------------|-------------|
+| **Connection** | New subprocess per command | Persistent WebSocket |
+| **Performance** | ~100-200ms per command | ~10-20ms per command |
+| **Return Type** | JSON string (stdout) | Native JavaScript object |
+| **Error Handling** | Exit codes + stderr parsing | Promise rejection with error objects |
+| **Log Capture** | Manual `--wait` and `--log-count` | Built-in utilities + real-time streaming |
+| **Type Safety** | None (string output) | Full TypeScript support |
+| **Use Case** | AI agents, manual testing, CI scripts | Integration tests, automation scripts |
+
+### When to Use Each
+
+**Use CLI Commands when:**
+- Writing AI agent instructions (easier for agents to understand)
+- Running manual tests from terminal
+- Integrating with shell scripts or CI pipelines
+- Quick ad-hoc testing during development
+
+**Use AgentClient when:**
+- Writing integration tests in Jest/Mocha/Vitest
+- Building automation scripts in Node.js/TypeScript
+- Need fast, repeated interactions (e.g., stress testing)
+- Want type-safe API with IDE autocomplete
+- Need real-time log streaming
+
+### AgentClient with Different Test Frameworks
+
+**Jest:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+
+describe('My App Tests', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  afterAll(() => client.disconnect());
+
+  test('example', async () => {
+    await client.tap('my-app', 'button');
+  });
+});
+```
+
+**Mocha:**
+```typescript
+import { AgentClient } from '@agenteract/core/node';
+import { expect } from 'chai';
+
+describe('My App Tests', function() {
+  let client: AgentClient;
+
+  before(async function() {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  after(function() {
+    client.disconnect();
+  });
+
+  it('should work', async function() {
+    await client.tap('my-app', 'button');
+    const hierarchy = await client.getViewHierarchy('my-app');
+    expect(hierarchy).to.exist;
+  });
+});
+```
+
+**Vitest:**
+```typescript
+import { describe, test, beforeAll, afterAll } from 'vitest';
+import { AgentClient } from '@agenteract/core/node';
+
+describe('My App Tests', () => {
+  let client: AgentClient;
+
+  beforeAll(async () => {
+    client = new AgentClient();
+    await client.connect();
+  });
+
+  afterAll(() => client.disconnect());
+
+  test('example', async () => {
+    await client.tap('my-app', 'button');
+  });
+});
+```
+
+### Best Practices
+
+1. **Connection Management**: Create one client per test suite, not per test
+   ```typescript
+   // Good - reuse connection
+   beforeAll(async () => {
+     client = new AgentClient();
+     await client.connect();
+   });
+   
+   // Bad - reconnecting every test is slow
+   beforeEach(async () => {
+     client = new AgentClient();
+     await client.connect();
+   });
+   ```
+
+2. **Use agentLink for state reset**: Faster than reinstalling app
+   ```typescript
+   beforeEach(async () => {
+     await client.agentLink('expo-app', 'agenteract://reset_state');
+   });
+   ```
+
+3. **Wait for elements after actions**: Don't assume immediate rendering
+   ```typescript
+   await client.tap('expo-app', 'submit-button');
+   await client.waitForElement('expo-app', 'success-message'); // Wait for result
+   ```
+
+4. **Use waitForLog to verify behavior**: More reliable than polling hierarchy
+   ```typescript
+   await client.tap('expo-app', 'save-button');
+   await client.waitForLog('expo-app', 'Data saved successfully');
+   ```
+
+5. **Always disconnect in cleanup**: Prevent connection leaks
+   ```typescript
+   afterAll(() => {
+     client.disconnect();
+   });
+   ```
+
+### Example Test Projects
+
+See the following examples for complete working tests:
+
+- **Node.js Integration Test**: [`tests/e2e/node-client/test-agent-client.ts`](../tests/e2e/node-client/test-agent-client.ts) - Complete AgentClient usage with Jest
+- **Vite Test**: [`tests/e2e/vite/test-app-launch.ts`](../tests/e2e/vite/test-app-launch.ts) - Web app testing
+- **Expo Test**: [`tests/e2e/expo/test-app-launch.ts`](../tests/e2e/expo/test-app-launch.ts) - React Native testing
+- **Flutter Test**: [`tests/e2e/flutter/test-app-launch-ios.ts`](../tests/e2e/flutter/test-app-launch-ios.ts) - Flutter testing
+
+---
+
 **Creating components:**
 
 For you to be able to interact with a component, two things are required
@@ -792,3 +1463,1018 @@ import { createAgentBinding } from '@agenteract/react';
 ```
 
 You can see how this is handled by agent-server requests in `https://raw.githubusercontent.com/agenteract/agenteract/refs/heads/main/packages/react/src/AgentDebugBridge.tsx`.
+
+## Tool: Agent Links (agentLink)
+
+Agent Links provide a way to trigger app-specific actions through deep link-style URLs sent over the WebSocket connection. Unlike pairing deep links (which configure the server connection), agentLinks are sent to already-connected apps to trigger custom behaviors.
+
+**Use Cases:**
+- Reset app state during automated testing
+- Navigate to specific screens or routes
+- Reload or restart the app
+- Trigger any custom app action
+
+**Command:**
+```bash
+pnpm agenteract-agents agent-link <project> <url>
+```
+
+**Examples:**
+```bash
+# Reset application state (commonly used in tests)
+pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+
+# Navigate to a specific screen
+pnpm agenteract-agents agent-link expo-app agenteract://navigate?screen=settings
+
+# Reload the application
+pnpm agenteract-agents agent-link expo-app agenteract://reload
+
+# Custom action with parameters
+pnpm agenteract-agents agent-link expo-app agenteract://custom?param1=value1&param2=value2
+```
+
+**How It Works:**
+
+When you send an agentLink, the app's `onAgentLink` handler receives the URL and decides how to process it:
+
+1. If the handler returns `true`, the app processed the link
+2. If the handler returns `false`, `AgentDebugBridge` handles it (for pairing/config links)
+
+**URL Format:**
+- Scheme: `agenteract://`
+- Hostname: Action identifier (e.g., `reset_state`, `navigate`, `reload`)
+- Query parameters: Optional parameters (e.g., `?screen=settings&tab=profile`)
+
+**Implementation Guide:**
+
+Apps must provide an `onAgentLink` handler to `AgentDebugBridge` to process agentLinks. See the platform-specific examples below.
+
+**React/Expo Example:**
+```tsx
+import { AgentDebugBridge } from '@agenteract/react';
+
+// URL parsing helper
+const parseURL = (url: string) => {
+  const [schemeAndHostname, queryString] = url.split('?');
+  const hostname = schemeAndHostname.split('://')[1] || '';
+  
+  const queryParams: Record<string, string> = {};
+  if (queryString) {
+    queryString.split('&').forEach(param => {
+      const [key, value] = param.split('=');
+      queryParams[key] = decodeURIComponent(value);
+    });
+  }
+  
+  return { hostname, queryParams };
+};
+
+const handleAgentLink = async (url: string): Promise<boolean> => {
+  const { hostname, queryParams } = parseURL(url);
+  
+  switch (hostname) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true; // Handled by app
+    case 'navigate':
+      // Navigate to screen from query params
+      navigation.navigate(queryParams.screen);
+      return true;
+    case 'reload':
+      // Reload the app
+      Updates.reloadAsync();
+      return true;
+    default:
+      return false; // Let AgentDebugBridge handle config links
+  }
+};
+
+<AgentDebugBridge 
+  projectName="expo-app"
+  onAgentLink={handleAgentLink}
+/>
+```
+
+**Flutter Example:**
+```dart
+import 'package:agenteract/agenteract.dart';
+
+Future<bool> handleAgentLink(String url) async {
+  final uri = Uri.parse(url);
+  
+  switch (uri.host) {
+    case 'reset_state':
+      // Reset your app state
+      resetAppState();
+      return true;
+    case 'navigate':
+      // Navigate to screen
+      final screen = uri.queryParameters['screen'];
+      if (screen != null) {
+        Navigator.pushNamed(context, screen);
+      }
+      return true;
+    case 'reload':
+      // Reload the app (platform-specific)
+      await SystemNavigator.pop();
+      return true;
+    default:
+      return false;
+  }
+}
+
+AgentDebugBridge(
+  projectName: 'flutter-app',
+  onAgentLink: handleAgentLink,
+  child: MyApp(),
+)
+```
+
+**Kotlin (Compose Multiplatform) Example:**
+```kotlin
+import io.agenteract.AgentDebugBridge
+import java.net.URI
+
+val handleAgentLink: suspend (String) -> Boolean = { url ->
+    val uri = URI(url)
+    when (uri.host) {
+        "reset_state" -> {
+            resetAppState()
+            true
+        }
+        "navigate" -> {
+            // Parse query parameters
+            val params = uri.query?.split("&")
+                ?.associate {
+                    val (key, value) = it.split("=")
+                    key to value
+                }
+            val screen = params?.get("screen")
+            navController.navigate(screen ?: "home")
+            true
+        }
+        "reload" -> {
+            // Reload logic (platform-specific)
+            restartApp()
+            true
+        }
+        else -> false
+    }
+}
+
+AgentDebugBridge(
+    projectName = "kmp-app",
+    onAgentLink = handleAgentLink
+)
+```
+
+**Best Practices:**
+
+1. **Always return a boolean**: Return `true` if handled, `false` otherwise
+2. **Validate parameters**: Check query parameters exist before using them
+3. **Log actions**: Use console logging to confirm agentLinks were processed
+4. **Handle errors gracefully**: Catch exceptions and return `false` on error
+5. **Document your links**: Keep a list of supported agentLink actions in your code
+
+**Helper Utilities:**
+
+The example apps include URL parsing utilities that you can reference:
+- React/Expo: `/examples/expo-example/app/utils/deepLinkUtils.ts`
+- React (web): `/examples/react-example/src/utils/deepLinkUtils.ts`
+
+**Common Patterns:**
+
+**Reset State Pattern (for testing):**
+```tsx
+case 'reset_state':
+  // Clear all state
+  setCounter(0);
+  setUserData(null);
+  setFormValues(defaultFormValues);
+  console.log('State reset');
+  return true;
+```
+
+**Navigation Pattern:**
+```tsx
+case 'navigate':
+  const { screen, params } = queryParams;
+  if (screen) {
+    // Parse params if needed (e.g., params={"userId":123})
+    const parsedParams = params ? JSON.parse(params) : undefined;
+    navigation.navigate(screen, parsedParams);
+    return true;
+  }
+  return false;
+```
+
+**Reload Pattern:**
+```tsx
+case 'reload':
+  // React Native/Expo
+  if (Updates.reloadAsync) {
+    Updates.reloadAsync();
+  } else {
+    // Dev mode reload
+    DevSettings.reload();
+  }
+  return true;
+```
+
+**Platform-Specific Notes:**
+
+- **React/Expo**: AgentLinks are handled alongside pairing deep links in the same `onAgentLink` handler
+- **Flutter**: Uses the same `onAgentLink` callback, requires async handling
+- **Kotlin**: Uses suspend function for `onAgentLink`, supports coroutines
+- **Swift**: Not yet implemented (coming soon)
+
+**Debugging:**
+
+If agentLinks aren't working:
+1. Check that `onAgentLink` handler is provided to `AgentDebugBridge`
+2. Verify the app is connected (use `hierarchy` command to confirm)
+3. Check console logs to see if the handler was called
+4. Ensure you're returning `true` for handled links
+5. Use dev-logs to see any error messages
+
+**Testing Example:**
+
+A complete test workflow using agentLinks:
+```bash
+# 1. Check initial state
+pnpm agenteract-agents hierarchy expo-app
+
+# 2. Perform some interactions
+pnpm agenteract-agents tap expo-app increment-button
+pnpm agenteract-agents tap expo-app increment-button
+
+# 3. Verify state changed
+pnpm agenteract-agents hierarchy expo-app
+# (should show counter = 2)
+
+# 4. Reset state using agentLink
+pnpm agenteract-agents agent-link expo-app agenteract://reset_state
+
+# 5. Confirm state was reset
+pnpm agenteract-agents hierarchy expo-app
+# (should show counter = 0)
+```
+
+---
+
+## Lifecycle Utilities for Automated Testing
+
+Agenteract provides platform-agnostic lifecycle utilities in `@agenteract/core` that enable agents to programmatically manage app lifecycles for automated testing and development workflows.
+
+### Overview
+
+The lifecycle utilities provide a comprehensive API for:
+- **Device Management**: Boot devices, check device state
+- **Build Operations**: Build apps for iOS, Android across frameworks
+- **Installation**: Install, uninstall, and reinstall apps
+- **Data Management**: Clear app data and cache
+- **App Control**: Start, stop, and restart apps
+
+All functions are platform-agnostic and automatically detect the correct platform based on the device type.
+
+### Supported Frameworks
+
+- **Expo**: Expo Go and prebuilt modes
+- **React Native**: Prebuilt apps
+- **Flutter**: iOS and Android
+- **Swift**: Native iOS apps
+- **Kotlin Multiplatform**: Android and iOS
+- **Vite**: Web applications
+
+---
+
+## Device Utilities
+
+### `getDeviceState(device)`
+
+Check the current state of a device (booted, shutdown, or unknown).
+
+**Parameters:**
+- `device`: Device object or device ID string
+
+**Returns:** `Promise<DeviceState>` with `id`, `state`, and `platform`
+
+**Example:**
+```typescript
+import { getDeviceState } from '@agenteract/core';
+
+const state = await getDeviceState(myDevice);
+console.log(`Device ${state.id} is ${state.state}`);
+
+if (state.state === 'shutdown') {
+  console.log('Device needs to be booted');
+}
+```
+
+**Platform Behavior:**
+- **iOS**: Returns 'booted' or 'shutdown' from xcrun simctl
+- **Android**: Returns 'booted' if device is online, 'shutdown' if offline
+- **Desktop**: Always returns 'booted'
+
+---
+
+### `bootDevice(options)`
+
+Boot a device (start/power on).
+
+**Parameters:**
+- `device`: Device object or device ID string
+- `waitForBoot`: Wait for boot completion (default: true)
+- `timeout`: Boot timeout in milliseconds (default: 30000)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { bootDevice } from '@agenteract/core';
+
+// Boot and wait for completion
+await bootDevice({
+  device: myIOSSimulator,
+  waitForBoot: true,
+  timeout: 30000
+});
+
+// Quick boot without waiting
+await bootDevice({
+  device: myIOSSimulator,
+  waitForBoot: false
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Boots simulator using `xcrun simctl boot`, optionally waits for completion
+- **Android**: NOOP (Android emulators boot automatically when accessed)
+- **Desktop**: NOOP (desktop is always booted)
+
+**Auto-Boot Integration:**
+The `startApp()` function automatically boots shutdown devices before launching, so manual boot calls are usually not needed.
+
+---
+
+## Data Management
+
+### `clearAppData(options)`
+
+Clear app data and cache without uninstalling.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { clearAppData } from '@agenteract/core';
+
+// Clear data for a prebuilt app
+await clearAppData({
+  projectPath: '/path/to/app',
+  device: myDevice,
+  bundleId: 'com.example.myapp' // optional
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl uninstall` to reset app container
+- **Android**: Uses `adb shell pm clear` to clear data
+- **Expo Go**: Not supported (use `agenteract://reset_state` instead)
+- **Desktop**: NOOP (not applicable)
+
+**Best Practice:**
+For E2E tests, prefer using `agenteract://reset_state` agentLink over `clearAppData()` - it's faster and doesn't require reinstalling.
+
+---
+
+## Installation
+
+### `installApp(options)`
+
+Install an app on a device.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `configuration`: 'debug' or 'release' (default: 'debug')
+- `apkPath`: Optional APK path for Android
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { installApp } from '@agenteract/core';
+
+// Install Flutter app in debug mode
+await installApp({
+  projectPath: '/path/to/flutter-app',
+  device: androidEmulator,
+  configuration: 'debug'
+});
+
+// Install from APK file
+await installApp({
+  projectPath: '/path/to/app',
+  device: androidEmulator,
+  apkPath: '/path/to/app-release.apk'
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl install` with .app bundle
+- **Android**: Uses gradle tasks or `adb install`
+- **Expo Go**: NOOP (cannot install Expo Go)
+- **Desktop**: NOOP (not applicable)
+
+---
+
+### `uninstallApp(options)`
+
+Uninstall an app from a device.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `bundleId`: Optional bundle ID override
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { uninstallApp } from '@agenteract/core';
+
+await uninstallApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+```
+
+**Platform Behavior:**
+- **iOS**: Uses `xcrun simctl uninstall`
+- **Android**: Uses `adb uninstall`
+- **Expo Go**: NOOP (cannot uninstall Expo Go)
+
+---
+
+### `reinstallApp(options)`
+
+Reinstall an app (uninstall then install).
+
+**Parameters:**
+Same as `installApp()`
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { reinstallApp } from '@agenteract/core';
+
+// Get completely fresh app state
+await reinstallApp({
+  projectPath: '/path/to/app',
+  device: myDevice,
+  configuration: 'debug'
+});
+```
+
+**Use Cases:**
+- Getting a completely clean slate during testing
+- Resetting app state when `agenteract://reset_state` isn't implemented
+- Verifying fresh install behavior
+
+**Note:** Slower than `clearAppData()` - use sparingly in E2E tests.
+
+---
+
+## Build Operations
+
+### `buildApp(options)`
+
+Build an app for deployment.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object or device ID string
+- `configuration`: 'debug', 'release', or custom config (default: 'debug')
+- `platform`: 'ios' or 'android' (auto-detected if not provided)
+- `silent`: Suppress build output (default: true)
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { buildApp } from '@agenteract/core';
+
+// Build in silent mode (default)
+await buildApp({
+  projectPath: '/path/to/flutter-app',
+  device: androidDevice,
+  configuration: 'debug'
+});
+
+// Build with full output
+await buildApp({
+  projectPath: '/path/to/app',
+  device: iosDevice,
+  configuration: 'release',
+  silent: false
+});
+```
+
+**Platform Behavior:**
+- **Flutter**: Uses gradle for Android, `flutter build ios` for iOS
+- **Expo Prebuilt**: Uses gradle for Android, xcodebuild for iOS
+- **KMP**: Uses gradle tasks
+- **Swift**: Uses xcodebuild
+- **Vite**: Uses `npm run build`
+- **Expo Go**: NOOP (uses OTA updates)
+
+**Build Output:**
+By default, build output is shown (`silent: false`). Set `silent: true` to suppress output.
+
+**Expo Note:**
+For Expo apps, pass `argv: { prebuild: true }` to `startApp()` which handles prebuild + build + install + launch in one call.
+
+---
+
+## App Control
+
+### `startApp(options)`
+
+Start/launch an app on a device. This unified implementation first attempts a PTY-based restart (if the central agent server is running), then falls back to direct platform launch commands.
+
+**Parameters:**
+- `projectPath`: Project root path
+- `device`: Device object, device ID string, or `'desktop'`
+- `bundleId`: Optional bundle ID override
+- `mainActivity`: Optional Android main activity
+- `projectName`: Optional project name (used for PTY-based restart via the agent server)
+- `projectConfig`: Optional project config object from `agenteract.config.js`
+- `skipPtyRestart`: Optional — set `true` to skip PTY restart and go straight to direct platform launch
+- `argv.prebuild`: Optional — set `true` to use Expo prebuild mode instead of Expo Go
+
+**Returns:** `Promise<StartAppResult>`
+
+**Launch Strategy:**
+1. **PTY restart (preferred)**: If `projectName` is provided and the central agent server is running on port 8766, makes an HTTP POST to `/start-app`. This preserves hot reload and is the correct approach for Expo Go, Flutter, and web apps with a dev server.
+2. **Config discovery**: If no `projectName`, discovers `agenteract.config.js` from `projectPath` and checks whether the project has a `devServer` configured that benefits from PTY restart.
+3. **Direct platform launch (fallback)**: If the agent server is not running or the project doesn't benefit from PTY restart, uses platform commands directly (`xcrun simctl launch`, `adb shell am start`, etc.).
+
+**Example:**
+```typescript
+import { startApp } from '@agenteract/core';
+
+// Minimal usage — auto-detects everything, tries PTY restart first
+await startApp({
+  projectPath: '/path/to/flutter-app',
+  device: iosDevice
+});
+
+// With project name — fast path to PTY restart
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: iosDevice,
+  projectName: 'expo-app',
+  projectConfig: project
+});
+
+// Expo prebuild mode (bypass PTY, direct platform launch)
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: iosDevice,
+  projectName: 'expo-app',
+  argv: { prebuild: true }
+});
+
+// Start Android app with custom activity
+await startApp({
+  projectPath: '/path/to/app',
+  device: androidDevice,
+  mainActivity: '.MainActivity'
+});
+```
+
+**Platform Behavior:**
+- **Expo Go** (default): PTY keystroke (`i`/`a`) sent via agent server
+- **Expo Prebuild** (`argv.prebuild: true`): Runs `expo prebuild`, builds, installs, and launches natively
+- **Flutter**: PTY-based device selection via agent server
+- **iOS Native**: `xcrun simctl launch`
+- **Android**: `adb shell am start`
+- **Desktop/Web**: Opens browser via Puppeteer (Vite) or starts KMP desktop process
+
+---
+
+### `stopApp(options)`
+
+Stop/terminate a running app. The `device` parameter is optional — if omitted, the device is resolved from the default device stored in `.agenteract-runtime.json` for the given project, falling back to `'desktop'`.
+
+**Parameters (`StopAppOptions`):**
+- `projectPath`: Project root path
+- `device`: Optional — Device object, device ID string, or `'desktop'`; auto-resolved if not provided
+- `bundleId`: Optional bundle ID override
+- `force`: Force stop on Android / SIGKILL on desktop (default: `true`)
+- `projectName`: Optional project name (used for default device lookup)
+- `projectConfig`: Optional project config object from `agenteract.config.js`
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { stopApp } from '@agenteract/core';
+
+// Graceful stop (device auto-resolved from default)
+await stopApp({
+  projectPath: '/path/to/app',
+  projectName: 'expo-app'
+});
+
+// Stop with explicit device
+await stopApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+
+// Force stop on Android
+await stopApp({
+  projectPath: '/path/to/app',
+  device: androidDevice,
+  force: true
+});
+```
+
+**Platform Behavior:**
+- **iOS**: `xcrun simctl terminate`
+- **Android**: `adb shell am force-stop` (force) or `adb shell am stop`
+- **Web (Vite)**: Closes the Puppeteer browser instance via the agent server's `/stop-browser` endpoint
+- **Desktop (KMP)**: SIGTERM (or SIGKILL if `force: true`)
+- **Expo Go**: Stop is a NOOP (Expo Go cannot be stopped programmatically; use `agentLink` instead)
+
+---
+
+### `restartApp(options)`
+
+Restart an app (stop then start).
+
+**Parameters:**
+Same as `startApp()`
+
+**Returns:** `Promise<void>`
+
+**Example:**
+```typescript
+import { restartApp } from '@agenteract/core';
+
+await restartApp({
+  projectPath: '/path/to/app',
+  device: myDevice
+});
+```
+
+**Use Cases:**
+- Applying configuration changes
+- Resetting app state without reinstalling
+- Testing launch behavior
+
+---
+
+## Complete Testing Workflow Example
+
+Here's a complete agent-driven testing workflow using lifecycle utilities:
+
+```typescript
+import {
+  getDeviceState,
+  bootDevice,
+  buildApp,
+  installApp,
+  startApp,
+  stopApp,
+  clearAppData,
+  reinstallApp
+} from '@agenteract/core';
+import { getAvailableDevice } from '@agenteract/core';
+
+// 1. Get device and check state
+const device = await getAvailableDevice('ios');
+const state = await getDeviceState(device);
+
+// 2. Boot device if needed (usually not needed - startApp auto-boots)
+if (state.state === 'shutdown') {
+  await bootDevice({ device, waitForBoot: true });
+}
+
+// 3. Build the app
+await buildApp({
+  projectPath: '/path/to/app',
+  device,
+  configuration: 'debug'
+});
+
+// 4. Install the app
+await installApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 5. Start the app (auto-boots if needed)
+await startApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 6. Run tests using agent commands
+// (Use hierarchy, tap, input, etc.)
+
+// 7. Reset state between tests
+await clearAppData({
+  projectPath: '/path/to/app',
+  device
+});
+
+// Or use agentLink for faster reset
+// await agentLink({ url: 'agenteract://reset_state' });
+
+// 8. Restart app with clean state
+await restartApp({
+  projectPath: '/path/to/app',
+  device
+});
+
+// 9. Run more tests...
+
+// 10. Clean up
+await stopApp({
+  projectPath: '/path/to/app',
+  device
+});
+```
+
+---
+
+## Expo-Specific Workflows
+
+### Expo Go Mode
+
+```typescript
+// Expo Go: projectName triggers PTY-based restart (sends 'i'/'a' keystroke to metro)
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: myDevice,
+  projectName: 'expo-app',
+});
+
+// Metro serves JavaScript over the air — no build/install needed
+```
+
+### Expo Prebuild Mode
+
+Use the `--prebuild` flag with the CLI, or pass `argv: { prebuild: true }` programmatically. This bypasses the PTY/Expo Go path and runs `expo prebuild`, then builds and installs the native app.
+
+```bash
+# CLI: launch using prebuild mode
+pnpm agenteract-agents start-app expo-app --prebuild --device "iPhone 15 Pro"
+```
+
+```typescript
+// Programmatic: prebuild mode
+await startApp({
+  projectPath: '/path/to/expo-app',
+  device: myDevice,
+  projectName: 'expo-app',
+  argv: { prebuild: true }
+});
+```
+
+**Important:** Prebuilt Expo apps still need Metro bundler running. Start Metro first:
+```bash
+npx expo start --localhost
+```
+
+---
+
+## Framework Detection
+
+All lifecycle utilities automatically detect the framework and platform based on:
+
+1. **Project files**: Check for `package.json`, `pubspec.yaml`, `build.gradle`, etc.
+2. **Device type**: Infer platform from device (iOS simulator, Android emulator, desktop)
+3. **Directory structure**: Check for `ios/`, `android/`, framework-specific folders
+
+You don't need to manually specify the framework - it's detected automatically!
+
+---
+
+## Best Practices
+
+### State Management in Tests
+
+**Prefer agentLink over reinstall:**
+```typescript
+// ❌ Slow - reinstalls app every time
+await reinstallApp({ projectPath, device });
+
+// ✅ Fast - just resets state
+await agentLink({ url: 'agenteract://reset_state' });
+```
+
+**Implement `reset_state` in your app:**
+```tsx
+// In your AgentDebugBridge handler
+case 'reset_state':
+  setCounter(0);
+  setUserData(null);
+  setFormValues(defaultFormValues);
+  console.log('State reset');
+  return true;
+```
+
+### Device Boot Management
+
+**Let startApp auto-boot:**
+```typescript
+// ❌ Manual boot not needed
+await bootDevice({ device });
+await startApp({ projectPath, device });
+
+// ✅ Auto-boots if needed
+await startApp({ projectPath, device });
+```
+
+### Build Output
+
+**Use silent mode to reduce noise when not debugging:**
+```typescript
+// ✅ Suppress output during automated tests
+await buildApp({ projectPath, device, silent: true });
+
+// Show output when debugging build issues
+await buildApp({ projectPath, device, silent: false });
+```
+
+### Error Handling
+
+```typescript
+try {
+  await installApp({ projectPath, device });
+} catch (error) {
+  if (error.message.includes('already installed')) {
+    // App is already installed - this is OK
+    console.log('App already installed, continuing...');
+  } else {
+    throw error; // Re-throw unexpected errors
+  }
+}
+```
+
+---
+
+## TypeScript Support
+
+All lifecycle utilities are fully typed with TypeScript:
+
+```typescript
+import type {
+  AppLifecycleOptions,
+  StopAppOptions,
+  DeviceState,
+  DeviceBootOptions,
+  InstallOptions,
+  BuildOptions,
+  PortForwardingOptions
+} from '@agenteract/core';
+
+// Type-safe configuration
+const options: InstallOptions = {
+  projectPath: '/path/to/app',
+  device: myDevice,
+  configuration: 'debug'
+};
+
+await installApp(options);
+```
+
+---
+
+## Utility Functions
+
+### `detectPlatform(projectPath, targetPlatform?)`
+
+Detect the framework type from a project directory.
+
+```typescript
+import { detectPlatform } from '@agenteract/core';
+
+const platform = await detectPlatform('/path/to/app');
+// Returns: 'expo' | 'vite' | 'flutter' | 'xcode' | 'kmp-android' | 'kmp-desktop'
+```
+
+The optional `targetPlatform` parameter (`'ios' | 'android' | 'desktop'`) is used as a hint for Kotlin Multiplatform projects that support multiple targets. When both Android and desktop targets are present, passing `targetPlatform` ensures the correct variant is returned.
+
+```typescript
+// KMP project with both android and desktop targets
+const type = await detectPlatform('/path/to/kmp', 'android'); // → 'kmp-android'
+const type2 = await detectPlatform('/path/to/kmp', 'desktop'); // → 'kmp-desktop'
+```
+
+### `findGradle(projectPath)`
+
+Find gradle executable (wrapper or global).
+
+```typescript
+import { findGradle } from '@agenteract/core';
+
+const gradle = await findGradle('/path/to/android/project');
+// Returns './gradlew' or 'gradle'
+```
+
+Checks for `./gradlew` first, then falls back to global `gradle`.
+
+---
+
+## Platform-Specific Notes
+
+### iOS
+- Requires Xcode and command-line tools
+- Uses `xcrun simctl` for device management
+- Auto-detects .app bundle location after build
+- Supports simulator-specific configurations
+
+### Android
+- Requires Android SDK and ADB
+- Uses gradle for builds
+- Supports both emulators and physical devices
+- Activity names: Use `.MainActivity` format for relative activities
+
+### Expo
+- **Expo Go** (default): No build/install needed, Metro serves JS OTA. PTY keystroke (`i`/`a`) sent via agent server
+- **Prebuild** (`--prebuild` / `argv.prebuild: true`): Runs `expo prebuild`, then builds and installs natively
+- Metro bundler must be running for prebuild apps (`npx expo start --localhost`)
+
+### Flutter
+- Requires Flutter SDK
+- Uses gradle for Android, `flutter build ios` for iOS
+- Supports debug and release configurations
+- Auto-detects Flutter project structure
+
+### Swift
+- Native iOS apps built with xcodebuild
+- Requires Xcode project or workspace
+- Supports schemes and configurations
+- Uses `-derivedDataPath` for predictable output
+
+### Kotlin Multiplatform
+- Uses gradle for both iOS and Android
+- Supports shared code across platforms
+- Platform-specific build tasks detected automatically
+
+---
+
+## Troubleshooting
+
+### "Device not found"
+- Check device is listed: `xcrun simctl list` (iOS) or `adb devices` (Android)
+- Verify device ID is correct
+- Boot device first if shutdown
+
+### "Build failed"
+- Set `silent: false` to see full build output
+- Check project builds manually first
+- Verify dependencies are installed
+- Clean build folder and retry
+
+### "App not installed"
+- Check bundle ID is correct
+- Verify build succeeded
+- Try manual install first to diagnose
+- Check device has enough storage
+
+### "Cannot start app"
+- Verify app is installed
+- Check device is booted
+- Ensure Metro is running (for Expo prebuilt)
+- Check bundle ID matches installed app
+
+### "clearAppData fails"
+- App must be installed first
+- Not supported for Expo Go (use agentLink instead)
+- Check bundle ID is correct
+
+---
+
+## Additional Resources
+
+- **API Documentation**: Full JSDoc in `@agenteract/core/src/node/lifecycle-utils.ts`
+- **Example Tests**: `/tests/e2e/expo/test-app-launch-ios.ts`
+- **Type Definitions**: `@agenteract/core` exports all types
+- **Source Code**: `/packages/core/src/node/lifecycle-utils.ts`
+
+---

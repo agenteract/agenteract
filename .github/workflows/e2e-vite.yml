@@ -73,4 +73,5 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: pnpm verdaccio:stop
+        # Mask 143 exit code, we aren't testing verdaccio
+        run: pnpm verdaccio:stop || true

@@ -4,15 +4,46 @@ import 'react-native-reanimated';
 import { AgentDebugBridge } from '@agenteract/react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import HomeScreen from './HomeScreen';
+import { useState, useCallback } from 'react';
+import { parseURL } from './utils/deepLinkUtils';
 
 export default function App() {
   const colorScheme = useColorScheme();
+  const [appState, setAppState] = useState({ username: '', count: 0 });
+
+  const handleAgentLink = useCallback(async (url: string): Promise<boolean> => {
+    console.log('[App] Agent link received:', url);
+
+    try {
+      const { hostname, queryParams } = parseURL(url);
+      console.log('[App] Parsed hostname:', hostname, 'params:', queryParams);
+
+      switch (hostname) {
+        case 'reset_state':
+          console.log('[App] Resetting app state');
+          setAppState({ username: '', count: 0 });
+          console.log('[App] App state cleared');
+          return true;
+
+        case 'reload':
+          console.log('[App] Reload requested via agent link');
+          return true;
+
+        default:
+          console.log('[App] Agent link hostname not handled by app:', hostname);
+          return false;
+      }
+    } catch (error) {
+      console.error('[App] Error handling agent link:', error);
+      return false;
+    }
+  }, []);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <HomeScreen />
       <StatusBar style="auto" />
-      { __DEV__ && <AgentDebugBridge projectName="expo-app" /> }
+      { __DEV__ && <AgentDebugBridge projectName="expo-app" onAgentLink={handleAgentLink} /> }
     </ThemeProvider>
   );
 }

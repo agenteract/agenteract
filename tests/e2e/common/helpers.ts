@@ -180,7 +180,7 @@ export async function runCommand(command: string): Promise<string> {
 }
 
 /**
- * Take a screenshot of the iOS simulator
+ * Take a screenshot of the iOS simulator (for debugging failed tests)
  * @param outputPath Path where screenshot should be saved (e.g., '/tmp/screenshot.png')
  * @param deviceId Optional specific device ID. If not provided, uses booted device.
  */
@@ -194,6 +194,43 @@ export async function takeSimulatorScreenshot(
     success(`Screenshot saved to ${outputPath}`);
   } catch (err) {
     info(`Failed to take screenshot: ${err}`);
+  }
+}
+
+/**
+ * Take a screenshot of an Android device/emulator (for debugging failed tests)
+ * @param outputPath Path where screenshot should be saved (e.g., '/tmp/screenshot.png')
+ * @param deviceId Optional specific device ID. If not provided, uses the first available device.
+ */
+export async function takeAndroidScreenshot(
+  outputPath: string,
+  deviceId?: string
+): Promise<void> {
+  try {
+    const deviceArg = deviceId ? `-s ${deviceId}` : '';
+    // Use exec-out to avoid line ending issues and get raw binary data
+    await execAsync(`adb ${deviceArg} exec-out screencap -p > "${outputPath}"`);
+    success(`Screenshot saved to ${outputPath}`);
+  } catch (err) {
+    info(`Failed to take screenshot: ${err}`);
+  }
+}
+
+/**
+ * Take a screenshot of a device (works for both iOS and Android)
+ * @param outputPath Path where screenshot should be saved
+ * @param deviceType Platform type ('ios' or 'android')
+ * @param deviceId Optional device ID
+ */
+export async function takeScreenshot(
+  outputPath: string,
+  deviceType: 'ios' | 'android',
+  deviceId?: string
+): Promise<void> {
+  if (deviceType === 'ios') {
+    await takeSimulatorScreenshot(outputPath, deviceId);
+  } else {
+    await takeAndroidScreenshot(outputPath, deviceId);
   }
 }
 
@@ -247,12 +284,12 @@ export function spawnBackground(
   command: string,
   args: string[],
   name: string,
-  options?: { cwd?: string }
+  options?: { cwd?: string, env?: NodeJS.ProcessEnv }
 ): ChildProcess {
   info(`Starting ${name}: ${command} ${args.join(' ')}`);
 
   // Clear pnpm environment variables so npx is detected correctly
-  const env = { ...process.env };
+  const env =  { ...( options?.env || process.env) };
   delete env.npm_config_user_agent;
   delete env.npm_execpath;
 

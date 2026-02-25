@@ -26,6 +26,7 @@ class AgentDebugBridge extends StatefulWidget {
   final Widget child;
   final String? serverUrl;
   final bool autoConnect;
+  final Future<bool> Function(String url)? onAgentLink;
 
   const AgentDebugBridge({
     super.key,
@@ -33,6 +34,7 @@ class AgentDebugBridge extends StatefulWidget {
     required this.child,
     this.serverUrl,
     this.autoConnect = true,
+    this.onAgentLink,
   });
 
   @override
@@ -110,17 +112,21 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         if (host != null && port != null) {
           // Have saved config - connect
           _shouldConnect = true;
-          debugPrint('[Agenteract] Using saved config: ${_sanitizeConfigForLog(host, port, token, deviceId)}');
+          debugPrint(
+              '[Agenteract] Using saved config: ${_sanitizeConfigForLog(host, port, token, deviceId)}');
         } else {
           // No saved config - only connect if autoConnect is enabled and we have a default URL
           final hasDefaultUrl = _serverUrl != null;
           _shouldConnect = widget.autoConnect && hasDefaultUrl;
 
           if (hasDefaultUrl && _shouldConnect) {
-            debugPrint('[Agenteract] Will try connecting to default URL: $_serverUrl');
-            debugPrint('[Agenteract] On physical devices, this may fail. Use "agenteract connect" to pair.');
+            debugPrint(
+                '[Agenteract] Will try connecting to default URL: $_serverUrl');
+            debugPrint(
+                '[Agenteract] On physical devices, this may fail. Use "agenteract connect" to pair.');
           } else if (!hasDefaultUrl) {
-            debugPrint('[Agenteract] No default URL. Use "agenteract connect" to pair.');
+            debugPrint(
+                '[Agenteract] No default URL. Use "agenteract connect" to pair.');
           }
         }
       });
@@ -169,33 +175,50 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       // Expecting: scheme://agenteract/config?host=...&port=...&token=...
       // The host might be 'agenteract' or the scheme itself depending on config.
       // We check path segments.
-      
-      if (uri.path.contains('config') || uri.host == 'config' || uri.pathSegments.contains('config')) {
-        final host = uri.queryParameters['host'];
-        final portStr = uri.queryParameters['port'];
-        final token = uri.queryParameters['token'];
 
-        if (host != null && portStr != null && token != null) {
-          final port = int.parse(portStr);
-          debugPrint('[Agenteract] Received config via Deep Link: ${_sanitizeConfigForLog(host, port, token, null)}');
+      final isAgenteractConfig = uri.path.contains('config') ||
+          uri.host == 'config' ||
+          uri.pathSegments.contains('config');
 
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('agenteract_host', host);
-          await prefs.setInt('agenteract_port', int.parse(portStr));
-          await prefs.setString('agenteract_token', token);
-
-          setState(() {
-            _storedHost = host;
-            _storedPort = int.parse(portStr);
-            _storedToken = token;
-            _shouldConnect = true;
-            _configLoaded = true;
-          });
-
-          // Force Reconnect with new config
-          _disconnect();
-          _connect();
+      // If not a config link, let the custom handler try it
+      if (!isAgenteractConfig) {
+        if (widget.onAgentLink != null) {
+          final handled = await widget.onAgentLink!(link);
+          if (handled) {
+            debugPrint('[Agenteract] agentLink handled by app');
+          } else {
+            debugPrint('[Agenteract] agentLink not handled by app');
+          }
         }
+        return;
+      }
+
+      // Handle config deep link
+      final host = uri.queryParameters['host'];
+      final portStr = uri.queryParameters['port'];
+      final token = uri.queryParameters['token'];
+
+      if (host != null && portStr != null && token != null) {
+        final port = int.parse(portStr);
+        debugPrint(
+            '[Agenteract] Received config via Deep Link: ${_sanitizeConfigForLog(host, port, token, null)}');
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('agenteract_host', host);
+        await prefs.setInt('agenteract_port', int.parse(portStr));
+        await prefs.setString('agenteract_token', token);
+
+        setState(() {
+          _storedHost = host;
+          _storedPort = int.parse(portStr);
+          _storedToken = token;
+          _shouldConnect = true;
+          _configLoaded = true;
+        });
+
+        // Force Reconnect with new config
+        _disconnect();
+        _connect();
       }
     } catch (e) {
       debugPrint('AgentDebugBridge: Error parsing deep link: $e');
@@ -209,7 +232,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     _disconnect();
     super.dispose();
   }
-  
+
   void _disconnect() {
     _channel?.sink.close();
     _channel = null;
@@ -220,13 +243,15 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
   void _connect() {
     if (_isConnecting) return;
     if (!_shouldConnect) {
-      debugPrint('[Agenteract] Auto-connect disabled. Use deep link to configure.');
+      debugPrint(
+          '[Agenteract] Auto-connect disabled. Use deep link to configure.');
       return;
     }
 
     final serverUrl = _serverUrl;
     if (serverUrl == null) {
-      debugPrint('[Agenteract] No server URL configured. Waiting for deep link...');
+      debugPrint(
+          '[Agenteract] No server URL configured. Waiting for deep link...');
       return;
     }
 
@@ -247,7 +272,8 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       }
 
       final uri = Uri.parse(url);
-      debugPrint('[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
+      debugPrint(
+          '[Agenteract] Connecting to ${uri.toString().replaceAll(RegExp(r'token=([^&]+)'), 'token=***')}');
 
       _channel = WebSocketChannel.connect(uri);
 
@@ -361,6 +387,9 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
             id,
           );
           break;
+        case 'agentLink':
+          _handleAgentLink(data['payload'] as String?, id);
+          break;
         default:
           _sendError('Unknown action: $action', id);
       }
@@ -398,7 +427,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onTap!();
       _sendSuccess(id);
     } else {
-      _sendError('No tap handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -413,7 +442,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onChangeText!(value);
       _sendSuccess(id);
     } else {
-      _sendError('No input handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -433,7 +462,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onScroll!(direction, amount ?? 100);
       _sendSuccess(id);
     } else {
-      _sendError('No scroll handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -448,7 +477,7 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onLongPress!();
       _sendSuccess(id);
     } else {
-      _sendError('No long press handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
     }
   }
 
@@ -468,7 +497,32 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
       node!.onSwipe!(direction, velocity ?? 'medium');
       _sendSuccess(id);
     } else {
-      _sendError('No swipe handler found for testID: $testID', id);
+      _sendError('No element found with testID "$testID"', id);
+    }
+  }
+
+  void _handleAgentLink(String? payload, String? id) async {
+    if (payload == null) {
+      _sendError('Missing payload', id);
+      return;
+    }
+
+    if (widget.onAgentLink != null) {
+      try {
+        final handled = await widget.onAgentLink!(payload);
+        if (handled) {
+          debugPrint('[Agenteract] agentLink handled by app');
+          _sendSuccess(id);
+        } else {
+          debugPrint('[Agenteract] agentLink not handled by app');
+          _sendError('agentLink not handled by app', id);
+        }
+      } catch (e) {
+        debugPrint('[Agenteract] Error in agentLink handler: $e');
+        _sendError('Error in agentLink handler: $e', id);
+      }
+    } else {
+      _sendError('No agentLink handler configured', id);
     }
   }
 
@@ -505,12 +559,17 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         // Android emulator detection - check if running on x86/x64 (emulators) or look for emulator indicators
         final version = Platform.version;
         isSimulator = version.contains('(') &&
-                     (version.toLowerCase().contains('emulator') ||
-                      version.toLowerCase().contains('generic') ||
-                      Platform.environment['ANDROID_PRODUCT_MODEL']?.toLowerCase().contains('sdk') == true);
+            (version.toLowerCase().contains('emulator') ||
+                version.toLowerCase().contains('generic') ||
+                Platform.environment['ANDROID_PRODUCT_MODEL']
+                        ?.toLowerCase()
+                        .contains('sdk') ==
+                    true);
 
-        deviceModel = Platform.environment['ANDROID_PRODUCT_MODEL'] ?? 'Android Device';
-        deviceName = Platform.environment['ANDROID_PRODUCT_MANUFACTURER'] != null
+        deviceModel =
+            Platform.environment['ANDROID_PRODUCT_MODEL'] ?? 'Android Device';
+        deviceName = Platform.environment['ANDROID_PRODUCT_MANUFACTURER'] !=
+                null
             ? '${Platform.environment['ANDROID_PRODUCT_MANUFACTURER']} $deviceModel'
             : deviceModel;
 
@@ -518,8 +577,10 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
         // Example: "3.5.4 (stable) (Tue Oct 15 08:33:00 2024 +0000) on "android_x64""
         final match = RegExp(r'on "android[_\w]*"').firstMatch(version);
         if (match != null) {
-          final platformStr = match.group(0)?.replaceAll('on "', '').replaceAll('"', '') ?? '';
-          osVersion = 'Android ${platformStr.contains('_') ? platformStr.split('_').last : ''}';
+          final platformStr =
+              match.group(0)?.replaceAll('on "', '').replaceAll('"', '') ?? '';
+          osVersion =
+              'Android ${platformStr.contains('_') ? platformStr.split('_').last : ''}';
         } else {
           osVersion = 'Android';
         }
@@ -566,7 +627,8 @@ class _AgentDebugBridgeState extends State<AgentDebugBridge> {
     }
   }
 
-  String _sanitizeConfigForLog(String host, int port, String? token, String? deviceId) {
+  String _sanitizeConfigForLog(
+      String host, int port, String? token, String? deviceId) {
     var result = 'host: $host, port: $port';
     if (token != null) {
       result += ', token: ****';
