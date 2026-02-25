@@ -690,7 +690,26 @@ The server will forward this to the app, and the app will respond with a JSON pa
 This step creates or appends to your AGENTS.md file. This informs coding agents how to interact with the app.
 
 ```bash
-npx @agenteract/agents md [dest] # You can specific the name, eg GEMINI.md
+npx @agenteract/agents md [dest] # You can specific the name, eg AGENTERACT.md
+```
+
+It is advisible to filter the documentation specific to your app. Agents are great at this!
+```prompt
+Please filter AGENTERACT.md - We want to remove anything that isn't relevant to this <project type> app.
+```
+
+You can then turn `AGENTERACT.md` into skills:
+
+Claude Code:
+```prompt
+Please convert AGENTERACT.md into skills as per https://code.claude.com/docs/en/skills
+Place the skills folders within this app repo.
+```
+
+OpenCode:
+```prompt
+Please convert AGENTERACT.md into skills as per https://code.claude.com/docs/en/skills
+Place the skills folders within this app repo.
 ```
 
 
