@@ -284,12 +284,12 @@ export function spawnBackground(
   command: string,
   args: string[],
   name: string,
-  options?: { cwd?: string }
+  options?: { cwd?: string, env?: NodeJS.ProcessEnv }
 ): ChildProcess {
   info(`Starting ${name}: ${command} ${args.join(' ')}`);
 
   // Clear pnpm environment variables so npx is detected correctly
-  const env = { ...process.env };
+  const env =  { ...( options?.env || process.env) };
   delete env.npm_config_user_agent;
   delete env.npm_execpath;
 

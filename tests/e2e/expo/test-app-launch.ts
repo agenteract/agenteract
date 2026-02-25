@@ -394,7 +394,8 @@ async function main() {
       'npx',
       ['@agenteract/cli', 'dev'],
       'agenteract-dev',
-      { cwd: testConfigDir }
+      // disable CI as it causes metro to operate differently - Doesn't support keystrokes
+      { cwd: testConfigDir, env: { ...process.env, CI: 'false' } }
     );
 
     // Wait for Metro and AgentDebugBridge to be ready
