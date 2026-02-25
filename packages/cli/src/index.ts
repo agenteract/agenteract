@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 
 import { runDevCommand } from './commands/dev.js';
 import { runConnectCommand } from './commands/connect.js';
+import { runHierarchyCommand } from './commands/hierarchy.js';
 import { addConfig } from './config.js';
 
 yargs(hideBin(process.argv))
@@ -94,6 +95,60 @@ yargs(hideBin(process.argv))
       addConfig(process.cwd(), argv.path!, argv.name!, argv.typeOrCommand!, argv.port, argv.scheme, waitLogTimeout).catch((error) => {
         console.error(error);
       });
+    }
+  )
+  .command(
+    'hierarchy <project> <subcommand> [arg]',
+    'Query the live view hierarchy of a running project',
+    (yargs) => {
+      return yargs
+        .positional('project', {
+          describe: 'Project name (matches the name in agenteract.config.js)',
+          type: 'string',
+          demandOption: true,
+        })
+        .positional('subcommand', {
+          describe: 'Subcommand: texts | testids | find-text | find-name | find-testid | path | dump',
+          type: 'string',
+          demandOption: true,
+          choices: ['texts', 'testids', 'find-text', 'find-name', 'find-testid', 'path', 'dump'],
+        })
+        .positional('arg', {
+          describe: 'Pattern or testID argument (required for find-text, find-name, find-testid, path)',
+          type: 'string',
+        })
+        .option('port', {
+          alias: 'p',
+          type: 'number',
+          description: 'WebSocket port of the Agenteract server (default: from runtime config or 8765)',
+        })
+        .option('include-numbers', {
+          type: 'boolean',
+          description: 'Include pure numeric text values (used with "texts" subcommand)',
+          default: false,
+        })
+        .option('include-object-strings', {
+          type: 'boolean',
+          description: 'Include "[object Object]" noise strings (used with "texts" subcommand)',
+          default: false,
+        });
+    },
+    (argv) => {
+      const subcommand = argv.subcommand as string;
+      const arg = argv.arg as string | undefined;
+
+      // Determine whether arg is a pattern or a testID based on subcommand
+      const isTestIDCommand = subcommand === 'find-testid' || subcommand === 'path';
+
+      runHierarchyCommand({
+        project: argv.project as string,
+        command: subcommand,
+        pattern: isTestIDCommand ? undefined : arg,
+        testID: isTestIDCommand ? arg : undefined,
+        port: argv.port,
+        includeNumbers: argv['include-numbers'] as boolean,
+        includeObjectStrings: argv['include-object-strings'] as boolean,
+      }).catch(console.error);
     }
   )
   .strictCommands()

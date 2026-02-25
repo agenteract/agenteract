@@ -1,6 +1,7 @@
 export * from './config.js';
 export * from './pnpm.js';
 export * from './device-manager.js';
+export * from '../filtering.js';
 export * from './platform-detector.js';
 export * from './bundle-resolver.js';
 export * from './agent-client.js';

@@ -482,6 +482,95 @@ client.disconnect();
 - `waitForLog(project, pattern, timeout?)` - Wait for log message
 - `waitForElement(project, testID, timeout?)` - Wait for element
 - `waitForCondition(project, predicate, timeout?)` - Wait for custom condition
+- `getHierarchyRoot(project)` - Get hierarchy as a typed `HierarchyNode` tree
+- `getTexts(project, options?)` - Extract all visible text strings (deduped, noise-filtered)
+- `getTestIDs(project)` - List all testIDs in the hierarchy, sorted
+- `findNodesByText(project, pattern)` - Find nodes whose text matches a string/regex
+- `findNodesByName(project, pattern)` - Find nodes whose component name matches a string/regex
+- `findNodeByTestID(project, testID)` - Find a node by exact testID
+- `getPathToTestID(project, testID)` - Get a breadcrumb path string to a testID node
+- `dumpTree(project)` - Pretty-print the full component tree as a string
+
+---
+
+### Hierarchy Filtering with AgentClient
+
+AgentClient exposes a suite of typed filtering methods built on top of `getViewHierarchy`. These are useful for writing assertions in integration tests without manually traversing the raw hierarchy tree.
+
+All filtering types (`HierarchyNode`, `NodeMatch`, etc.) are exported from `@agenteract/core/node`.
+
+```typescript
+import { AgentClient, HierarchyNode, NodeMatch } from '@agenteract/core/node';
+
+const client = new AgentClient('ws://localhost:8765');
+await client.connect();
+
+// Get the full typed tree
+const root: HierarchyNode | null = await client.getHierarchyRoot('expo-app');
+
+// Extract all visible text (noise-filtered, deduped)
+const texts: string[] = await client.getTexts('expo-app');
+// → ['Welcome', 'Sign In', 'Forgot password?']
+
+// Options: include numeric-only strings and object-like strings
+const allTexts = await client.getTexts('expo-app', {
+  includeNumbers: true,
+  includeObjectStrings: true,
+});
+
+// List all testIDs
+const ids: string[] = await client.getTestIDs('expo-app');
+// → ['login-button', 'username-input', 'password-input']
+
+// Find nodes whose text matches a string or regex
+const matches: NodeMatch[] = await client.findNodesByText('expo-app', 'Sign In');
+const regexMatches = await client.findNodesByText('expo-app', /sign in/i);
+
+// Find nodes by component name
+const buttons: NodeMatch[] = await client.findNodesByName('expo-app', 'Button');
+
+// Find a single node by exact testID (returns null if not found)
+const match: NodeMatch | null = await client.findNodeByTestID('expo-app', 'login-button');
+
+// Get a human-readable breadcrumb path to a testID node
+const path: string | null = await client.getPathToTestID('expo-app', 'login-button');
+// → 'App > HomeScreen > Form > Button'
+
+// Pretty-print the full component tree (useful for debugging)
+const tree: string = await client.dumpTree('expo-app');
+console.log(tree);
+
+client.disconnect();
+```
+
+**CLI equivalents** via `agenteract hierarchy`:
+
+```bash
+# All visible text
+npx @agenteract/cli hierarchy expo-app texts
+
+# All testIDs
+npx @agenteract/cli hierarchy expo-app testids
+
+# Find by text
+npx @agenteract/cli hierarchy expo-app find-text "Sign In"
+
+# Find by component name
+npx @agenteract/cli hierarchy expo-app find-name Button
+
+# Find by testID (shows path)
+npx @agenteract/cli hierarchy expo-app find-testid login-button
+
+# Breadcrumb path to testID
+npx @agenteract/cli hierarchy expo-app path login-button
+
+# Full tree dump
+npx @agenteract/cli hierarchy expo-app dump
+```
+
+Options: `--port <n>`, `--include-numbers`, `--include-object-strings`
+
+---
 
 ### Agent Links (agentLink)
 

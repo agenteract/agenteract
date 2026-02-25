@@ -877,6 +877,107 @@ It appears as if the agent server might not be running. Kindly run this in a she
 pnpm agenteract dev
 ```
 
+## Tool: Hierarchy Filtering
+
+After fetching the view hierarchy, you can use the `agenteract hierarchy` command to extract specific information without parsing the raw JSON tree. These subcommands are designed for both AI agents and integration test scripts.
+
+**Command format:**
+```bash
+pnpm agenteract-agents hierarchy <project> <subcommand> [arg] [options]
+```
+
+**Options:**
+- `--port <n>` - Override the WebSocket port (default: from `agenteract.config.js` or 8765)
+- `--include-numbers` - Include numeric-only strings in `texts` output
+- `--include-object-strings` - Include object-like strings (e.g., `[object Object]`) in `texts` output
+
+### Subcommands
+
+#### `texts` — List all visible text
+Returns all visible text content in the hierarchy, deduplicated and noise-filtered. Numbers and object-like strings are excluded by default.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app texts
+# → Welcome
+# → Sign In
+# → Forgot password?
+```
+
+#### `testids` — List all testIDs
+Returns all testID values present in the hierarchy, sorted alphabetically.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app testids
+# → login-button
+# → password-input
+# → username-input
+```
+
+#### `find-text` — Find nodes by text
+Returns nodes whose text content matches the given pattern (substring match). Each result includes the node's component name, testID (if any), text, and path.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app find-text "Sign In"
+# → [Text] (no testID) text="Sign In"  path: Button > Text
+```
+
+**Note:** `find-text` matches leaf text nodes, not their parent containers. For example, if a `Button` contains a `Text` child with the label "Sign In", the match is returned on the `Text` node. The path shows the full ancestry.
+
+#### `find-name` — Find nodes by component name
+Returns nodes whose component type name matches the given pattern (substring match).
+
+```bash
+pnpm agenteract-agents hierarchy expo-app find-name Button
+# → [Button] testID=login-button  path: App > HomeScreen > Button
+```
+
+#### `find-testid` — Find a node by testID
+Returns a single node that exactly matches the given testID, along with its path in the tree.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app find-testid login-button
+# → [Button] testID=login-button  path: App > HomeScreen > Button
+```
+
+#### `path` — Get breadcrumb path to a testID
+Returns a single breadcrumb string showing the ancestry of the node with the given testID.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app path login-button
+# → App > HomeScreen > Button
+```
+
+#### `dump` — Pretty-print the full tree
+Prints the entire component tree in an indented human-readable format, showing component names, testIDs, and text at each node.
+
+```bash
+pnpm agenteract-agents hierarchy expo-app dump
+# App
+#   HomeScreen
+#     Header [testID=header]
+#       Text: "Welcome"
+#     Button [testID=login-button]
+#       Text: "Sign In"
+```
+
+### Typical Filtering Workflow
+
+```bash
+# 1. Dump the tree to understand the structure
+pnpm agenteract-agents hierarchy expo-app dump
+
+# 2. Find the testID of a button by its label
+pnpm agenteract-agents hierarchy expo-app find-text "Sign In"
+
+# 3. Confirm the full path to that element
+pnpm agenteract-agents hierarchy expo-app path login-button
+
+# 4. Use the testID in a tap command
+pnpm agenteract-agents tap expo-app login-button
+```
+
+---
+
 ## Tool: Interact with App
 
 This tool allows you to send commands to the application to simulate user interactions.
@@ -1111,6 +1212,70 @@ console.log(hierarchy.root.children);
 // CLI equivalent: pnpm agenteract-agents agent-link expo-app agenteract://reset_state
 await client.agentLink('expo-app', 'agenteract://reset_state');
 await client.agentLink('expo-app', 'agenteract://navigate?screen=settings');
+```
+
+#### Hierarchy Filtering Methods
+
+These methods build on `getViewHierarchy` to let you query the component tree without manually traversing raw JSON. All filtering types (`HierarchyNode`, `NodeMatch`, etc.) are exported from `@agenteract/core/node`.
+
+**`getHierarchyRoot(project: string): Promise<HierarchyNode | null>`**
+```typescript
+// Returns the root of the hierarchy as a typed HierarchyNode tree
+const root = await client.getHierarchyRoot('expo-app');
+```
+
+**`getTexts(project: string, options?: { includeNumbers?: boolean; includeObjectStrings?: boolean }): Promise<string[]>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app texts
+const texts = await client.getTexts('expo-app');
+// → ['Welcome', 'Sign In', 'Forgot password?']
+
+// Include numeric-only and object-like strings
+const allTexts = await client.getTexts('expo-app', { includeNumbers: true });
+```
+
+**`getTestIDs(project: string): Promise<string[]>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app testids
+const ids = await client.getTestIDs('expo-app');
+// → ['login-button', 'password-input', 'username-input']
+```
+
+**`findNodesByText(project: string, pattern: string | RegExp): Promise<NodeMatch[]>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app find-text "Sign In"
+const matches = await client.findNodesByText('expo-app', 'Sign In');
+const regexMatches = await client.findNodesByText('expo-app', /sign in/i);
+// Note: matches leaf text nodes, not parent containers
+```
+
+**`findNodesByName(project: string, pattern: string | RegExp): Promise<NodeMatch[]>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app find-name Button
+const buttons = await client.findNodesByName('expo-app', 'Button');
+```
+
+**`findNodeByTestID(project: string, testID: string): Promise<NodeMatch | null>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app find-testid login-button
+const match = await client.findNodeByTestID('expo-app', 'login-button');
+if (match) {
+  console.log(match.path); // e.g. 'App > HomeScreen > Button'
+}
+```
+
+**`getPathToTestID(project: string, testID: string): Promise<string | null>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app path login-button
+const path = await client.getPathToTestID('expo-app', 'login-button');
+// → 'App > HomeScreen > Button'
+```
+
+**`dumpTree(project: string): Promise<string>`**
+```typescript
+// CLI equivalent: pnpm agenteract-agents hierarchy expo-app dump
+const tree = await client.dumpTree('expo-app');
+console.log(tree);
 ```
 
 #### Utility Methods

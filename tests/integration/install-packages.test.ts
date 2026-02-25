@@ -427,7 +427,7 @@ console.log('✓ @agenteract/core imported via ESM');
     }
     execSync(`"${agentsCliPath}" hierarchy my-project > "${hierarchyPath}"`, execOptions);
     const hierarchy = readFileSync(hierarchyPath, 'utf-8');
-    if (!hierarchy.includes('"hierarchy":"mock"')) {
+    if (!hierarchy.includes('"hierarchy"')) {
       throw new Error('agents: hierarchy command failed');
     }
     console.log('✓ agents: hierarchy command works');
@@ -450,7 +450,103 @@ console.log('✓ @agenteract/core imported via ESM');
     process.exit(1);
   }
 
-  console.log('✓ @agenteract/agents CLI tests passed!');
+  // --- Hierarchy subcommand tests (agenteract CLI) ---
+  console.log('');
+  console.log('Running agenteract hierarchy subcommand tests...');
+  const agenteractCliPath = join(TEST_DIR, 'node_modules', '.bin', 'agenteract');
+
+  // hierarchy texts
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project texts`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('Welcome Home')) throw new Error('missing "Welcome Home"');
+    if (!out.includes('First Item')) throw new Error('missing "First Item"');
+    if (!out.includes('Second Item')) throw new Error('missing "Second Item"');
+    if (!out.includes('Back')) throw new Error('missing "Back"');
+    console.log('✓ hierarchy texts: returns visible text values');
+  } catch (error: any) {
+    console.error('❌ hierarchy texts failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy testids
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project testids`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('back-button')) throw new Error('missing back-button');
+    if (!out.includes('home-header')) throw new Error('missing home-header');
+    if (!out.includes('home-screen')) throw new Error('missing home-screen');
+    if (!out.includes('item-1')) throw new Error('missing item-1');
+    if (!out.includes('item-2')) throw new Error('missing item-2');
+    if (!out.includes('item-list')) throw new Error('missing item-list');
+    console.log('✓ hierarchy testids: returns sorted testID list');
+  } catch (error: any) {
+    console.error('❌ hierarchy testids failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy find-text
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project find-text "Back"`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('Found 1 node')) throw new Error('expected 1 match');
+    if (!out.includes('"Back"')) throw new Error('missing matched text');
+    if (!out.includes('Button > Text')) throw new Error('missing path');
+    console.log('✓ hierarchy find-text: finds nodes by text pattern');
+  } catch (error: any) {
+    console.error('❌ hierarchy find-text failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy find-name
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project find-name "Pressable"`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('Found 2 node')) throw new Error('expected 2 matches');
+    console.log('✓ hierarchy find-name: finds nodes by component name');
+  } catch (error: any) {
+    console.error('❌ hierarchy find-name failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy find-testid
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project find-testid home-header`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('Welcome Home')) throw new Error('missing node text');
+    if (!out.includes('App > HomeScreen > Header')) throw new Error('missing breadcrumb path');
+    console.log('✓ hierarchy find-testid: finds node by testID and shows path');
+  } catch (error: any) {
+    console.error('❌ hierarchy find-testid failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy path
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project path back-button`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.trim().includes('App > HomeScreen > Button')) throw new Error(`unexpected path: ${out.trim()}`);
+    console.log('✓ hierarchy path: returns breadcrumb path to testID');
+  } catch (error: any) {
+    console.error('❌ hierarchy path failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  // hierarchy dump
+  try {
+    const out = execSync(`"${agenteractCliPath}" hierarchy my-project dump`, { encoding: 'utf-8', cwd: TEST_DIR });
+    if (!out.includes('App')) throw new Error('missing root node');
+    if (!out.includes('HomeScreen')) throw new Error('missing HomeScreen');
+    if (!out.includes('[testID=home-header]')) throw new Error('missing testID annotation');
+    if (!out.includes('"Welcome Home"')) throw new Error('missing text annotation');
+    console.log('✓ hierarchy dump: pretty-prints the full component tree');
+  } catch (error: any) {
+    console.error('❌ hierarchy dump failed:', error.message);
+    cleanupServer();
+    process.exit(1);
+  }
+
+  console.log('✓ All hierarchy subcommand tests passed!');
 
   // Cleanup
   cleanupServer();

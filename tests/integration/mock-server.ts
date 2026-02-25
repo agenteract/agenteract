@@ -53,7 +53,50 @@ function connectToAgentServer(projectName: string): Promise<WebSocket> {
           console.log(`[Mock] Responding to getViewHierarchy command`);
           ws.send(JSON.stringify({
             status: 'success',
-            hierarchy: 'mock',
+            hierarchy: {
+              name: 'App',
+              children: [
+                {
+                  name: 'HomeScreen',
+                  testID: 'home-screen',
+                  children: [
+                    {
+                      name: 'Header',
+                      text: 'Welcome Home',
+                      testID: 'home-header',
+                      children: [],
+                    },
+                    {
+                      name: 'FlatList',
+                      testID: 'item-list',
+                      children: [
+                        {
+                          name: 'Pressable',
+                          testID: 'item-1',
+                          children: [
+                            { name: 'Text', text: 'First Item', children: [] },
+                          ],
+                        },
+                        {
+                          name: 'Pressable',
+                          testID: 'item-2',
+                          children: [
+                            { name: 'Text', text: 'Second Item', children: [] },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      name: 'Button',
+                      testID: 'back-button',
+                      children: [
+                        { name: 'Text', text: 'Back', children: [] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
             id: message.id
           }));
         } else if (message.action === 'getConsoleLogs') {
