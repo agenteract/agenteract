@@ -1,6 +1,8 @@
 # @agenteract/flutter-cli
 
-Flutter dev server PTY bridge for Agenteract.
+Flutter dev server PTY bridge for [Agenteract](https://github.com/agenteract/agenteract).
+
+Agenteract is an experimental bridge that lets coding agents view and interact with running applications — React Native / Expo, React, Flutter, Kotlin Multiplatform, and SwiftUI.
 
 ## What it does
 
@@ -38,6 +40,10 @@ The PTY bridge accepts Flutter's standard keyboard commands:
   ```json
   { "cmd": "r" }
   ```
+
+## Full documentation
+
+See the [Agenteract README](https://github.com/agenteract/agenteract#readme) for full setup guides, Flutter integration instructions, and platform-specific details.
 
 ## License
 
