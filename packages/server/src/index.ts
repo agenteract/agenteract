@@ -847,7 +847,7 @@ if (isLogServer) {
                     if (isFlutter && ptyPort && deviceId) {
                         // Poll PTY logs until device list appears, then send the selection
                         const ptyUrl = `http://localhost:${ptyPort}`;
-                        const maxWaitMs = 30000;
+                        const maxWaitMs = 60000;
                         const pollIntervalMs = 1000;
                         const start = Date.now();
                         let selected = false;

@@ -716,7 +716,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
           requestBody.platform = platform;
           requestBody.deviceName = deviceObj.name;
         }
-        const response = await axios.post(`${defaultServerUrl}/start-app`, requestBody, { timeout: 30000 });
+        const response = await axios.post(`${defaultServerUrl}/start-app`, requestBody, { timeout: 90000 });
         console.log('✅ PTY-based restart successful');
         if (response.data.ptyWasRestarted) {
           console.log('   Dev server was restarted');
@@ -796,7 +796,7 @@ export async function startApp(options: AppLifecycleOptions): Promise<StartAppRe
               }
               
               const response = await axios.post(`${agentServerUrl}/start-app`, requestBody, {
-                timeout: 30000
+                timeout: 90000
               });
               
               console.log('✅ PTY-based restart successful');
