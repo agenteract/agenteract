@@ -1,5 +1,14 @@
 # **Agenteract**
 
+[![CI](https://github.com/agenteract/agenteract/actions/workflows/ci.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/ci.yml)
+[![Flutter Tests](https://github.com/agenteract/agenteract/actions/workflows/flutter-tests.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/flutter-tests.yml)
+[![Integration Tests](https://github.com/agenteract/agenteract/actions/workflows/integration-test.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/integration-test.yml)
+[![E2E Vite](https://github.com/agenteract/agenteract/actions/workflows/e2e-vite.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/e2e-vite.yml)
+[![E2E Vite (Windows)](https://github.com/agenteract/agenteract/actions/workflows/e2e-vite-windows.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/e2e-vite-windows.yml)
+[![E2E Flutter](https://github.com/agenteract/agenteract/actions/workflows/e2e-flutter.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/e2e-flutter.yml)
+[![E2E Expo](https://github.com/agenteract/agenteract/actions/workflows/e2e-expo.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/e2e-expo.yml)
+[![E2E Kotlin](https://github.com/agenteract/agenteract/actions/workflows/e2e-kotlin.yml/badge.svg)](https://github.com/agenteract/agenteract/actions/workflows/e2e-kotlin.yml)
+
 *Let your agents interact...*
 
 **Agenteract** is an experimental bridge that lets coding agents *view* and *interact* with running applications - Including React Native / Expo, React, Kotlin Multi Platform, and Swift UI. It's possible to add support for your favorite stack by replicating the existing framework implementations.
