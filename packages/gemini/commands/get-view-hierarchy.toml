@@ -3,5 +3,5 @@ prompt = """
 This is the current view hierarchy:
 
 Search Results:
-!{curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"getViewHierarchy"}'}
+!{curl -s -X POST http://localhost:8766/agent -d '{"action":"getViewHierarchy"}'}
 """

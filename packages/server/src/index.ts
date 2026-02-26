@@ -645,7 +645,7 @@ if (isLogServer) {
             console.error('Failed to update runtime config with HTTP port:', e);
         }
 
-        app.post('/gemini-agent', async (req, res) => {
+        app.post('/agent', async (req, res) => {
             const command = req.body;
             const { project: projectName, device: requestedDevice } = command;
 

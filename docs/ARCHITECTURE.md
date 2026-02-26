@@ -213,7 +213,7 @@ sequenceDiagram
     participant UI as UI Components
 
     Note over Agent,UI: Flow 1: Get View Hierarchy
-    Agent->>Server: POST /gemini-agent<br/>{action: "getViewHierarchy", project: "expo-app"}
+    Agent->>Server: POST /agent<br/>{action: "getViewHierarchy", project: "expo-app"}
     Server->>Server: Generate UUID for request
     Server->>App: WebSocket: {action: "getViewHierarchy", id: "uuid"}
     App->>App: Call getFilteredHierarchy()
@@ -225,7 +225,7 @@ sequenceDiagram
     Server-->>Agent: HTTP 200: {status: "success", hierarchy: {...}}
 
     Note over Agent,UI: Flow 2: Execute UI Action (Tap)
-    Agent->>Server: POST /gemini-agent<br/>{action: "tap", testID: "loginButton", project: "expo-app"}
+    Agent->>Server: POST /agent<br/>{action: "tap", testID: "loginButton", project: "expo-app"}
     Server->>Server: Generate UUID for request
     Server->>App: WebSocket: {action: "tap", testID: "loginButton", id: "uuid"}
     App->>App: Call simulateTap("loginButton")
@@ -238,7 +238,7 @@ sequenceDiagram
     Server-->>Agent: HTTP 200: {status: "ok"}
 
     Note over Agent,UI: Flow 3: Get Console Logs
-    Agent->>Server: POST /gemini-agent<br/>{action: "getConsoleLogs", project: "expo-app"}
+    Agent->>Server: POST /agent<br/>{action: "getConsoleLogs", project: "expo-app"}
     Server->>Server: Generate UUID for request
     Server->>App: WebSocket: {action: "getConsoleLogs", id: "uuid"}
     App->>App: Return captured console logs
@@ -272,7 +272,7 @@ The main agent server runs HTTP and WebSocket servers for handling agent command
 
 | Endpoint | Method | Purpose | Request Body | Response |
 |----------|--------|---------|--------------|----------|
-| `/gemini-agent` | POST | Execute agent command | `{action, project, ...params}` | Command response with same structure |
+| `/agent` | POST | Execute agent command | `{action, project, ...params}` | Command response with same structure |
 | `/logs` | GET | Retrieve application logs | Query: `?project=name&since=50` | `{status, logs, source}` |
 
 **Features:**
@@ -314,7 +314,7 @@ graph TB
         SIMCTL[xcrun simctl<br/>iOS Simulator Logs]
     end
 
-    AGENT -->|POST /gemini-agent| HTTP
+    AGENT -->|POST /agent| HTTP
     AGENT -->|GET /logs?project=X| HTTP
 
     HTTP -->|Generate UUID<br/>Store response object| PENDING
@@ -783,7 +783,7 @@ flowchart TD
 
     CONNECTED -->|Yes| READY[System Ready<br/>Agent can interact]
 
-    READY --> AGENT_REQ[Agent sends HTTP request<br/>POST /gemini-agent]
+    READY --> AGENT_REQ[Agent sends HTTP request<br/>POST /agent]
 
     AGENT_REQ --> SERVER_GEN_ID[Server generates UUID<br/>for request tracking]
 
@@ -844,7 +844,7 @@ flowchart TD
 
 | Service | Default Port | Configurable | Purpose |
 |---------|-------------|--------------|---------|
-| **Agent Server (HTTP)** | 8766 | Yes | Agent command endpoint (`POST /gemini-agent`) |
+| **Agent Server (HTTP)** | 8766 | Yes | Agent command endpoint (`POST /agent`) |
 | **Agent Server (WebSocket)** | 8765 | Yes | App connection endpoint (`ws://localhost:8765/{project}`) |
 | **Log Server (WebSocket)** | 8767 | Yes | Native app log streaming |
 | **PTY Bridge (Project 1)** | 8790 | Auto | Dev server management for first project |
