@@ -788,6 +788,30 @@ pnpm test:e2e:expo:ios
 pnpm test:e2e:kotlin
 ```
 
+**Verdaccio Caching**
+As the verdaccio startup and publishing process takes time, we use a semi persistent proces in dev.
+We have logic for caching packages and generating new local versions when builds changed.
+
+The following pnpm commands are available to manage verdaccio:
+
+| Command | Description |
+| ----- | ----- |
+| pnpm verdaccio:start | Starts the verdaccio server |
+| pnpm verdaccio:stop | Stops the verdaccio server |
+| pnpm verdaccio:publish | Publishes packages to the local verdaccio registry |
+| pnpm verdaccio:publish:no-cache | Publishes packages to the local verdaccio registry without using cache |
+| pnpm verdaccio:clean | Cleans the verdaccio cache and restarts the server |
+| pnpm verdaccio:test | Tests verdaccio authentication |
+| pnpm cache:clear:verdaccio | Clears the verdaccio cache |
+
+The caching process usually works seemlessly (just run e2e tests), however to be sure, you might want to clear and restart:
+```
+pnpm verdaccio:start
+pnpm verdaccio:clean
+pnpm build
+pnpm verdaccio:publish
+```
+
 **GitHub Actions:** Integration tests run automatically on PRs and pushes to `main` and `release/**` branches using Verdaccio as a service container.
 
 **Authentication:** Uses `expect` to automate the authentication process. See [docs/VERDACCIO_AUTH.md](docs/VERDACCIO_AUTH.md) for details.
