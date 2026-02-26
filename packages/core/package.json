@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/core",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Core message schema, bridge protocol, and shared utilities for Agenteract",
   "main": "./dist/cjs/src/index.js",
   "module": "./dist/esm/src/index.js",

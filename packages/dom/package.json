@@ -1,6 +1,6 @@
 {
   "name": "@agenteract/dom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DOM utilities for Agenteract",
   "main": "./dist/cjs/src/index.js",
   "module": "./dist/esm/src/index.js",
