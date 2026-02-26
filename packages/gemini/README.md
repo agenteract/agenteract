@@ -1,3 +1,5 @@
+> **DEPRECATED:** This package is no longer maintained. The `/gemini-agent` endpoint it relied on has been renamed to `/agent`. Use the `@agenteract/agents` CLI or `@agenteract/core` programmatic API instead. See the root [README](../../README.md) for current usage.
+
 # Gemini / React Native Debug Bridge
 
 Usage:

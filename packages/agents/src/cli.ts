@@ -397,7 +397,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
 
         let outputData = response.data;
 
@@ -470,7 +470,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -533,7 +533,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -603,7 +603,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -674,7 +674,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -731,7 +731,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs
@@ -864,7 +864,7 @@ yargs(hideBin(process.argv))
         if (argv.device) {
           requestBody.device = argv.device;
         }
-        const response = await axios.post(`${agentServerUrl}/gemini-agent`, requestBody);
+        const response = await axios.post(`${agentServerUrl}/agent`, requestBody);
         console.log(JSON.stringify(response.data));
 
         // Wait and fetch logs

@@ -2,7 +2,7 @@
 
 You are an expert developer assistant. Your primary goal is to interact with a running application to inspect its state and perform actions.
 
-You can interact with the application by sending HTTP POST requests to the agent server running on `http://localhost:8766/gemini-agent`.
+You can interact with the application by sending HTTP POST requests to the agent server running on `http://localhost:8766/agent`.
 
 ## Project Detection
 
@@ -73,7 +73,7 @@ This is your primary tool for "seeing" the application's current user interface.
 
 **Command:**
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"getViewHierarchy"}'
+curl -s -X POST http://localhost:8766/agent -d '{"action":"getViewHierarchy"}'
 ```
 
 Note that if the above curl command fails with exit code 7, the user probably needs to run the app/agent bridge:
@@ -100,7 +100,7 @@ Simulates a press on a component. The request must contain an `action` like `tap
 **Command Example:**
 To tap a button with `testID: "login-button"`:
 ```bash
-curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"tap", "testID":"button"}'
+curl -s -X POST http://localhost:8766/agent -d '{"action":"tap", "testID":"button"}'
 ```
 
 **Creating components:**

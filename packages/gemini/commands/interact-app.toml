@@ -1,5 +1,5 @@
 # these don't do anything, we just need to describe commands in GEMINI.md
 prompt = """
 Interaction result:
-!{curl -s -X POST http://localhost:8766/gemini-agent -d '{"action":"interactApp", "payload":{"testID":"your-test-id"}}'}
+!{curl -s -X POST http://localhost:8766/agent -d '{"action":"interactApp", "payload":{"testID":"your-test-id"}}'}
 """
